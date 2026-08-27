@@ -21,6 +21,92 @@ from .patrol_modes import MODES, PatrolMode, recommended_hours
 
 log = logging.getLogger(__name__)
 
+#: 공문 서식 기본값. 실제 배포 시 소방서명·기안자를 설정에서 받아 채운다.
+DOC_DEFAULTS = {
+    "기관명": "○○소방서",
+    "부서": "예방과",
+    "수신": "내부결재",
+    "기안자": "",
+    "연락처": "",
+}
+
+
+@dataclass
+class DocMeta:
+    """공문 머리·꼬리에 들어가는 정보.
+
+    계획서는 결재를 받는 문서다. 제목만 있고 수신·근거·붙임·결재란이 없으면
+    현장에서 그대로 올릴 수 없어 결국 담당자가 다시 옮겨 적게 된다.
+    """
+    기관명: str = DOC_DEFAULTS["기관명"]
+    부서: str = DOC_DEFAULTS["부서"]
+    수신: str = DOC_DEFAULTS["수신"]
+    기안자: str = ""
+    연락처: str = ""
+    문서번호: str = ""
+    시행일: date | None = None
+
+
+#: 공문 항목 번호. chr(0xAC00 + n) 으로 만들면 '가, 각, 갂' 이 나온다.
+#: 한글 완성형은 초성·중성·종성이 곱해진 배열이라 1씩 더하면 종성이 붙는다.
+HANGUL_ORDINALS = ("가", "나", "다", "라", "마", "바", "사", "아", "자", "차",
+                   "카", "타", "파", "하")
+
+
+def _hangul_ordinal(i: int) -> str:
+    return HANGUL_ORDINALS[i] if i < len(HANGUL_ORDINALS) else f"({i + 1})"
+
+
+def _doc_header(meta: DocMeta, title: str, basis: list[str]) -> list[str]:
+    """공문 머리 — 기관·수신·제목·관련 근거."""
+    d = meta.시행일 or date.today()
+    out = [
+        f"# {title}",
+        "",
+        f"**{meta.기관명}**" + (f" {meta.부서}" if meta.부서 else ""),
+        "",
+        "| | |",
+        "|---|---|",
+        f"| 수신 | {meta.수신} |",
+        f"| 시행일 | {d.year}. {d.month}. {d.day}. |",
+    ]
+    if meta.문서번호:
+        out.append(f"| 문서번호 | {meta.문서번호} |")
+    if meta.기안자:
+        out.append(f"| 담당 | {meta.부서} {meta.기안자}"
+                   + (f" ({meta.연락처})" if meta.연락처 else "") + " |")
+    out.append("")
+    if basis:
+        out.append("**1. 관련**")
+        out.append("")
+        for i, b in enumerate(basis):
+            out.append(f"   {_hangul_ordinal(i)}. {b}")
+        out.append("")
+    return out
+
+
+def _doc_footer(meta: DocMeta, attachments: list[str]) -> list[str]:
+    """붙임과 결재란. '끝.' 은 공문의 종결 표시다."""
+    out = ["", "---", "", "**붙임**", ""]
+    for i, a in enumerate(attachments, 1):
+        out.append(f"   {i}. {a} 1부.")
+    out.append("")
+    out.append("   끝.")
+    out += ["", "| 기안 | 검토 | 결재 |", "|---|---|---|",
+            "| | | |", "| | | |", ""]
+    return out
+
+
+#: 문서에 반드시 들어가야 하는 격자 정의.
+#: 계획서를 처음 받는 사람은 '격자 2331_3456' 이 무엇인지 모른다.
+GRID_DEFINITION = (
+    "- **격자**: 지역을 가로·세로 500m 정사각형으로 나눈 분석 단위입니다. "
+    "공개 데이터에 건물 번호와 좌표가 없어 개별 건물을 특정할 수 없으므로, "
+    "주소(도로명 또는 읍면동)를 좌표로 변환해 500m 칸에 모아 집계했습니다. "
+    "격자 번호(예: `2331_3456`)는 UTM-K 좌표계의 가로·세로 칸 번호이며, "
+    "한 격자는 대략 도보 5~7분 거리의 한 블록 범위에 해당합니다."
+)
+
 #: 계절별 권장 순찰 유형. 화재 발생 특성과 법정 업무 시기를 함께 본다.
 SEASONAL_MODES = {
     1: "dry_season", 2: "dry_season", 3: "dry_season",     # 봄철 건조·산불
@@ -57,24 +143,92 @@ class PlanContext:
 
 # ---------------------------------------------------------------- 법령 근거
 
+#: 순찰·점검 계획의 근거가 될 수 있는 조문인지 가리는 낱말.
+#: 이게 없으면 BM25 가 어휘만 보고 엉뚱한 조문을 가져온다. 실제로
+#: '일반 예방순찰' 질의에 화재예방안전진단 절차 규정(시행규칙 제41조)이 1순위로 왔다.
+RELEVANCE_TERMS = ("순찰", "점검", "화재안전조사", "예방", "소방시설", "피난",
+                   "비상구", "방염", "안전관리", "훈련", "교육", "강화지구",
+                   "다중이용업", "소방용수", "화기")
+
+#: 근거로 인정할 최소 검색 점수. 낮은 점수는 '우연히 낱말이 겹친' 조문이다.
+MIN_LEGAL_SCORE = 8.0
+
+
+def _sentence_cut(text: str, limit: int = 320) -> str:
+    """문장 경계에서 자른다.
+
+    '…다음 각 호의 절차에 따라 ' 처럼 문장 중간에서 끊긴 인용은 결재 문서에
+    그대로 나가면 안 된다. 한국어 종결어미(다./함./한다.) 뒤에서 자르고,
+    경계를 못 찾으면 인용 자체를 짧게 줄인다.
+    """
+    t = " ".join(str(text).split())
+    if len(t) <= limit:
+        return t
+    head = t[:limit]
+    for end in ("다. ", "함. ", "다.", "함.", ". "):
+        pos = head.rfind(end)
+        if pos > limit * 0.4:
+            return head[:pos + len(end)].strip()
+    pos = head.rfind(" ")
+    return (head[:pos] if pos > limit * 0.5 else head).strip() + " …"
+
+
 def find_legal_basis(ctx: PlanContext, extra_terms: list[str] | None = None,
-                     top_k: int = 4) -> list[dict]:
+                     top_k: int = 4, *, min_score: float = MIN_LEGAL_SCORE) -> list[dict]:
     """이 계획과 관련된 법령 조문을 찾는다.
 
-    조문 번호 없는 계획서는 결재가 안 난다. 순찰 유형의 목적과 점검 항목을
-    질의어로 삼아 근거를 자동으로 붙인다.
+    조문 번호 없는 계획서는 결재가 안 난다. 다만 **아무 조문이나 붙이면
+    더 나쁘다** — 담당자가 근거를 확인하는 순간 신뢰를 잃는다. 그래서
+    (1) 최소 점수, (2) 순찰·점검 관련 낱말 포함 두 조건을 모두 만족한 조문만 쓴다.
     """
     if ctx.law_index is None:
         return []
+
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    # 1단계: 순찰 유형이 명시한 근거 조문을 먼저 넣는다.
+    #        검색은 어휘만 보므로 '소방시설·피난' 이 나온다는 이유로
+    #        화재예방안전진단 절차 규정을 일반 순찰의 근거로 끌어오기도 한다.
+    wanted = list(getattr(ctx.mode, "legal_refs", ()) or ())
+    if wanted:
+        by_ref = {}
+        for doc in getattr(ctx.law_index, "docs", []):
+            # 같은 조문이 항·호로 나뉘어 여러 문서로 들어올 수 있다.
+            # 그대로 두면 계획서에 같은 조문이 두 번 인용된다.
+            if getattr(doc, "source", "") == "법령" and doc.ref in wanted:
+                if doc.ref not in by_ref or len(doc.text) > len(by_ref[doc.ref].text):
+                    by_ref[doc.ref] = doc
+        for ref in wanted:
+            doc = by_ref.get(ref)
+            if doc is None:
+                log.info("명시한 근거 조문을 법령 자료에서 찾지 못함: %s", ref)
+                continue
+            out.append({"ref": doc.ref, "title": doc.title,
+                        "excerpt": _sentence_cut(doc.text), "score": None})
+            seen.add(doc.ref)
+
+    # 명시 근거가 충분하면 검색으로 더 채우지 않는다.
+    # 어휘 검색이 채운 조문은 '있으면 좋은 것'이 아니라 '틀리면 해로운 것'이다.
+    # 결재자가 조문을 열어 보고 무관하면 문서 전체의 신뢰가 무너진다.
+    if len(out) >= 2 or (wanted and len(out) == len(wanted)):
+        return out[:top_k]
+
+    # 2단계: 명시 근거가 없거나 부족할 때만 검색으로 보충한다.
     query = " ".join([ctx.mode.label, ctx.mode.purpose,
                       *ctx.mode.checks, *(extra_terms or [])])
-    hits = ctx.law_index.search(query, top_k=top_k * 2)
-    out = []
+    hits = ctx.law_index.search(query, top_k=top_k * 5)
     for doc, score in hits:
-        if getattr(doc, "source", "") != "법령":
+        if doc.ref in seen:
+            continue
+        if getattr(doc, "source", "") != "법령" or score < min_score:
+            continue
+        blob = f"{doc.title} {doc.text}"
+        if not any(term in blob for term in RELEVANCE_TERMS):
             continue
         out.append({"ref": doc.ref, "title": doc.title,
-                    "excerpt": doc.text[:220].replace("\n", " "), "score": round(score, 1)})
+                    "excerpt": _sentence_cut(doc.text), "score": round(score, 1)})
+        seen.add(doc.ref)
         if len(out) >= top_k:
             break
     return out
@@ -219,150 +373,270 @@ def annual_plan(ctx: PlanContext) -> dict:
 
 # ---------------------------------------------------------------- 문서
 
-def _legal_block(legal: list[dict]) -> list[str]:
+def _legal_block(legal: list[dict], n: int) -> list[str]:
+    """법령 근거 절. 번호를 인자로 받아 앞 절과 이어지게 한다.
+
+    번호 없는 절이 4장과 5장 사이에 끼면 문서 체계가 무너진다.
+    """
     if not legal:
         return []
-    out = ["", "## 법령 근거", ""]
+    out = ["", f"## {n}. 법령 근거", ""]
     for i, l in enumerate(legal, 1):
-        out.append(f"{i}. **{l['ref']}**")
+        out.append(f"{i}) **{l['ref']}**")
         out.append(f"   > {l['excerpt']}")
+        out.append("")
     return out
 
 
-def render_daily(plan: dict, ctx: PlanContext) -> str:
+def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> str:
+    meta = meta or DocMeta()
     d, mode = plan["date"], plan["mode"]
     h = plan["hours"]
-    out = [
-        f"# 예방순찰 계획서 ({d.year}. {d.month}. {d.day}. {plan['weekday']})",
+    legal = plan.get("legal", [])
+    basis = [f"「{_law_short(l['ref'])}」" for l in legal[:2]] or \
+            ["「화재의 예방 및 안전관리에 관한 법률」 제7조(화재안전조사)"]
+    basis.append(f"{ctx.city_label} 화재위험 예측 결과({ctx.year}년 기준)")
+
+    out = _doc_header(meta, f"{d.year}년 {d.month}월 {d.day}일 예방순찰 계획(안)", basis)
+    out += [
+        "**2. 위 호와 관련하여 아래와 같이 예방순찰을 실시하고자 합니다.**", "",
+        "**가. 순찰 개요**", "",
+        "| 구분 | 내용 |", "|---|---|",
+        f"| 순찰 종류 | {mode.label} |",
+        f"| 일시 | {d.year}. {d.month}. {d.day}.({plan['weekday']}) "
+        f"{h[0]:02d}:00 ~ {h[1]:02d}:00 |",
+        f"| 대상 지역 | {ctx.city_label} |",
+        f"| 투입 관서 | {len(plan['teams'])}개 관서 |",
+        f"| 순찰 구역 | {sum(t['격자수'] for t in plan['teams'])}개 격자 |",
         "",
-        f"- **순찰 종류**: {mode.label}",
-        f"- **순찰 시간**: {h[0]:02d}:00 – {h[1]:02d}:00",
-        f"- **대상 지역**: {ctx.city_label}",
-        f"- **투입 관서**: {len(plan['teams'])}개 관서",
-        f"- **거리 기준**: "
-        f"{'실제 도로 주행거리' if plan['distance_source'] == 'osrm' else '직선거리 환산'}",
-        "",
-        "## 1. 순찰 목적", "", f"{mode.purpose}", "",
-        "## 2. 관서별 순찰 구역", "",
-        "| 출동관서 | 순찰 격자 | 이동거리 | 소요시간 |",
-        "|---|---|---|---|",
+        "**나. 순찰 목적**", "", f"   {mode.purpose}", "",
+        "**다. 관서별 순찰 구역**", "",
+        "| 출동관서 | 순찰 격자 | 이동거리 | 소요시간 |", "|---|---|---|---|",
     ]
     for t in plan["teams"]:
         out.append(f"| {t['출동관서']} | {t['격자수']}개 | "
                    f"{t['총_km']:.1f} km | {t['총_분']:.0f}분 |")
+    tot_km = sum(t["총_km"] for t in plan["teams"])
+    out.append(f"| **계** | **{sum(t['격자수'] for t in plan['teams'])}개** | "
+               f"**{tot_km:.1f} km** | |")
 
-    out += ["", "## 3. 순찰 동선", ""]
+    out += ["", "**라. 순찰 동선**", ""]
     for t in plan["teams"]:
-        out.append(f"### {t['출동관서']}")
+        out.append(f"○ {t['출동관서']} (출발 → 순찰 → 복귀, 총 {t['총_km']:.1f} km)")
         out.append("")
         out.append("| 순번 | 격자 | 읍면동 | 이동거리 | 누적시간 |")
         out.append("|---|---|---|---|---|")
-        r = t["동선"]
-        for row in r.itertuples():
+        for row in t["동선"].itertuples():
             emd = getattr(row, "emd", "") or getattr(row, "sgg", "")
             out.append(f"| {row.순번} | {row.grid_id} | {emd} | "
                        f"{row.이동거리_m:,.0f} m | {row.누적시간_분:.0f}분 |")
         out.append("")
-        out.append(f"※ 순찰 종료 후 {t['출동관서']}로 복귀 (총 {t['총_km']:.1f} km)")
-        out.append("")
 
-    out += ["## 4. 중점 확인 사항", ""]
+    out += ["**마. 중점 확인 사항**", ""]
     for c in mode.checks:
-        out.append(f"- [ ] {c}")
+        out.append(f"   □ {c}")
 
-    out += _legal_block(plan.get("legal", []))
-    out += ["", "## 5. 유의사항", "",
-            "- 본 계획은 공개 데이터 기반 화재위험 예측 결과이며, "
-            "법정 점검주기 및 관할 판단을 대체하지 않습니다.",
-            "- 격자는 500m 단위 집계로, 개별 건물을 특정하지 않습니다.",
-            "- 순찰 중 발견한 위험요인은 화재안전조사 대상으로 별도 보고합니다."]
+    if legal:
+        out += ["", "**바. 세부 근거**", ""]
+        for l in legal:
+            out.append(f"○ {l['ref']}")
+            out.append(f"   > {l['excerpt']}")
+            out.append("")
+
+    out += ["", "**사. 용어 및 유의사항**", "", GRID_DEFINITION, "",
+            "- 본 계획은 공개 데이터 기반 화재위험 예측 결과이며, 법정 점검주기 및 "
+            "관할 판단을 대체하지 않습니다.",
+            "- 순찰 중 발견한 위험요인은 화재안전조사 대상으로 별도 보고합니다.",
+            f"- 이동거리는 "
+            f"{'실제 도로 주행거리' if plan['distance_source'] == 'osrm' else '직선거리 환산값'}"
+            f"이며 교통 상황에 따라 달라질 수 있습니다."]
+    out += _doc_footer(meta, ["순찰 대상 격자 목록", "관서별 순찰 동선도"])
     return "\n".join(out)
 
 
-def render_monthly(plan: dict, ctx: PlanContext) -> str:
-    out = [
-        f"# {plan['year']}년 {plan['month']}월 예방순찰 계획",
+def render_monthly(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> str:
+    meta = meta or DocMeta()
+    legal = plan.get("legal", [])
+    basis = [f"「{_law_short(l['ref'])}」" for l in legal[:2]] or \
+            ["「화재의 예방 및 안전관리에 관한 법률」 제7조(화재안전조사)"]
+    basis.append(f"{ctx.city_label} 월별 화재위험 분석 결과")
+
+    out = _doc_header(meta, f"{plan['year']}년 {plan['month']}월 예방순찰 계획(안)", basis)
+    out += [
+        "**2. 위 호와 관련하여 아래와 같이 월간 예방순찰 계획을 수립하고자 합니다.**", "",
+        "**가. 계획 개요**", "",
+        "| 구분 | 내용 |", "|---|---|",
+        f"| 중점 순찰 | {plan['mode'].label} |",
+        f"| 월 화재위험 | 연평균 대비 {plan['risk_multiplier']:.2f}배 "
+        f"({plan['risk_grade']}) |",
+        f"| 계획 순찰 횟수 | {plan['total_rounds']}회 |",
         "",
-        f"- **중점 순찰**: {plan['mode'].label}",
-        f"- **월 화재위험**: 연평균 대비 **{plan['risk_multiplier']:.2f}배** "
-        f"({plan['risk_grade']})",
-        f"- **계획 순찰 횟수**: {plan['total_rounds']}회",
-        "",
-        "## 1. 주차별 계획", "",
+        "**나. 주차별 계획**", "",
         "| 주차 | 기간 | 중점 관서 | 순찰 횟수 |", "|---|---|---|---|",
     ]
-    # 컬럼명에 공백이 있으면 itertuples 의 속성 접근이 안 된다. dict 로 받는다.
     for r in plan["weeks"].to_dict("records"):
         out.append(f"| {r['주차']} | {r['기간']} | {r.get('중점 관서', '')} | "
                    f"{r.get('순찰 횟수', 1)}회 |")
 
     if not plan["station_alloc"].empty:
-        out += ["", "## 2. 관서별 순찰 구역", "",
+        out += ["", "**다. 관서별 순찰 구역**", "",
                 "| 출동관서 | 순찰 격자 |", "|---|---|"]
         for r in plan["station_alloc"].to_dict("records"):
             out.append(f"| {r['출동관서']} | {r['격자수']}개 |")
 
-    out += ["", "## 3. 중점 확인 사항", ""]
+    out += ["", "**라. 중점 확인 사항**", ""]
     for c in plan["mode"].checks:
-        out.append(f"- [ ] {c}")
-    out += _legal_block(plan.get("legal", []))
+        out.append(f"   □ {c}")
+
+    if legal:
+        out += ["", "**마. 세부 근거**", ""]
+        for l in legal:
+            out.append(f"○ {l['ref']}")
+            out.append(f"   > {l['excerpt']}")
+            out.append("")
+
+    out += ["", "**바. 용어**", "", GRID_DEFINITION,
+            "- **위험계수**: 최근 8년 화재 발생과 기상(습도·건조일수)을 반영한 값으로, "
+            "1.0이 연평균 수준입니다."]
+    out += _doc_footer(meta, ["주차별 순찰 배정표", "관서별 순찰 구역도"])
     return "\n".join(out)
 
 
-def render_annual(plan: dict, ctx: PlanContext) -> str:
-    out = [
-        f"# {plan['year']}년 화재예방 순찰·점검 연간계획",
-        "",
-        f"- **대상**: {ctx.city_label}",
-        "- **수립 근거**: 화재위험 예측 결과 및 월별 화재 발생 특성",
-        "",
-        "## 1. 분기별 운영 방향", "",
+def render_annual(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> str:
+    meta = meta or DocMeta()
+    legal = plan.get("legal", [])
+    basis = ["「화재의 예방 및 안전관리에 관한 법률」 제7조(화재안전조사)",
+             "「화재의 예방 및 안전관리에 관한 법률」 제18조(화재예방강화지구의 지정 등)",
+             f"{ctx.city_label} 화재위험 예측 및 월별 발생 특성 분석 결과"]
+
+    out = _doc_header(meta, f"{plan['year']}년 화재예방 순찰·점검 연간계획(안)", basis)
+    out += [
+        "**2. 위 호와 관련하여 아래와 같이 연간계획을 수립하고자 합니다.**", "",
+        "**가. 분기별 운영 방향**", "",
         "| 분기 | 기간 | 평균 위험계수 | 중점 순찰 |", "|---|---|---|---|",
     ]
     for r in plan["quarters"].to_dict("records"):
-        out.append(f"| {r['분기']} | {r['기간']} | {r['평균 위험계수']} | "
-                   f"{r['중점 순찰']} |")
+        out.append(f"| {r['분기']} | {r['기간']} | {r['평균 위험계수']} | {r['중점 순찰']} |")
 
-    out += ["", "## 2. 월별 계획", "",
-            "| 월 | 중점 순찰 | 권장 시간대 | 위험계수 | 비고 |",
-            "|---|---|---|---|---|"]
+    out += ["", "**나. 월별 계획**", "",
+            "| 월 | 중점 순찰 | 권장 시간대 | 위험계수 | 비고 |", "|---|---|---|---|---|"]
     for r in plan["calendar"].to_dict("records"):
-        out.append(f"| {r['월']} | {r['중점 순찰']} | "
-                   f"{r['권장 시간대']} | {r['위험계수']} | {r['비고']} |")
+        out.append(f"| {r['월']} | {r['중점 순찰']} | {r['권장 시간대']} | "
+                   f"{r['위험계수']} | {r['비고']} |")
 
-    out += ["", "## 3. 법정 이행 사항", "",
+    out += ["", "**다. 법정 이행 사항**", "",
             "| 사항 | 주기 | 근거 |", "|---|---|---|"]
     for name, cycle, ref in plan["statutory"]:
         out.append(f"| {name} | {cycle} | {ref} |")
 
-    out += _legal_block(plan.get("legal", []))
-    out += ["", "## 4. 유의사항", "",
-            "- 위험계수는 최근 8년 화재 발생과 기상(습도·건조일수)을 반영한 값으로, "
+    if legal:
+        out += ["", "**라. 세부 근거**", ""]
+        for l in legal:
+            out.append(f"○ {l['ref']}")
+            out.append(f"   > {l['excerpt']}")
+            out.append("")
+
+    out += ["", "**마. 용어 및 유의사항**", "", GRID_DEFINITION, "",
+            "- **위험계수**: 최근 8년 화재 발생과 기상(습도·건조일수)을 반영한 값으로, "
             "1.0이 연평균 수준입니다.",
             "- 본 계획은 법정 점검주기를 대체하지 않으며, 그 위에 우선순위를 더하는 것입니다."]
+    out += _doc_footer(meta, ["월별 순찰 계획표", "관서별 관할 구역 현황"])
     return "\n".join(out)
+
+
+def _law_short(ref: str) -> str:
+    """'화재의 예방 및 안전관리에 관한 법률 제7조' -> '화재의 예방 … 법률」 제7조'.
+
+    공문은 법령명을 낫표(「」)로 감싸고 조문은 밖에 둔다.
+    호출부에서 앞에 「를 붙이므로 여기서는 닫는 낫표만 넣는다.
+    """
+    parts = ref.rsplit(" ", 1)
+    if len(parts) == 2 and parts[1].startswith("제"):
+        return f"{parts[0]}」 {parts[1]}"
+    return f"{ref}」"
 
 
 RENDERERS = {"daily": render_daily, "monthly": render_monthly, "annual": render_annual}
 
 
-def render(plan: dict, ctx: PlanContext) -> str:
-    return RENDERERS[plan["kind"]](plan, ctx)
+def render(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> str:
+    return RENDERERS[plan["kind"]](plan, ctx, meta)
 
 
 POLISH_RULE = (
-    "아래는 소방서 예방과에서 결재를 올릴 순찰계획서 초안입니다. "
-    "표의 숫자, 격자 번호, 관서명, 법령 조문은 **절대 바꾸지 마십시오**. "
-    "문장 표현만 공문 문체로 다듬고, 목적과 유의사항을 자연스럽게 보완하십시오. "
-    "없는 내용을 새로 만들지 마십시오. 마크다운 형식을 유지하십시오."
+    "아래는 소방서 예방과에서 결재를 올릴 순찰계획서입니다. "
+    "문장 표현만 공문 문체로 다듬어 **완성된 문서 그 자체**를 출력하십시오.\n\n"
+    "지켜야 할 것:\n"
+    "1. 표의 숫자, 격자 번호, 관서명, 법령 조문, 거리·시간 값을 절대 바꾸지 마십시오.\n"
+    "2. 없는 내용을 새로 만들지 마십시오.\n"
+    "3. 마크다운 형식과 절 번호 체계를 그대로 유지하십시오.\n\n"
+    "**절대 넣지 말 것 (매우 중요):**\n"
+    "- 작업 내용에 대한 설명, 수정 사항 요약, 검토 의견, 확인 요청\n"
+    "- '다듬었습니다', '확인이 필요합니다', '검토를 권합니다' 같은 문장\n"
+    "- 인사말, 머리말, 맺음말, 코드블록 표시(```)\n"
+    "- 원문에 없던 주석·각주·별표 설명\n\n"
+    "출력은 문서 본문만 포함해야 하며, 첫 줄은 반드시 '# ' 로 시작하는 제목이어야 합니다."
+)
+
+#: LLM 이 문서 끝에 덧붙이기 쉬운 메타 발언. 결재 문서에 나가면 안 된다.
+_META_HEADINGS = (
+    "확인이 필요한", "검토가 필요한", "수정 사항", "변경 사항", "다듬은 내용",
+    "작업 내용", "참고 사항(작성자", "AI 참고", "보완 의견", "검토 의견",
 )
 
 
+def strip_meta(text: str) -> str:
+    """모델이 덧붙인 자기 작업 설명을 걷어낸다.
+
+    프롬프트로 금지해도 모델은 종종 문서 끝에 '확인이 필요한 사항 3건' 같은
+    코멘트를 붙인다. 그건 계획서가 아니라 작업 보고다. 결재 문서에 섞이면
+    문서 전체의 신뢰가 떨어지므로 기계적으로도 한 번 더 막는다.
+    """
+    lines = str(text).splitlines()
+
+    # 코드블록 울타리 제거
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    while lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+
+    # 첫 제목(# ) 앞의 잡담 제거
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith("#"):
+            lines = lines[i:]
+            break
+
+    # 메타 제목이 나오면 그 지점부터 끝까지 버린다
+    cut = len(lines)
+    for i, ln in enumerate(lines):
+        bare = ln.lstrip("#* ").strip()
+        if ln.lstrip().startswith(("#", "**")) and any(k in bare for k in _META_HEADINGS):
+            cut = i
+            break
+    lines = lines[:cut]
+
+    # 꼬리에 남은 메타 문장 정리
+    while lines and (not lines[-1].strip() or
+                     any(k in lines[-1] for k in _META_HEADINGS)):
+        lines.pop()
+    return "\n".join(lines).strip()
+
+
 def polish(cfg, markdown: str, *, use_llm: bool = True) -> dict:
-    """문체만 다듬는다. 숫자와 근거는 규칙이 만든 것을 그대로 둔다."""
+    """문체만 다듬는다. 숫자와 근거는 규칙이 만든 것을 그대로 둔다.
+
+    다듬은 결과가 원문보다 눈에 띄게 짧아지면 채택하지 않는다 —
+    모델이 표를 통째로 날렸다는 뜻이고, 그런 문서는 쓸 수 없다.
+    """
     if not use_llm or not L.is_available(cfg):
         return {"text": markdown, "polished": False}
     text, backend, _tried = L.generate(cfg, f"{POLISH_RULE}\n\n---\n\n{markdown}")
     if not text:
-        return {"text": markdown, "polished": False}
-    return {"text": text, "polished": True, "backend": backend}
+        return {"text": markdown, "polished": False, "reason": "생성 실패"}
+
+    cleaned = strip_meta(text)
+    if len(cleaned) < len(markdown) * 0.6:
+        log.warning("다듬은 문서가 원문의 %.0f%% 로 줄어 원문을 유지한다",
+                    len(cleaned) / max(len(markdown), 1) * 100)
+        return {"text": markdown, "polished": False, "reason": "내용 손실"}
+    return {"text": cleaned, "polished": True, "backend": backend}

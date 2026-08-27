@@ -60,7 +60,22 @@ else:
 plt.rcParams["axes.unicode_minus"] = False
 plt.rcParams["figure.dpi"] = 160
 
-RED, BLUE, GRAY, GREEN = "#e34a33", "#2b6cb0", "#9aa5b1", "#2f9e6e"
+# 발표 화면에서 채도가 높으면 눈이 피로하고 값싸 보인다.
+# 강조 하나(벽돌색)만 살리고 나머지는 눌러 둔다.
+RED, BLUE, GRAY, GREEN = "#c0492f", "#41607f", "#b9bfc7", "#5b8c73"
+MUTED_HEX = "#7a828e"
+INK_HEX = "#2b3038"
+
+plt.rcParams.update({
+    "axes.edgecolor": "#d4d8dd",
+    "axes.labelcolor": INK_HEX,
+    "text.color": INK_HEX,
+    "xtick.color": MUTED_HEX,
+    "ytick.color": MUTED_HEX,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "grid.color": "#e6e9ec",
+})
 
 
 def save(fig, path: Path) -> Path:
@@ -112,7 +127,9 @@ def fig_pei(ev: dict, out: Path, k: int) -> None:
 def fig_decile(ev: dict, out: Path) -> None:
     d = pd.DataFrame(ev["temporal"]["model"]["decile"])
     fig, ax = plt.subplots(figsize=(7, 3.8))
-    colors = [plt.cm.YlOrRd(0.25 + 0.7 * i / len(d)) for i in range(len(d))]
+    # 무지개 색은 등급의 크기를 왜곡한다. 한 색의 농담으로 표현한다.
+    colors = [(0.75, 0.29, 0.18, 0.30 + 0.62 * i / max(len(d) - 1, 1))
+              for i in range(len(d))]
     ax.bar(d["grade"], d["mean_fires"], color=colors, edgecolor="white")
     for _, r in d.iterrows():
         ax.text(r["grade"], r["mean_fires"], f"{r['mean_fires']:.2f}",
@@ -247,6 +264,67 @@ def fig_hour_profile(cfg, city: str, out: Path) -> None:
     save(fig, out / "fig_hour_profile.png")
 
 
+def fig_monthly_risk(cfg, city: str, out: Path) -> None:
+    """월별 위험계수 — 계절과 기상이 만드는 시점 축."""
+    wp = cfg.paths.processed / f"weather_monthly_{city}.parquet"
+    fp = cfg.paths.processed / f"fires_{city}.parquet"
+    if not (wp.exists() and fp.exists()):
+        return
+    import sys as _s
+    _s.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from firebird import monthly as MO
+
+    fires = pd.read_parquet(fp)
+    mf = MO.fires_by_month(fires, cfg.year_min, cfg.year_max)
+    fit = MO.fit_month_risk(mf, pd.read_parquet(wp))
+    plan = MO.monthly_plan(pd.DataFrame({"pred": [1.0]}), "pred", fit,
+                           pd.read_parquet(wp))
+    if plan.empty:
+        return
+    fig, ax = plt.subplots(figsize=(7.4, 3.4))
+    cols = [RED if v >= 1.05 else (BLUE if v <= 0.95 else GRAY) for v in plan["위험계수"]]
+    ax.bar(plan["월"], plan["위험계수"], color=cols, width=.68)
+    ax.axhline(1.0, color="black", lw=1, ls="--", alpha=.5)
+    for i, v in enumerate(plan["위험계수"]):
+        ax.text(i, v, f"{v:.2f}", ha="center",
+                va="bottom" if v >= 1 else "top", fontsize=9)
+    ax.set_ylabel("위험계수 (연평균 = 1.0)")
+    sub = (f"기상 반영 설명력 R² {fit.get('weather_r2', 0):.2f} "
+           f"(계절만 {fit.get('baseline_r2', 0):.2f})") if fit.get("uses_weather") else "계절 패턴"
+    ax.set_title(f"월별 화재위험 — {sub}")
+    ax.set_ylim(0, max(plan["위험계수"]) * 1.18)
+    ax.grid(axis="y", alpha=.25)
+    save(fig, out / "fig_monthly_risk.png")
+
+
+def fig_pipeline(out: Path) -> None:
+    """시스템 구성도. 말로 설명하면 30초, 그림이면 5초다."""
+    fig, ax = plt.subplots(figsize=(11.0, 2.35))
+    ax.axis("off")
+    boxes = [
+        (0.02, "소방안전\n빅데이터", GRAY),
+        (0.20, "500m 격자\n의사결정 테이블", BLUE),
+        (0.38, "화재위험 예측\n(LightGBM)", RED),
+        (0.56, "인력 제약\n배분", GREEN),
+        (0.74, "관서별 순찰\n동선·계획서", GREEN),
+    ]
+    for x, label, color in boxes:
+        ax.add_patch(plt.Rectangle((x, 0.34), 0.155, 0.34, transform=ax.transAxes,
+                                   facecolor=color, alpha=.16, edgecolor=color, lw=2,
+                                   zorder=2))
+        ax.text(x + 0.0775, 0.51, label, transform=ax.transAxes, ha="center",
+                va="center", fontsize=11.5, fontweight="bold", zorder=3)
+    for x, _l, _c in boxes[:-1]:
+        ax.annotate("", xy=(x + 0.178, 0.51), xytext=(x + 0.158, 0.51),
+                    xycoords="axes fraction",
+                    arrowprops=dict(arrowstyle="-|>", lw=2, color="#666"))
+    ax.text(0.5, 0.14, "설명가능 AI(SHAP) · 소방 법령 457개 조문 · 기상(실효습도)",
+            transform=ax.transAxes, ha="center", fontsize=10.5, color=MUTED_HEX)
+    ax.text(0.5, 0.86, "전 과정 재현 스크립트 공개 · 검증 테스트 170개",
+            transform=ax.transAxes, ha="center", fontsize=10, color=MUTED_HEX)
+    save(fig, out / "fig_pipeline.png")
+
+
 def main() -> int:
     cfg = load_config()
     out = cfg.paths.figures
@@ -273,6 +351,8 @@ def main() -> int:
     fig_model_compare(ev, out, k)
     fig_data_funnel(manifest, out)
     fig_hour_profile(cfg, city, out)
+    fig_monthly_risk(cfg, city, out)
+    fig_pipeline(out)
     return 0
 
 

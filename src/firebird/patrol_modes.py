@@ -33,6 +33,10 @@ class PatrolMode:
     checks: tuple[str, ...] = ()
     #: 기본 순찰 격자 수
     default_k: int = 15
+    #: 이 순찰의 법적 근거. 검색으로 찾은 조문보다 이쪽을 먼저 쓴다.
+    #: 어휘 검색은 '소방시설·피난' 같은 낱말만 보고 화재예방안전진단 절차 규정을
+    #: 일반 순찰의 근거로 끌어오기도 한다. 근거가 어긋나면 결재 때 신뢰를 잃는다.
+    legal_refs: tuple[str, ...] = ()
 
 
 MODES: dict[str, PatrolMode] = {
@@ -45,6 +49,8 @@ MODES: dict[str, PatrolMode] = {
                 "비상구 적치물 및 폐쇄 여부",
                 "옥외 가연물 방치",
                 "노후 전기설비·문어발 배선"),
+        legal_refs=("화재의 예방 및 안전관리에 관한 법률 제7조",
+                    "화재의 예방 및 안전관리에 관한 법률 제17조"),
         default_k=15),
 
     "night_business": PatrolMode(
@@ -59,6 +65,8 @@ MODES: dict[str, PatrolMode] = {
                 "유도등 점등 및 시인성",
                 "화재감지기 임의 차단 여부",
                 "내부 마감재 방염성능"),
+        legal_refs=("다중이용업소의 안전관리에 관한 특별법 제13조",
+                    "화재의 예방 및 안전관리에 관한 법률 제17조"),
         default_k=12),
 
     "market": PatrolMode(
@@ -72,6 +80,9 @@ MODES: dict[str, PatrolMode] = {
                 "전기 분전반·노후 배선",
                 "소화기·옥외소화전 접근성",
                 "심야 무인 상태의 화기 관리"),
+        legal_refs=("화재의 예방 및 안전관리에 관한 법률 제18조",
+                    "화재의 예방 및 안전관리에 관한 법률 시행령 제20조",
+                    "화재의 예방 및 안전관리에 관한 법률 시행규칙 제8조"),
         default_k=12),
 
     "vulnerable": PatrolMode(
@@ -86,6 +97,8 @@ MODES: dict[str, PatrolMode] = {
                 "간이스프링클러 헤드 장애물",
                 "객실·병실 감지기 작동",
                 "피난안내도 게시"),
+        legal_refs=("화재의 예방 및 안전관리에 관한 법률 제36조",
+                    "화재의 예방 및 안전관리에 관한 법률 제37조"),
         default_k=10),
 
     "water_supply": PatrolMode(
@@ -98,6 +111,8 @@ MODES: dict[str, PatrolMode] = {
                 "소화전 표지 시인성, 불법 주정차",
                 "대체 수리(저수조·하천) 접근로",
                 "겨울철 동결 여부"),
+        legal_refs=("소방기본법 제10조",
+                    "소방기본법 제28조"),
         default_k=15),
 
     "dry_season": PatrolMode(
@@ -110,6 +125,8 @@ MODES: dict[str, PatrolMode] = {
                 "임야 인접 가연물 적치",
                 "건축 공사장 화기 관리",
                 "쓰레기 집하장·폐기물 야적"),
+        legal_refs=("화재의 예방 및 안전관리에 관한 법률 제17조",
+                    "화재의 예방 및 안전관리에 관한 법률 시행령 제16조"),
         default_k=15),
 }
 

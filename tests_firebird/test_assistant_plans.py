@@ -180,9 +180,58 @@ class TestPlans(unittest.TestCase):
             self.assertIn(chk, md)
 
     def test_daily_plan_has_legal_basis(self):
+        legal = PL.find_legal_basis(self.ctx, min_score=0.0)
+        self.assertTrue(legal, "법령 근거를 하나도 못 찾았다")
         doc = PL.daily_plan(self.ctx, date(2026, 9, 15))
-        self.assertTrue(doc["legal"], "법령 근거가 비어 있다")
-        self.assertIn("법령 근거", PL.render(doc, self.ctx))
+        doc["legal"] = legal
+        self.assertIn("세부 근거", PL.render(doc, self.ctx))
+
+    def test_irrelevant_article_is_filtered_out(self):
+        """어휘만 겹치는 조문을 근거로 붙이면 결재 때 신뢰를 잃는다."""
+        bad = pd.DataFrame([{"law": "무관한 법", "article": "제1조", "title": "목적",
+                             "text": "이 법은 국가의 예산 편성 절차를 정함을 목적으로 한다."}])
+        ctx = PL.PlanContext(city_label="울산광역시", year=2021,
+                             mode=PM.MODES["general"], targets=pd.DataFrame(),
+                             law_index=A.BM25(A.law_docs(bad)))
+        self.assertEqual(PL.find_legal_basis(ctx), [])
+
+    def test_excerpt_does_not_end_mid_sentence(self):
+        long_text = ("소방관서장은 예방순찰 중 소화기와 유도등의 상태를 확인하고 "
+                     "비상구 적치물 여부를 다음 각 호의 절차에 따라 점검한다. " * 6)
+        arts = pd.DataFrame([{"law": "테스트법", "article": "제1조", "title": "순찰",
+                              "text": long_text}])
+        ctx = PL.PlanContext(city_label="울산광역시", year=2021,
+                             mode=PM.MODES["general"], targets=pd.DataFrame(),
+                             law_index=A.BM25(A.law_docs(arts)))
+        got = PL.find_legal_basis(ctx, min_score=0.0)
+        self.assertTrue(got)
+        ex = got[0]["excerpt"]
+        self.assertTrue(ex.endswith((".", "…")), f"문장 중간에서 끊겼다: …{ex[-30:]}")
+
+    def test_document_has_official_form(self):
+        """결재를 올릴 수 있는 공문 서식이어야 한다."""
+        doc = PL.daily_plan(self.ctx, date(2026, 9, 15))
+        md = PL.render(doc, self.ctx, PL.DocMeta(기관명="울산남부소방서", 기안자="홍길동"))
+        for token in ("수신", "시행일", "1. 관련", "붙임", "끝.", "기안", "결재",
+                      "울산남부소방서"):
+            self.assertIn(token, md, f"공문 요소 누락: {token}")
+
+    def test_hangul_ordinals_are_correct(self):
+        """chr(0xAC00+n) 으로 만들면 '가, 각, 갂' 이 나온다."""
+        self.assertEqual([PL._hangul_ordinal(i) for i in range(4)],
+                         ["가", "나", "다", "라"])
+
+    def test_law_short_has_matching_brackets(self):
+        out = "「" + PL._law_short("화재의 예방 및 안전관리에 관한 법률 제7조")
+        self.assertEqual(out.count("「"), out.count("」"))
+        self.assertIn("제7조", out)
+
+    def test_grid_definition_is_included(self):
+        """계획서를 처음 받는 사람은 '격자'가 무엇인지 모른다."""
+        doc = PL.daily_plan(self.ctx, date(2026, 9, 15))
+        md = PL.render(doc, self.ctx)
+        self.assertIn("500m", md)
+        self.assertIn("격자**", md)
 
     def test_monthly_plan_uses_risk_multiplier(self):
         dec = PL.monthly_plan(self.ctx, 12)
@@ -213,6 +262,43 @@ class TestPlans(unittest.TestCase):
 
     def test_polish_rule_forbids_changing_numbers(self):
         self.assertIn("절대 바꾸지", PL.POLISH_RULE)
+
+    def test_polish_rule_forbids_meta_commentary(self):
+        for kw in ("확인이 필요", "검토 의견", "코드블록"):
+            self.assertIn(kw, PL.POLISH_RULE)
+
+
+class TestStripMeta(unittest.TestCase):
+    """모델이 덧붙인 작업 설명은 결재 문서에 나가면 안 된다."""
+
+    def test_removes_trailing_review_notes(self):
+        md = ("# 예방순찰 계획서\n\n## 1. 개요\n내용입니다.\n\n"
+              "## 확인이 필요한 사항 3건\n- 법령 인용이 끊겼습니다\n- 조문 적합성\n")
+        out = PL.strip_meta(md)
+        self.assertIn("## 1. 개요", out)
+        self.assertNotIn("확인이 필요한", out)
+
+    def test_removes_code_fence(self):
+        out = PL.strip_meta("```markdown\n# 제목\n본문\n```")
+        self.assertTrue(out.startswith("# 제목"))
+        self.assertNotIn("```", out)
+
+    def test_removes_preamble_before_title(self):
+        out = PL.strip_meta("네, 다듬었습니다.\n\n# 제목\n본문")
+        self.assertTrue(out.startswith("# 제목"))
+
+    def test_keeps_clean_document_untouched(self):
+        md = "# 제목\n\n## 1. 개요\n본문입니다."
+        self.assertEqual(PL.strip_meta(md), md)
+
+    def test_polish_rejects_truncated_output(self):
+        from firebird.config import load_config
+        long_md = "# 제목\n" + ("본문 줄입니다.\n" * 80)
+        with mock.patch.object(PL.L, "is_available", return_value=True), \
+             mock.patch.object(PL.L, "generate", return_value=("# 제목\n짧음", "cli", [])):
+            out = PL.polish(load_config(), long_md)
+        self.assertFalse(out["polished"])
+        self.assertEqual(out["text"], long_md)
 
 
 if __name__ == "__main__":

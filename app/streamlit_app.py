@@ -502,6 +502,15 @@ with tabs[3]:
                            disabled=not L.is_available(cfg),
                            help="숫자·동선·법령 조문은 바뀌지 않습니다.")
 
+        st.markdown("**문서 정보** — 공문 머리·결재란에 들어갑니다")
+        d1, d2, d3, d4 = st.columns(4)
+        org = d1.text_input("기관명", value=f"{cfg.city(city)['label']}소방본부")
+        dept = d2.text_input("부서", value="예방과")
+        writer = d3.text_input("기안자", value="")
+        tel = d4.text_input("연락처", value="")
+        doc_meta = PLN.DocMeta(기관명=org, 부서=dept, 기안자=writer,
+                               연락처=tel, 시행일=plan_date)
+
         mode = PM.MODES[st.session_state.get("patrol_mode_key", "general")]
         ctx = PLN.PlanContext(
             city_label=cfg.city(city)["label"], year=int(year), mode=mode,
@@ -518,7 +527,7 @@ with tabs[3]:
                     doc = PLN.monthly_plan(ctx, plan_date.month)
                 else:
                     doc = PLN.annual_plan(ctx)
-                md = PLN.render(doc, ctx)
+                md = PLN.render(doc, ctx, doc_meta)
                 if polish:
                     md = PLN.polish(cfg, md)["text"]
             st.session_state["last_doc"] = md
