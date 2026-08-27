@@ -2,7 +2,7 @@
 # python 3.10+
 pandas>=2.0,<3
 numpy>=1.26,<2.3
-scikit-learn>=1.3
+scikit-learn>=1.3      # KMeans(구역 분할), RidgeCV(월 위험계수)
 lightgbm>=4.0
 shap>=0.44
 pyproj>=3.6            # WGS84 -> UTM-K(EPSG:5179) 격자 좌표변환

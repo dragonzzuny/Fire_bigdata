@@ -56,6 +56,7 @@ evaluation:
   headline_k: 20             # 기획서 핵심 지표: 상위 20% 포착률
   n_deciles: 10
   logo_column: sgg           # 구·군 단위 Leave-One-Group-Out
+  n_bootstrap: 1000          # 신뢰구간 재표본 횟수. 표본이 작을수록 이 값이 중요해진다
 
 geocode:
   provider: kakao
@@ -63,6 +64,13 @@ geocode:
   rate_limit_per_sec: 8
   max_retries: 3
   cache_file: geocode_cache.json
+
+operations:
+  # 점검 배분의 형평성 제약. 각 관할이 최소한 '화재 비중 x equity_min_share' 만큼의
+  # 예산은 받는다. 0 이면 순수 효율, 1.0 이면 화재 비중에 비례.
+  # 울산 실측에서는 1.0 을 걸어도 포착률이 떨어지지 않았다 — 형평성과 효율이
+  # 반드시 상충하는 것은 아니다.
+  equity_min_share: 1.0
 
 hydrant:
   # 대응취약: 고위험인데 소화전이 없는 격자

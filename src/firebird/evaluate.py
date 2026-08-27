@@ -278,3 +278,118 @@ def extend_with_standard_indices(result: dict, y_true, score, k_percents: list[f
     result["pai_max"] = {f"top{int(k)}": pai_max(y_true, k) for k in k_percents}
     result["pei"] = {f"top{int(k)}": pei(y_true, score, k, seed) for k in k_percents}
     return result
+
+
+# ===========================================================================
+# 부트스트랩 신뢰구간
+#
+# "세종 74%" 는 화재 104건짜리 표본에서 나온 값이다. 같은 도시를 다시 재면
+# 62% 가 나올 수도, 85% 가 나올 수도 있다. 점추정만 말하면 그 폭이 숨는다.
+#
+# 특히 **모델과 베이스라인의 차이**는 짝지어(paired) 재야 한다. 같은 격자
+# 표본에서 두 방식을 동시에 평가해야, 표본이 흔들리는 몫이 상쇄되고
+# '방식의 차이'만 남는다. 따로 재서 구간이 겹치는지 보는 것은 검정력이 낮다.
+# ===========================================================================
+
+def bootstrap_capture_ci(y_true, score, k_percent: float, *,
+                         n_boot: int = 1000, alpha: float = 0.05,
+                         seed: int = 42) -> dict:
+    """상위 k% 포착률의 백분위 부트스트랩 신뢰구간.
+
+    격자를 복원추출해 매번 포착률을 다시 계산한다.
+    """
+    y = np.asarray(y_true, dtype=float)
+    s = np.asarray(score, dtype=float)
+    n = len(y)
+    if n == 0 or y.sum() <= 0:
+        return {"point": float("nan"), "lo": float("nan"), "hi": float("nan"),
+                "n_boot": 0}
+
+    rng = np.random.default_rng(seed)
+    point = capture_at_k(y, s, k_percent, seed)
+    vals = np.empty(n_boot, dtype=float)
+    kept = 0
+    for b in range(n_boot):
+        idx = rng.integers(0, n, n)
+        yb = y[idx]
+        if yb.sum() <= 0:           # 화재가 하나도 안 뽑힌 재표본은 버린다
+            continue
+        vals[kept] = capture_at_k(yb, s[idx], k_percent, seed=int(rng.integers(1 << 30)))
+        kept += 1
+    if kept == 0:
+        return {"point": point, "lo": float("nan"), "hi": float("nan"), "n_boot": 0}
+    vals = vals[:kept]
+    return {"point": float(point),
+            "lo": float(np.quantile(vals, alpha / 2)),
+            "hi": float(np.quantile(vals, 1 - alpha / 2)),
+            "n_boot": int(kept)}
+
+
+def bootstrap_delta_ci(y_true, score_a, score_b, k_percent: float, *,
+                       n_boot: int = 1000, alpha: float = 0.05,
+                       seed: int = 42) -> dict:
+    """모델 - 베이스라인 차이의 짝지은 부트스트랩 신뢰구간 (단위: %p).
+
+    구간이 0을 포함하지 않으면 '이 표본에서 차이가 우연이라고 보기 어렵다'는 뜻이다.
+    포함하면 차이를 성과로 주장하지 않는 편이 옳다.
+    """
+    y = np.asarray(y_true, dtype=float)
+    a = np.asarray(score_a, dtype=float)
+    b = np.asarray(score_b, dtype=float)
+    n = len(y)
+    if n == 0 or y.sum() <= 0:
+        return {"point_pp": float("nan"), "lo_pp": float("nan"),
+                "hi_pp": float("nan"), "excludes_zero": False, "n_boot": 0}
+
+    rng = np.random.default_rng(seed)
+    point = (capture_at_k(y, a, k_percent, seed) - capture_at_k(y, b, k_percent, seed)) * 100
+    vals = np.empty(n_boot, dtype=float)
+    kept = 0
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, n)
+        yb = y[idx]
+        if yb.sum() <= 0:
+            continue
+        tie = int(rng.integers(1 << 30))     # 두 방식에 같은 동점 처리를 적용한다
+        vals[kept] = (capture_at_k(yb, a[idx], k_percent, tie)
+                      - capture_at_k(yb, b[idx], k_percent, tie)) * 100
+        kept += 1
+    if kept == 0:
+        return {"point_pp": float(point), "lo_pp": float("nan"),
+                "hi_pp": float("nan"), "excludes_zero": False, "n_boot": 0}
+    vals = vals[:kept]
+    lo = float(np.quantile(vals, alpha / 2))
+    hi = float(np.quantile(vals, 1 - alpha / 2))
+    return {"point_pp": float(point), "lo_pp": lo, "hi_pp": hi,
+            "excludes_zero": bool(lo > 0 or hi < 0),
+            "n_boot": int(kept)}
+
+
+def add_confidence_intervals(result: dict, y_true, model_score, baseline_score,
+                             k_percents: list[float], *, n_boot: int = 1000,
+                             seed: int = 42) -> dict:
+    """compare_with_baseline 결과에 CI 를 덧붙인다."""
+    result["ci"] = {
+        f"top{int(k)}": {
+            "model": bootstrap_capture_ci(y_true, model_score, k,
+                                          n_boot=n_boot, seed=seed),
+            "baseline": bootstrap_capture_ci(y_true, baseline_score, k,
+                                             n_boot=n_boot, seed=seed),
+            "delta": bootstrap_delta_ci(y_true, model_score, baseline_score, k,
+                                        n_boot=n_boot, seed=seed),
+        } for k in k_percents
+    }
+    return result
+
+
+def format_ci(ci: dict, k: int) -> str:
+    """'68.5% (95% CI 65.9~71.0)' 형태의 한 줄."""
+    c = ci.get(f"top{int(k)}", {})
+    m, d = c.get("model", {}), c.get("delta", {})
+    if not m or m.get("lo") != m.get("lo"):
+        return ""
+    line = f"{m['point']:.1%} (95% CI {m['lo']:.1%}~{m['hi']:.1%})"
+    if d and d.get("lo_pp") == d.get("lo_pp"):
+        mark = "유의" if d["excludes_zero"] else "구간이 0을 포함"
+        line += f" · 차이 {d['point_pp']:+.1f}%p (CI {d['lo_pp']:+.1f}~{d['hi_pp']:+.1f}%p, {mark})"
+    return line

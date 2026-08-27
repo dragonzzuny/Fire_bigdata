@@ -79,6 +79,8 @@ def temporal_validation(panel: pd.DataFrame, feature_cols: list[str], cfg) -> di
     E.extend_with_standard_indices(result["model"], test["fires"], pred, ks)
     E.extend_with_standard_indices(result["baseline"], test["fires"],
                                    test[BASELINE_FEATURE], ks)
+    E.add_confidence_intervals(result, test["fires"], pred, test[BASELINE_FEATURE], ks,
+                               n_boot=int(cfg["evaluation"].get("n_bootstrap", 1000)))
     result["calibration"] = E.calibration(test["fires"], pred)
     if "sgg" in test.columns:
         eq = E.equity(test["fires"], pred, test["sgg"], cfg.headline_k)
@@ -165,6 +167,11 @@ def transfer_validation(source_panel: pd.DataFrame, target_panel: pd.DataFrame,
         te["fires"], pred, te[BASELINE_FEATURE],
         cfg["evaluation"]["top_k_percents"], cfg.headline_k,
         cfg["evaluation"]["n_deciles"])
+    # 이식 검증은 표본이 작은 경우가 많다(세종 2021년 화재 104건).
+    # 점추정만 말하면 그 불확실성이 숨는다.
+    E.add_confidence_intervals(result, te["fires"], pred, te[BASELINE_FEATURE],
+                               cfg["evaluation"]["top_k_percents"],
+                               n_boot=int(cfg["evaluation"].get("n_bootstrap", 1000)))
     result["protocol"] = "cross_city_transfer"
     result["source_train_years"] = train_years
     result["target_years"] = sorted(te["year"].unique().tolist())

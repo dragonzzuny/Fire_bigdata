@@ -26,7 +26,8 @@ import pydeck as pdk  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from firebird import dataset as D, evaluate as E, explain as X, grid as G, \
-    hydrant as H, llm as L, model as M, operations as OP, patrol as P, rules as R  # noqa: E402
+    hydrant as H, llm as L, model as M, operations as OP, patrol as P, \
+    monthly as MO, patrol_modes as PM, routing as RT, rules as R  # noqa: E402
 from firebird.config import load_config  # noqa: E402
 
 st.set_page_config(page_title="불씨예보 K-Firebird", page_icon="🔥", layout="wide")
@@ -75,6 +76,22 @@ def get_evaluation() -> dict:
 def get_fires(city: str) -> pd.DataFrame:
     p = get_config().paths.processed / f"fires_{city}.parquet"
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def get_weather(city: str) -> pd.DataFrame:
+    p = get_config().paths.processed / f"weather_monthly_{city}.parquet"
+    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data(show_spinner="월별 위험 계수 계산 중…")
+def get_month_fit(city: str) -> dict:
+    cfg = get_config()
+    fires = get_fires(city)
+    if fires.empty:
+        return {}
+    mf = MO.fires_by_month(fires, cfg.year_min, cfg.year_max)
+    return MO.fit_month_risk(mf, get_weather(city))
 
 
 @st.cache_data
@@ -158,6 +175,11 @@ per_day = c2.number_input("1일 건수", 1, 50, 8)
 days = st.sidebar.slider("점검 기간(일)", 5, 120, 20, step=5)
 capacity = OP.Capacity(int(inspectors), int(per_day), int(days))
 st.sidebar.caption(f"점검 가능 물량 **{capacity.total_visits:,}건**")
+equity_share = st.sidebar.slider(
+    "관할별 최소 배분", 0.0, 1.0,
+    float(cfg.get("operations", {}).get("equity_min_share", 1.0)), step=0.25,
+    help="0 = 효율만 고려(특정 관할 쏠림 가능), "
+         "1.0 = 각 관할이 화재 비중만큼 배분받도록 보장")
 
 sgg_opts = ["전체"] + sorted(x for x in cur.get("sgg", pd.Series(dtype=str)).unique() if x)
 sgg = st.sidebar.selectbox("관할", sgg_opts)
@@ -185,7 +207,8 @@ with tabs[0]:
                "인력으로 소화할 수 없는 계획이 나오므로, 가용 물량 안에서 배분합니다.")
 
     cmp = OP.compare_to_topk(view, view["pred"], capacity, cfg.headline_k)
-    alloc = OP.allocate(view, view["pred"], capacity)
+    alloc, eq_info = OP.allocate_with_equity(view, view["pred"], capacity,
+                                             min_share=equity_share)
     o, t = cmp["optimized"], cmp["top_k_percent"]
 
     m1, m2, m3, m4 = st.columns(4)
@@ -223,6 +246,19 @@ with tabs[0]:
         st.dataframe(alloc[cols].rename(columns={
             "grid_id": "격자", "sgg": "관할", "expected_fires": "기대화재",
             "누적비용": "누적건수"}), hide_index=True, height=430, width='stretch')
+    if eq_info.get("equity_constrained"):
+        rows = [{"관할": g, "화재 비중": v["risk_share"],
+                 "배분 비중": v["budget_share"],
+                 "비율": (v["budget_share"] / v["risk_score"]) if False else
+                        (v["budget_share"] / v["risk_share"] if v["risk_share"] else float("nan"))}
+                for g, v in eq_info["by_group"].items() if v["risk_share"] > 0]
+        if rows:
+            with st.expander(f"관할별 배분 형평성 (최소 배분 {equity_share:.2f} 적용)"):
+                st.dataframe(pd.DataFrame(rows).sort_values("화재 비중", ascending=False),
+                             hide_index=True, width='stretch')
+                st.caption("비율 1.0 = 화재 비중만큼 배분. 슬라이더를 0으로 내리면 "
+                           "효율만 고려하여 특정 관할에 쏠릴 수 있습니다.")
+
     st.download_button("점검 계획 내려받기 (CSV)",
                        alloc.to_csv(index=False).encode("utf-8-sig"),
                        file_name=f"점검배분_{city}_{year}.csv", mime="text/csv")
@@ -287,40 +323,136 @@ with tabs[1]:
 
 # ================================================================== ③ 순찰
 with tabs[2]:
-    st.subheader("예방순찰 시간대 및 동선")
+    st.subheader("예방순찰 계획")
+
+    c1, c2, c3 = st.columns([2, 1, 1])
+    mode_key = c1.selectbox(
+        "순찰 목적", list(PM.MODES),
+        format_func=lambda k: PM.MODES[k].label,
+        help="목적이 다르면 가야 할 곳도, 시간도, 볼 것도 다릅니다.")
+    mode = PM.MODES[mode_key]
+    n_teams = c2.number_input("동시 순찰 팀 수", 1, 12, 2,
+                              help="팀 수만큼 구역을 나눠 서로 겹치지 않게 배분합니다.")
+    n_grids = c3.number_input("순찰 격자 수", 4, 60, mode.default_k)
+
+    st.caption(mode.purpose)
+
+    r1, r2 = st.columns([3, 1])
+    sgg_all = sorted(x for x in cur.get("sgg", pd.Series(dtype=str)).unique() if str(x).strip())
+    pick_sgg = r1.multiselect("순찰 관할 (여러 개 선택 가능 · 비우면 전체)", sgg_all,
+                              default=[sgg] if sgg != "전체" and sgg in sgg_all else [])
+    use_road = r2.toggle("도로 기준 거리", value=True,
+                         help="끄면 직선거리 × 우회계수로 계산합니다(빠르지만 부정확).")
+    respect = r2.toggle("관할 경계 존중", value=False,
+                        help="켜면 한 팀이 두 관할에 걸치지 않게 배정합니다.")
+
+    targets = PM.select_targets(cur, mode, int(n_grids), sgg=pick_sgg or None)
+    if targets.empty:
+        st.info("선택한 관할에 순찰 대상 격자가 없습니다.")
+    else:
+        hours = PM.recommended_hours(mode, get_fires(city))
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("순찰 대상", f"{len(targets):,}격자")
+        m2.metric("권장 시간대", f"{hours[0]:02d}–{hours[1]:02d}시")
+        m3.metric("순찰 팀", f"{int(n_teams)}개")
+
+        with st.spinner("도로 경로 계산 중…" if use_road else "경로 계산 중…"):
+            plan = RT.plan_patrol(targets, int(n_teams), use_road=use_road,
+                                  weight_col="순찰점수", respect_groups=respect)
+        m4.metric("최장 팀 이동", f"{plan['max_team_km']:.1f} km",
+                  f"총 {plan['total_km']:.1f} km", delta_color="off")
+
+        src = ("실제 도로 주행거리 (OSRM)" if plan["distance_source"] == "osrm"
+               else "직선거리 × 우회계수 1.35 (도로망 서버 응답 없음)")
+        st.caption(f"거리 기준: {src}")
+
+        if respect and len(sgg_all) > int(n_teams):
+            st.info(f"관할이 {len(sgg_all)}개인데 팀이 {int(n_teams)}개라 "
+                    f"일부 팀은 여러 관할을 맡습니다. 팀을 늘리면 해소됩니다.")
+
+        st.markdown("**팀별 순찰 구역**")
+        st.dataframe(plan["summary"], hide_index=True, width='stretch')
+
+        # 팀별 색으로 구분한 지도
+        palette = [[227, 74, 51], [43, 108, 176], [47, 158, 110], [200, 120, 20],
+                   [130, 70, 180], [20, 150, 160], [180, 60, 120], [90, 110, 40],
+                   [230, 160, 40], [70, 70, 200], [160, 40, 40], [40, 160, 90]]
+        layers = []
+        for i, r in enumerate(plan["routes"]):
+            col = palette[i % len(palette)]
+            layers.append(pdk.Layer(
+                "PathLayer", [{"path": r[["lon", "lat"]].astype(float).values.tolist()}],
+                get_path="path", get_width=50, get_color=col, width_min_pixels=3))
+            layers.append(pdk.Layer(
+                "ScatterplotLayer", r.assign(팀=i + 1),
+                get_position=["lon", "lat"], get_radius=190,
+                get_fill_color=col + [200], pickable=True))
+        st.pydeck_chart(deck(layers, targets))
+
+        team_pick = st.selectbox("상세 경로", [f"{i+1}팀" for i in range(len(plan["routes"]))])
+        r = plan["routes"][int(team_pick[0]) - 1] if plan["routes"] else pd.DataFrame()
+        if not r.empty:
+            cols = [c for c in ["순번", "grid_id", "sgg", "순찰점수", "이동거리_m",
+                                "누적거리_m", "이동시간_분", "누적시간_분"] if c in r.columns]
+            st.dataframe(r[cols].rename(columns={"grid_id": "격자", "sgg": "관할"}),
+                         hide_index=True, width='stretch')
+            st.download_button(
+                f"{team_pick} 순찰 계획 (CSV)",
+                r[cols].to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"순찰_{mode.key}_{team_pick}_{city}_{year}.csv")
+
+        with st.expander(f"{mode.label} — 현장 중점 확인 항목", expanded=True):
+            for chk in mode.checks:
+                st.checkbox(chk, key=f"{mode.key}_{chk}")
+
+    st.divider()
+    st.markdown("### 월별 순찰 강도 — 언제 더 돌아야 하는가")
+    fit = get_month_fit(city)
+    wx = get_weather(city)
+    if not fit:
+        st.caption("화재 이력 자료가 없어 월별 분석을 표시할 수 없습니다.")
+    else:
+        plan_m = MO.monthly_plan(cur, "pred", fit, wx, year=year)
+        if not plan_m.empty:
+            k1, k2, k3 = st.columns(3)
+            hi = plan_m.loc[plan_m["위험계수"].idxmax()]
+            lo = plan_m.loc[plan_m["위험계수"].idxmin()]
+            k1.metric("가장 위험한 달", f"{hi['월']}", f"연평균 대비 {hi['위험계수']:.2f}배")
+            k2.metric("가장 안전한 달", f"{lo['월']}", f"{lo['위험계수']:.2f}배",
+                      delta_color="off")
+            if fit.get("uses_weather"):
+                k3.metric("기상 반영 설명력", f"{fit['weather_r2']:.2f}",
+                          f"계절만 쓸 때 {fit['baseline_r2']:.2f}",
+                          help="월별 화재 변동을 얼마나 설명하는가(R²). "
+                               "습도·건조일수를 넣으면 설명력이 올라갑니다.")
+            else:
+                k3.metric("기상 반영", "미채택",
+                          help="기상을 넣어도 설명력이 늘지 않아 계절 패턴만 사용합니다.")
+
+            st.bar_chart(plan_m.set_index("월")["위험계수"])
+            show = [c for c in ["월", "위험계수", "등급", "예상화재_건",
+                                "humidity_mean", "eh_mean", "dry_days", "wind_mean"]
+                    if c in plan_m.columns]
+            st.dataframe(plan_m[show].rename(columns={
+                "humidity_mean": "평균습도(%)", "eh_mean": "실효습도(%)",
+                "dry_days": "건조일수", "wind_mean": "평균풍속(m/s)"}),
+                hide_index=True, width='stretch')
+            st.caption("위험계수 1.0 = 연평균 수준. 실효습도는 건조주의보 발표 기준값으로, "
+                       "여러 날의 습도를 누적해 계산합니다(기상청 공식, 감쇠계수 0.7). "
+                       "격자 순위 × 월 위험계수 = 그 달 그 격자의 위험도.")
+
+    st.divider()
     fires = get_fires(city)
     if fires.empty:
-        st.info("화재 이력 자료가 없어 시간대 분석을 표시할 수 없습니다.")
+        st.caption("화재 이력 자료가 없어 시간대 분석을 표시할 수 없습니다.")
     else:
         with_time = int(fires["hour"].notna().sum()) if "hour" in fires else 0
+        st.markdown("**화재 발생 시간대 분포**")
         st.caption(f"발생 시각이 기록된 화재 {with_time:,}건 기준 "
                    f"(2021년 자료는 시각이 누락되어 제외)")
-        hours, wdays = P.hour_profile(fires), P.weekday_profile(fires)
-        c1, c2 = st.columns(2)
-        c1.markdown("**시간대별 화재**"); c1.bar_chart(hours.set_index("hour")["n"])
-        c2.markdown("**요일별 화재**"); c2.bar_chart(wdays.set_index("요일")["n"])
-        peaks = P.peak_windows(fires, top_n=3)
-        if peaks:
-            st.success("순찰 집중 권장 시간대: " + " · ".join(
-                f"{p['start_hour']:02d}~{p['end_hour']:02d}시 ({p['share']:.0%})" for p in peaks))
-
-    st.markdown("**순찰 동선** — 위험 상위 격자를 최단 경로로 연결")
-    k = st.slider("순찰 격자 수", 5, 40, 15)
-    route = P.patrol_route(view.head(k))
-    if route.empty:
-        st.info("좌표가 확보된 격자가 없습니다.")
-    else:
-        st.caption(f"총 이동거리 {route['누적거리_m'].iloc[-1]:,.0f}m "
-                   f"(직선거리 기준, 도로망 미반영)")
-        path = [{"path": route[["lon", "lat"]].astype(float).values.tolist()}]
-        st.pydeck_chart(deck([
-            pdk.Layer("PathLayer", path, get_path="path", get_width=45,
-                      get_color=[0, 122, 255], width_min_pixels=3),
-            pdk.Layer("ScatterplotLayer", route, get_position=["lon", "lat"],
-                      get_radius=200, get_fill_color=[230, 60, 50], pickable=True)], route))
-        st.dataframe(route[[c for c in ["순번", "grid_id", "sgg", "위험점수",
-                                        "이동거리_m", "누적거리_m"] if c in route.columns]],
-                     hide_index=True, width='stretch')
+        cc1, cc2 = st.columns(2)
+        cc1.bar_chart(P.hour_profile(fires).set_index("hour")["n"])
+        cc2.bar_chart(P.weekday_profile(fires).set_index("요일")["n"])
 
 
 # ================================================================== ④ 대응취약
@@ -370,19 +502,26 @@ with tabs[4]:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(f"상위 {cfg.headline_k}% 포착률", f"{h.get('model_capture',0):.1%}",
                   f"{h.get('delta_pp',0):+.1f}%p vs 베이스라인")
-        c2.metric("무작위 대비", f"{h.get('model_lift',0):.2f}배")
+        c2.metric("무작위 배정 대비", f"{h.get('model_lift',0):.2f}배",
+                  help="같은 면적을 아무 데나 골랐을 때보다 몇 배 더 잡는가. "
+                       "학계에서는 PAI(Predictive Accuracy Index)라 부릅니다.")
         pei = t.get("model", {}).get("pei", {}).get(key)
         if pei:
-            c3.metric("PEI (달성 가능 최대 대비)", f"{pei:.1%}",
-                      help="해당 자료에서 도달 가능한 최대 성능 대비 비율. "
-                           "지역이 달라도 비교 가능한 지표입니다.")
+            c3.metric("달성 가능 최대치 대비", f"{pei:.1%}",
+                      help="실제 화재를 다 알고 줄 세웠을 때의 성능을 100으로 봤을 때 "
+                           "우리 모델이 어디쯤인지. 학계에서는 PEI"
+                           "(Predictive Efficiency Index)라 부릅니다. "
+                           "지역이 달라도 비교할 수 있는 지표입니다.")
         cal = t.get("calibration", {})
         if cal:
             c4.metric("예측 건수 정확도", f"{cal.get('total_ratio',0):.2f}",
                       f"예측 {cal.get('total_predicted',0):.0f} / 실제 {cal.get('total_actual',0):.0f}",
-                      delta_color="off")
+                      delta_color="off",
+                      help="예측한 화재 총건수 ÷ 실제 총건수. 1.00 이면 건수까지 맞다는 뜻으로, "
+                           "'이 격자는 연 3건 예상' 같은 말을 쓸 수 있습니다.")
 
-        st.caption(f"검증 방식: {t.get('train_years',[None])[0]}~{t.get('train_years',[None])[-1]}년 "
+        st.caption(f"검증 방식: {int(t.get('train_years',[0])[0])}–"
+                   f"{int(t.get('train_years',[0])[-1])}년 "
                    f"자료로 학습 후 {t.get('test_year')}년 예측 "
                    f"(검증 연도 자료는 학습에 미사용)")
 
@@ -410,6 +549,7 @@ with tabs[4]:
         with cc[1]:
             if "equity" in t:
                 st.markdown("**관할별 배분 형평성**")
+                st.caption("점검 배분 비중 ÷ 화재 비중. 1.0 이면 위험한 만큼 점검이 갔다는 뜻입니다.")
                 eq = pd.DataFrame(t["equity"])
                 eq = eq[eq["group"].astype(str).str.strip() != ""]
                 st.dataframe(eq[["group", "share_of_fires", "share_of_inspections",
@@ -423,10 +563,26 @@ with tabs[4]:
                                f"점검 배분이 낮습니다.")
             if "resolution_scenarios" in ev:
                 st.markdown("**주소 해상도별 성능**")
+                st.caption("PAI = 무작위 대비 배수 · PEI = 달성 가능 최대치 대비 비율")
                 st.dataframe(pd.DataFrame(ev["resolution_scenarios"]),
                              hide_index=True, width='stretch')
                 st.caption("화재의 약 63%는 도로명이 없어 읍면동 중심좌표로 배정됩니다. "
                            "도로명이 확보된 건만으로 별도 검증한 결과 성능 저하는 없었습니다.")
+
+    with st.expander("용어 설명"):
+        st.markdown("""
+| 화면 표기 | 뜻 | 학술 용어 |
+|---|---|---|
+| **상위 20% 화재 포착률** | 위험 상위 20% 격자에 점검을 집중했을 때, 그해 실제 화재의 몇 %가 그 안에서 났는가 | capture rate |
+| **무작위 배정 대비** | 같은 면적을 아무 데나 골랐을 때보다 몇 배 더 잡는가 | PAI (Predictive Accuracy Index) |
+| **달성 가능 최대치 대비** | 실제 화재를 다 알고 줄 세운 '정답 순위'를 100으로 봤을 때 어디쯤인가. 화재가 원래 몇 군데에 몰린 지역은 어떤 모델이든 포착률이 높게 나오므로, 이 지표라야 지역 간 비교가 됩니다 | PEI (Predictive Efficiency Index) |
+| **예측 건수 정확도** | 예측 총건수 ÷ 실제 총건수. 순위뿐 아니라 값도 맞는가 | calibration |
+| **95% CI** | 같은 조사를 100번 다시 하면 95번은 이 범위 안에 들어온다는 뜻. 범위가 넓으면 표본이 작다는 신호입니다 | 신뢰구간 |
+| **단순 기준** | 전년도에 화재가 많았던 격자 순으로 줄 세운 것. 학습 없이 누구나 할 수 있는 방법이라 비교 기준으로 씁니다 | baseline |
+| **관할 제외 검증** | 구·군을 하나씩 통째로 빼고 학습해 그 지역을 맞히기. 한 지역만 외운 모델인지 가립니다 | LOGO (Leave-One-Group-Out) |
+| **위험도 상승 요인** | 이 격자의 점수를 무엇이 얼마나 끌어올렸는가 | SHAP |
+| **위험 등급** | 위험도 순으로 10등분한 것. 1등급이 가장 낮고 10등급이 가장 높습니다 | decile |
+""")
 
 st.divider()
 st.caption("본 시스템은 공개 데이터 기반 예측 결과이며, 법정 점검주기 및 관할 판단을 "

@@ -162,3 +162,67 @@ class TestRecapture(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestBootstrapCI(unittest.TestCase):
+    """신뢰구간이 표본 크기와 신호 세기를 제대로 반영하는가."""
+
+    def setUp(self):
+        self.rng = np.random.default_rng(11)
+
+    def sample(self, n, noise):
+        risk = self.rng.gamma(0.6, 1.0, n)
+        y = self.rng.poisson(risk)
+        return y, risk + self.rng.normal(0, noise, n)
+
+    def test_point_matches_capture_at_k(self):
+        y, s = self.sample(600, 0.3)
+        ci = E.bootstrap_capture_ci(y, s, 20, n_boot=200)
+        self.assertAlmostEqual(ci["point"], E.capture_at_k(y, s, 20), places=9)
+
+    def test_interval_contains_point(self):
+        y, s = self.sample(600, 0.3)
+        ci = E.bootstrap_capture_ci(y, s, 20, n_boot=300)
+        self.assertLessEqual(ci["lo"], ci["point"])
+        self.assertGreaterEqual(ci["hi"], ci["point"])
+
+    def test_small_sample_gives_wider_interval(self):
+        """세종처럼 표본이 작으면 구간이 넓어야 한다 — 그게 이 지표의 존재 이유다."""
+        y1, s1 = self.sample(2000, 0.3)
+        y2, s2 = self.sample(120, 0.3)
+        w1 = E.bootstrap_capture_ci(y1, s1, 20, n_boot=300)
+        w2 = E.bootstrap_capture_ci(y2, s2, 20, n_boot=300)
+        self.assertLess(w1["hi"] - w1["lo"], w2["hi"] - w2["lo"])
+
+    def test_clear_difference_excludes_zero(self):
+        y, good = self.sample(1500, 0.2)
+        weak = self.rng.normal(0, 1, 1500)          # 사실상 무작위
+        d = E.bootstrap_delta_ci(y, good, weak, 20, n_boot=300)
+        self.assertTrue(d["excludes_zero"])
+        self.assertGreater(d["point_pp"], 0)
+
+    def test_identical_scores_give_zero_difference(self):
+        """같은 점수를 두 번 넣으면 차이는 0이고 구간도 0을 포함해야 한다."""
+        y, s = self.sample(800, 0.3)
+        d = E.bootstrap_delta_ci(y, s, s, 20, n_boot=200)
+        self.assertAlmostEqual(d["point_pp"], 0.0, places=9)
+        self.assertFalse(d["excludes_zero"])
+
+    def test_no_fires_is_safe(self):
+        ci = E.bootstrap_capture_ci([0, 0, 0], [1, 2, 3], 20, n_boot=50)
+        self.assertNotEqual(ci["point"], ci["point"])       # nan
+        self.assertEqual(ci["n_boot"], 0)
+
+    def test_reproducible_with_same_seed(self):
+        y, s = self.sample(400, 0.3)
+        a = E.bootstrap_capture_ci(y, s, 20, n_boot=150, seed=7)
+        b = E.bootstrap_capture_ci(y, s, 20, n_boot=150, seed=7)
+        self.assertEqual(a, b)
+
+    def test_format_ci_renders(self):
+        y, good = self.sample(800, 0.2)
+        weak = self.rng.normal(0, 1, 800)
+        res = E.add_confidence_intervals({}, y, good, weak, [20], n_boot=150)
+        text = E.format_ci(res["ci"], 20)
+        self.assertIn("95% CI", text)
+        self.assertIn("%p", text)

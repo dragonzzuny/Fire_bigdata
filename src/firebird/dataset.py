@@ -442,7 +442,8 @@ def save_city(data: CityData, cfg) -> dict[str, str]:
     man_path = outdir / f"manifest_{data.city}.json"
     man_path.write_text(json.dumps(data.manifest, ensure_ascii=False, indent=2, default=str),
                         encoding="utf-8")
-    for name, df in (("fires", data.fires), ("hydrants", data.hydrants)):
+    for name, df in (("fires", data.fires), ("hydrants", data.hydrants),
+                     ("targets", data.targets), ("businesses", data.businesses)):
         if not df.empty:
             df.drop(columns=[c for c in ("occurred_dt",) if c in df.columns]) \
               .to_parquet(outdir / f"{name}_{data.city}.parquet", index=False)

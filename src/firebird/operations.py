@@ -31,16 +31,45 @@ class Capacity:
                 f"= 총 {self.total_visits:,}건")
 
 
-def inspection_cost(panel_year: pd.DataFrame, *, min_cost: float = 1.0) -> pd.Series:
-    """격자 하나를 점검하는 데 드는 방문 건수.
+#: 점검 1건의 상대 소요. 특급 대상물 한 곳과 일반 근린생활 한 곳을 같은 1건으로
+#: 세면 계획이 현장에서 깨진다. 소방시설이 많을수록 확인할 설비가 늘어난다.
+#: (현장 실측치가 아니라 설비 구성에 따른 상대 가중치다 — 서별 실측이 있으면 교체하라.)
+COST_WEIGHTS = {
+    "fac_n_스프링클러": 2.5,      # 밸브·헤드·알람밸브 시험까지
+    "fac_n_고층": 2.5,            # 제연설비·피난안전구역
+    "fac_n_대형연면적": 2.0,      # 방화구획 관통부 전수 확인
+    "fac_n_옥내소화전": 1.6,      # 방수압 측정
+    "fac_n_자동화재탐지": 1.3,    # 수신기·감지기
+    "fac_n_일반대상물": 1.0,
+}
+BIZ_COST = 0.8                    # 다중이용업소는 대상물보다 점검 항목이 적다
 
-    대상물 + 다중이용업소 수가 곧 돌아야 할 집의 수다.
-    자료가 없으면 1로 둔다(적어도 한 번은 가야 한다).
+
+def inspection_cost(panel_year: pd.DataFrame, *, min_cost: float = 1.0,
+                    weighted: bool = True) -> pd.Series:
+    """격자 하나를 점검하는 데 드는 상대 소요(방문 건수 환산).
+
+    설비 구성별 가중치를 쓴다. 가중치를 매길 컬럼이 없으면 단순 개수로 물러난다.
+    자료가 아예 없으면 1로 둔다 — 적어도 한 번은 가야 한다.
     """
     cost = pd.Series(0.0, index=panel_year.index)
-    for col in ("target_total", "biz_total"):
-        if col in panel_year.columns:
-            cost = cost + panel_year[col].fillna(0).astype(float)
+    used_weights = False
+
+    if weighted:
+        for col, w in COST_WEIGHTS.items():
+            if col in panel_year.columns:
+                cost = cost + panel_year[col].fillna(0).astype(float) * w
+                used_weights = True
+
+    if not used_weights and "target_total" in panel_year.columns:
+        cost = cost + panel_year["target_total"].fillna(0).astype(float)
+    elif not used_weights and "usage_total" in panel_year.columns:
+        cost = cost + panel_year["usage_total"].fillna(0).astype(float)
+
+    if "biz_total" in panel_year.columns:
+        cost = cost + panel_year["biz_total"].fillna(0).astype(float) * (
+            BIZ_COST if used_weights else 1.0)
+
     if (cost <= 0).all():
         cost = pd.Series(min_cost, index=panel_year.index)
     return cost.clip(lower=min_cost)
@@ -177,3 +206,101 @@ def two_opt(points: np.ndarray, order: list[int], *, max_rounds: int = 40) -> li
                     best[i:j + 1] = reversed(best[i:j + 1])
                     improved = True
     return best
+
+
+# ---------------------------------------------------------------- 형평성 제약
+
+def allocate_with_equity(panel_year: pd.DataFrame, risk, capacity: Capacity,
+                         *, group_col: str = "sgg", min_share: float = 0.5,
+                         cost: pd.Series | None = None) -> tuple[pd.DataFrame, dict]:
+    """관할별 최소 배분을 보장하면서 배분한다.
+
+    효율만 보고 담으면 특정 구에 점검이 쏠린다. 실제로 울산 배분에서 북구가
+    화재 비중 대비 0.68 배만 배정됐다. 그걸 찾아 놓고 배분에서 무시하면
+    '형평성'은 주장으로만 남는다.
+
+    min_share: 각 관할이 최소한 '화재 비중 x min_share' 만큼의 예산은 받는다.
+               1.0 이면 화재 비중에 정확히 비례, 0 이면 제약 없음(순수 효율).
+    """
+    df = panel_year.copy()
+    df["expected_fires"] = np.asarray(risk, dtype=float)
+    df["cost"] = np.asarray(cost if cost is not None else inspection_cost(df), dtype=float)
+    df["efficiency"] = df["expected_fires"] / df["cost"].replace(0, np.nan)
+
+    budget = float(capacity.total_visits)
+    if group_col not in df.columns or min_share <= 0:
+        alloc = allocate(df, df["expected_fires"], capacity, cost=df["cost"])
+        return alloc, {"equity_constrained": False}
+
+    groups = df[group_col].fillna("").astype(str)
+    df[group_col] = groups
+    valid = [g for g in groups.unique() if g.strip()]
+    if len(valid) < 2:
+        alloc = allocate(df, df["expected_fires"], capacity, cost=df["cost"])
+        return alloc, {"equity_constrained": False}
+
+    # 관할별 위험 비중 -> 최소 예산
+    risk_share = (df.groupby(group_col)["expected_fires"].sum()
+                  / max(df["expected_fires"].sum(), 1e-9))
+    floors = {g: budget * float(risk_share.get(g, 0.0)) * min_share for g in valid}
+
+    chosen_idx: list = []
+    spent = 0.0
+    # 1단계: 관할별 최소분을 각 관할 내 효율 순으로 채운다.
+    #
+    # 두 가지에 걸려 넘어지기 쉬운 자리다.
+    #  (1) 첫 격자가 최소분보다 비싸면 그 관할이 통째로 배제된다.
+    #      아무 데도 안 가는 관할이 생기면 그건 형평성이 아니라 배제다.
+    #      -> 관할마다 최소 한 격자는 보장한다.
+    #  (2) 최소분에 안 맞는 격자를 만났을 때 멈추면, 그 뒤의 **저렴한 격자를 못 본다**.
+    #      울산 동구가 그랬다. 효율 순위 7번이 130건짜리라 거기서 멈췄고,
+    #      뒤에 있던 한 자릿수 비용 격자들이 통째로 버려져 배분 비율이 0.25 였다.
+    #      -> 멈추지 말고 건너뛰며 계속 담는다.
+    for g in valid:
+        sub = df[df[group_col] == g].sort_values(
+            ["efficiency", "expected_fires"], ascending=False)
+        used = 0.0
+        for idx, row in sub.iterrows():
+            if spent + row["cost"] > budget:
+                continue
+            if used > 0.0 and used + row["cost"] > floors[g]:
+                continue
+            chosen_idx.append(idx)
+            used += row["cost"]
+            spent += row["cost"]
+            if used >= floors[g]:
+                break
+
+    # 2단계: 남은 예산을 전체 효율 순으로 채운다
+    rest = df.drop(index=chosen_idx).sort_values(
+        ["efficiency", "expected_fires"], ascending=False)
+    for idx, row in rest.iterrows():
+        if spent + row["cost"] > budget:
+            continue
+        chosen_idx.append(idx)
+        spent += row["cost"]
+
+    alloc = df.loc[chosen_idx].sort_values(
+        ["efficiency", "expected_fires"], ascending=False).reset_index(drop=True)
+    alloc.insert(0, "점검순서", range(1, len(alloc) + 1))
+    alloc["누적비용"] = alloc["cost"].cumsum()
+    alloc["누적기대화재"] = alloc["expected_fires"].cumsum()
+
+    got = alloc.groupby(group_col)["cost"].sum()
+    info = {
+        "equity_constrained": True,
+        "min_share": min_share,
+        "budget": budget,
+        "spent": float(spent),
+        "by_group": {str(g): {"risk_share": float(risk_share.get(g, 0.0)),
+                              "budget_share": float(got.get(g, 0.0) / max(spent, 1e-9)),
+                              "floor": float(floors[g]),
+                              "allocated": float(got.get(g, 0.0))}
+                     for g in valid},
+    }
+    ratios = [v["budget_share"] / v["risk_share"]
+              for v in info["by_group"].values() if v["risk_share"] > 0]
+    if ratios:
+        info["ratio_min"] = float(min(ratios))
+        info["ratio_max"] = float(max(ratios))
+    return alloc, info

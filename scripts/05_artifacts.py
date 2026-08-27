@@ -115,7 +115,25 @@ def main() -> int:
     alloc_cmp = OP.compare_to_topk(cur, cur["pred"], cap, cfg.headline_k)
     print(f"\n[화면1b] 제약 하 점검 배분")
     print("  " + OP.format_allocation_report(alloc_cmp).replace("\n", "\n  "))
-    alloc = OP.allocate(cur, cur["pred"], cap)
+
+    # 형평성 제약: 효율만 보고 담으면 특정 관할에 쏠린다.
+    min_share = float(cfg.get("operations", {}).get("equity_min_share", 0.0))
+    alloc, eq_info = OP.allocate_with_equity(cur, cur["pred"], cap, min_share=min_share)
+    if eq_info.get("equity_constrained"):
+        total = cur["fires"].sum()
+        got = alloc["fires"].sum() / total if total else float("nan")
+        print(f"\n  형평성 제약(min_share={min_share}) 적용: {len(alloc):,}격자 · "
+              f"실제 화재 {got:.1%} · 관할별 배분/위험 비율 "
+              f"{eq_info.get('ratio_min', float('nan')):.2f}~"
+              f"{eq_info.get('ratio_max', float('nan')):.2f}")
+        for g, v in sorted(eq_info["by_group"].items(),
+                           key=lambda kv: -kv[1]["risk_share"]):
+            if v["risk_share"] <= 0:
+                continue
+            print(f"    {g:<8} 위험비중 {v['risk_share']:.1%} · "
+                  f"배분비중 {v['budget_share']:.1%} · 비율 "
+                  f"{v['budget_share'] / v['risk_share']:.2f}")
+        alloc_cmp["equity"] = eq_info
     alloc_cols = [c for c in ["점검순서", "grid_id", "sgg", "lon", "lat", "위험점수",
                               "expected_fires", "cost", "누적비용", "누적기대화재", "fires"]
                   if c in alloc.columns]

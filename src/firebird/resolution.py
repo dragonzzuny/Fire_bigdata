@@ -70,14 +70,42 @@ def road_only_panel(panel: pd.DataFrame, fires: pd.DataFrame, cfg) -> pd.DataFra
     return merged
 
 
+def relabel_panel(panel: pd.DataFrame, fires: pd.DataFrame, cfg) -> pd.DataFrame:
+    """격자 모집단·정적 피처는 그대로 두고 화재 라벨과 이력 피처만 다시 만든다.
+
+    해상도 시나리오를 비교할 때 격자 집합까지 바뀌면 무엇 때문에 수치가
+    달라졌는지 알 수 없다. 바뀌는 것은 '어느 격자에 화재를 세느냐' 하나여야 한다.
+    """
+    from . import features as F
+
+    counts = F.fire_counts_by_grid_year(fires.dropna(subset=["grid_id"]))
+    static = panel.drop(columns=[c for c in F.FIRE_HISTORY_FEATURES + ["fires"]
+                                 if c in panel.columns])
+    skeleton = panel[["grid_id", "year"]].drop_duplicates()
+    hist = F.add_fire_history(skeleton, counts, ring=int(cfg["grid"]["neighbor_ring"]))
+    return hist.merge(static, on=["grid_id", "year"], how="left")
+
+
+#: 분산 배정 시나리오를 읽을 때 반드시 함께 나가야 하는 경고.
+SPREAD_CIRCULARITY_WARNING = (
+    "분산 배정 수치를 성능 근거로 쓰지 마라. 대상물 밀도를 근거로 화재를 흩뿌린 뒤 "
+    "그 대상물 밀도를 피처로 쓰는 모델을 평가한 것이라, 라벨이 피처에서 만들어진 셈이다. "
+    "여기서 읽을 수 있는 것은 하나뿐이다 — 뭉침을 풀어도 성능이 떨어지지 않으므로, "
+    "원본 수치가 뭉침 덕분에 부풀려진 것은 아니다. "
+    "해상도에 대한 신뢰할 만한 검증은 '도로명 좌표만' 시나리오다."
+)
+
+
 def spread_centroid_fires(fires: pd.DataFrame, weights: pd.DataFrame,
                           seed: int = 42) -> pd.DataFrame:
     """동 중심점에 뭉친 화재를 그 동의 격자들에 밀도 비례로 흩뿌린다.
 
     weights: DataFrame[emd, grid_id, weight]  (보통 대상물 수)
-    화재가 실제로 어디서 났는지는 모른다. 다만 **한 점에 전부 몰아두는 것보다는
-    건물이 있는 곳에 비례해 나누는 편이 덜 틀린다.** 이건 추정이므로
-    보정 전/후를 항상 함께 보고한다.
+
+    **경고 — 순환 논리:** 이 함수로 만든 라벨은 대상물 밀도에서 나왔다.
+    그 대상물 밀도를 피처로 쓰는 모델을 이 라벨로 평가하면 당연히 잘 맞는다.
+    그래서 이 시나리오의 포착률은 성능의 근거가 될 수 없다
+    (`SPREAD_CIRCULARITY_WARNING` 참조). 진단용으로만 쓴다.
     """
     if fires.empty or "geo_level" not in fires.columns:
         return fires.copy()

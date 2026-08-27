@@ -29,6 +29,11 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 log = logging.getLogger("train")
 
 
+def _wrap(text: str, width: int) -> list[str]:
+    import textwrap
+    return textwrap.wrap(text, width)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--city", default="ulsan", help="학습·검증 도시")
@@ -51,6 +56,9 @@ def main() -> int:
     print(f"\n{'='*78}\n[1] 시간분할: ~{cfg.split_year} 학습 -> {cfg.holdout_year} 예측")
     temporal = M.temporal_validation(panel, feats, cfg)
     print(E.format_report(temporal["result"]))
+    ci_line = E.format_ci(temporal["result"].get("ci", {}), cfg.headline_k)
+    if ci_line:
+        print(f"신뢰구간: {ci_line}")
     report["temporal"] = temporal["result"]
 
     model = temporal["model"]
@@ -116,7 +124,9 @@ def main() -> int:
                   f"{conc.get('max_fires_in_one_centroid_grid',0):,}건이 쌓여 있다")
         report["resolution_concentration"] = conc
 
-        scenarios = {"원본(동 뭉침 포함)": temporal["result"]}
+        scenarios = {"원본(동 중심점 포함)": temporal["result"]}
+
+        # (a) 도로명으로 좌표를 얻은 화재만 라벨로 — 해상도가 실제로 도로 단위인 구간
         road_panel = RES.road_only_panel(panel, fires, cfg)
         if road_panel["fires"].sum() > 0:
             try:
@@ -124,11 +134,39 @@ def main() -> int:
             except (ValueError, KeyError) as exc:
                 log.warning("도로명 한정 평가 생략: %s", exc)
 
+        # (b) 동 중심점에 뭉친 화재를 그 동의 격자에 대상물 밀도 비례로 흩뿌린 뒤 재평가.
+        #     화재가 실제로 어디서 났는지는 모른다. 다만 한 점에 전부 몰아두는 것보다
+        #     건물이 있는 곳에 비례해 나누는 편이 덜 틀린다. 추정이므로 보정 전/후를
+        #     항상 함께 보고한다.
+        try:
+            targets = pd.read_parquet(cfg.paths.processed / f"targets_{args.city}.parquet") \
+                if (cfg.paths.processed / f"targets_{args.city}.parquet").exists() else pd.DataFrame()
+            biz = pd.read_parquet(cfg.paths.processed / f"businesses_{args.city}.parquet") \
+                if (cfg.paths.processed / f"businesses_{args.city}.parquet").exists() else pd.DataFrame()
+            weights = RES.build_emd_weights(targets, biz)
+            if not weights.empty:
+                spread = RES.spread_centroid_fires(fires, weights)
+                spread_panel = RES.relabel_panel(panel, spread, cfg)
+                moved = int((spread["geo_level"] == "emd_spread").sum())
+                print(f"  동 중심점 화재 {moved:,}건을 동 내 {weights['grid_id'].nunique():,}개 "
+                      f"격자에 대상물 밀도 비례로 분산 배정")
+                scenarios["동 내 분산 배정(진단용)"] = M.temporal_validation(
+                    spread_panel, feats, cfg)["result"]
+            else:
+                log.warning("분산 배정 생략: 대상물/업소 격자 정보가 없다")
+        except (ValueError, KeyError, FileNotFoundError) as exc:
+            log.warning("분산 배정 평가 생략: %s", exc)
+
         table = RES.compare_resolutions(scenarios, cfg.headline_k)
         if not table.empty:
             print()
             print(table.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
             report["resolution_scenarios"] = table.to_dict(orient="records")
+            if "동 내 분산 배정(진단용)" in scenarios:
+                print()
+                for line in _wrap(RES.SPREAD_CIRCULARITY_WARNING, 92):
+                    print(f"  ! {line}")
+                report["spread_warning"] = RES.SPREAD_CIRCULARITY_WARNING
     else:
         log.warning("fires parquet 없음 — 해상도 검사 생략")
 
@@ -157,6 +195,12 @@ def main() -> int:
             tr = M.transfer_validation(panel, target, feats, cfg,
                                        target_years=[cfg.holdout_year])
             print(E.format_report(tr))
+            ci_line = E.format_ci(tr.get("ci", {}), cfg.headline_k)
+            if ci_line:
+                print(f"신뢰구간: {ci_line}")
+                n = tr["model"]["total_fires"]
+                if n < 300:
+                    print(f"  주의: 화재 {n:.0f}건짜리 표본이다. 점추정보다 구간을 보라.")
             report["transfer"] = tr
         except FileNotFoundError as exc:
             log.warning("이식 검증 생략: %s", exc)
