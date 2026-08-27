@@ -108,6 +108,26 @@ def law_docs(articles: pd.DataFrame) -> list[Doc]:
             for r in articles.itertuples()]
 
 
+def annex_docs(forms: pd.DataFrame) -> list[Doc]:
+    """별표 본문도 검색 대상에 넣는다.
+
+    소방안전관리자 선임 대상 범위, 점검 주기 같은 실무 기준은 조문이 아니라
+    별표에 적혀 있다. 조문만 색인하면 "별표에 있는데 자료에 없습니다"라는
+    답이 반복되어 정작 필요한 답을 못 준다.
+    """
+    if forms is None or forms.empty or "content" not in forms.columns:
+        return []
+    out = []
+    for r in forms.itertuples():
+        text = str(getattr(r, "content", "") or "").strip()
+        if len(text) < 40:
+            continue
+        ref = f"{r.law} [{r.kind} {r.no}]"
+        out.append(Doc(doc_id=f"annex:{ref}", source="법령",
+                       title=f"{ref} {r.title}", text=text, ref=ref))
+    return out
+
+
 def rule_docs() -> list[Doc]:
     """우리가 코드로 갖고 있는 업무 규칙도 검색 대상에 넣는다."""
     from .patrol_modes import MODES
@@ -202,8 +222,9 @@ def data_docs(panel_year: pd.DataFrame, *, city_label: str = "", year: int | Non
 
 
 def build_index(articles: pd.DataFrame | None = None,
-                panel_year: pd.DataFrame | None = None, **kw) -> BM25:
-    docs = law_docs(articles) + rule_docs()
+                panel_year: pd.DataFrame | None = None,
+                annexes: pd.DataFrame | None = None, **kw) -> BM25:
+    docs = law_docs(articles) + annex_docs(annexes) + rule_docs()
     if panel_year is not None:
         docs += data_docs(panel_year, **kw)
     return BM25(docs)

@@ -35,6 +35,25 @@ from firebird.config import load_config  # noqa: E402
 
 st.set_page_config(page_title="불씨예보 K-Firebird", page_icon="🔥", layout="wide")
 
+# 실행 중인 앱은 임포트한 모듈을 메모리에 물고 있다. 코드를 고쳐도 재기동하지 않으면
+# 옛 모듈이 그대로 쓰여 'has no attribute' 같은 오류가 난다. 필요한 기능이
+# 실제로 있는지 시작할 때 확인하고, 없으면 무엇을 해야 하는지 알려준다.
+_REQUIRED = [
+    (PLN, "DocMeta", "계획서 공문 서식"),
+    (RT, "plan_from_stations", "관서 출발 순찰 동선"),
+    (AS, "build_index", "업무 도우미 색인"),
+    (ST, "station_table", "관서 위치"),
+    (MO, "fit_month_risk", "월별 위험계수"),
+]
+_missing = [f"{name}({desc})" for mod, name, desc in _REQUIRED if not hasattr(mod, name)]
+if _missing:
+    st.error(
+        "코드가 갱신되었으나 실행 중인 앱이 이전 버전을 사용하고 있습니다.\n\n"
+        f"누락된 기능: {', '.join(_missing)}\n\n"
+        "터미널에서 앱을 종료(Ctrl+C)한 뒤 다시 실행하십시오:\n"
+        "`.venv/bin/streamlit run app/streamlit_app.py`")
+    st.stop()
+
 st.markdown("""
 <style>
   .big-metric {font-size: 2.1rem; font-weight: 700; line-height: 1.1;}
@@ -112,10 +131,19 @@ def get_stations(city: str, year: int, level: str) -> pd.DataFrame:
                             city_label=cfg.city(city)["label"])
 
 
+@st.cache_data(show_spinner="법령 별표 불러오는 중…")
+def get_law_annexes() -> pd.DataFrame:
+    try:
+        return LW.collect_forms(get_config())
+    except Exception:                                   # noqa: BLE001
+        return pd.DataFrame()
+
+
 @st.cache_resource(show_spinner="업무 자료 색인 중…")
 def get_index(city: str, year: int):
     cfg = get_config()
     return AS.build_index(get_law_articles(), scored(city, year),
+                          get_law_annexes(),
                           city_label=cfg.city(city)["label"], year=year)
 
 
@@ -690,7 +718,9 @@ with tabs[6]:
         "소방안전관리자를 선임해야 하는 대상물은?",
         f"{cur['center'].mode().iloc[0] if 'center' in cur and len(cur['center'].mode()) else '삼산119안전센터'} 관할에서 위험이 높은 곳은?",
     ]
-    pick_ex = st.selectbox("예시 질문", ["(직접 입력)"] + examples)
+    # 첫 화면에서 예시 질문이 이미 들어가 있어야 무엇을 해 주는지 바로 보인다.
+    # 빈 입력창만 있으면 처음 쓰는 사람이 무엇을 물어야 할지 모른다.
+    pick_ex = st.selectbox("예시 질문", examples + ["(직접 입력)"])
     default_q = "" if pick_ex == "(직접 입력)" else pick_ex
     question = st.text_area("질문", value=default_q, height=80,
                             placeholder="예) 3급 대상물 자체점검 주기가 어떻게 되나요?")

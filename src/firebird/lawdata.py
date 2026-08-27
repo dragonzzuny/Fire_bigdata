@@ -181,7 +181,13 @@ def list_forms(mst: str, law_name: str, *, oc: str = "test",
         pdf = _tag(block, "별표서식PDF파일링크")
         if not (hwp or pdf):
             continue
+        # 별표 본문도 담는다. 소방안전관리자 선임 대상, 점검 주기 같은 실무 기준이
+        # 조문이 아니라 별표에 있어서, 조문만 색인하면 "별표 4에 있는데 자료에
+        # 없습니다"라는 답이 반복된다.
+        body = " ".join(re.findall(r"<별표내용>(.*?)</별표내용>", block, re.S))
+        content = _clean(body)
         out.append({
+            "content": content[:6000],
             "law": law_name,
             "kind": _tag(block, "별표구분"),
             "no": _tag(block, "별표번호").lstrip("0") or "0",

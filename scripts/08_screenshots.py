@@ -18,15 +18,19 @@ from firebird.config import load_config  # noqa: E402
 
 URL = "http://localhost:8601"
 
-#: (파일명, 탭 이름, 캡처 전 대기 초). 탭 이름은 화면의 탭 라벨과 같아야 한다.
+#: (파일명, 탭 이름, 캡처 전 대기 초, 사이드바 제외 여부)
+#:
+#: 장표에 넣을 때 사이드바까지 들어가면 본문 글씨가 읽히지 않는다.
+#: 발표장 뒷자리에서 안 보이는 화면은 없는 것과 같으므로, 본문만 잘라 낸다.
 SHOTS = [
-    ("shot_allocation.png", "예방점검 배분", 6),
-    ("shot_reason.png", "위험요인·점검계획서", 5),
-    ("shot_patrol.png", "예방순찰 계획", 14),
-    ("shot_plan_doc.png", "순찰·점검 계획서", 4),
-    ("shot_hydrant.png", "대응취약 구역", 5),
-    ("shot_validation.png", "모델 검증", 5),
-    ("shot_assistant.png", "업무 도우미", 6),
+    ("shot_allocation.png", "예방점검 배분", 7, True),
+    ("shot_reason.png", "위험요인·점검계획서", 6, True),
+    ("shot_patrol.png", "예방순찰 계획", 15, True),
+    ("shot_plan_doc.png", "순찰·점검 계획서", 5, True),
+    ("shot_hydrant.png", "대응취약 구역", 6, True),
+    ("shot_validation.png", "모델 검증", 6, True),
+    ("shot_assistant.png", "업무 도우미", 7, True),
+    ("shot_full_patrol.png", "예방순찰 계획", 3, False),   # 전체 화면(사이드바 포함)
 ]
 
 
@@ -39,18 +43,44 @@ def main() -> int:
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": 1680, "height": 1050},
                                 device_scale_factor=2)
-        page.goto(URL, wait_until="networkidle", timeout=120_000)
-        page.wait_for_timeout(12_000)          # 첫 로드는 패널·모델을 읽느라 느리다
+        # networkidle 은 지도 타일이 계속 오가면 끝나지 않는다.
+        # 문서만 뜨면 되므로 domcontentloaded 로 기다리고, 이후는 시간으로 준다.
+        page.goto(URL, wait_until="domcontentloaded", timeout=120_000)
+        page.wait_for_timeout(20_000)          # 첫 로드는 패널·모델을 읽느라 느리다
 
-        for name, tab, wait in SHOTS:
+        for name, tab, wait, crop in SHOTS:
             try:
                 page.get_by_role("tab", name=tab).click(timeout=20_000)
             except Exception as exc:           # noqa: BLE001
                 print(f"  건너뜀 {tab}: {type(exc).__name__}")
                 continue
             page.wait_for_timeout(wait * 1000)
-            page.screenshot(path=str(out / name))
+            if crop:
+                # 본문 영역만. 사이드바를 빼면 같은 폭에 글씨가 1.4배로 커진다.
+                main = page.locator("section.main, .main, [data-testid='stMain']").first
+                try:
+                    main.screenshot(path=str(out / name))
+                except Exception:              # noqa: BLE001
+                    page.screenshot(path=str(out / name),
+                                    clip={"x": 360, "y": 0, "width": 1320, "height": 1050})
+            else:
+                page.screenshot(path=str(out / name))
             print(f"  {name}  ({tab})")
+
+        # 업무 도우미는 질문을 실제로 눌러야 답변이 보인다.
+        # 입력창만 찍힌 화면은 '무엇을 해 주는지'를 전혀 보여주지 못한다.
+        try:
+            # 예시 질문이 기본으로 채워져 있으므로 바로 누르면 된다.
+            page.get_by_role("tab", name="업무 도우미").click(timeout=20_000)
+            page.wait_for_timeout(5_000)
+            page.get_by_role("button", name="질문하기").click(timeout=20_000)
+            print("  업무 도우미 질의 실행 — 답변 대기(최대 90초)")
+            page.wait_for_timeout(75_000)
+            main = page.locator("section.main, .main, [data-testid='stMain']").first
+            main.screenshot(path=str(out / "shot_assistant_answer.png"))
+            print("  shot_assistant_answer.png  (답변 포함)")
+        except Exception as exc:                          # noqa: BLE001
+            print(f"  답변 캡처 건너뜀: {type(exc).__name__}")
 
         browser.close()
     return 0
