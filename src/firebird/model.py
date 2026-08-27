@@ -67,13 +67,31 @@ def temporal_validation(panel: pd.DataFrame, feature_cols: list[str], cfg) -> di
 
     model = fit(panel, feature_cols, cfg, train_years)
     pred = model.predict(test)
+    ks = cfg["evaluation"]["top_k_percents"]
     result = E.compare_with_baseline(
-        test["fires"], pred, test[BASELINE_FEATURE],
-        cfg["evaluation"]["top_k_percents"], cfg.headline_k,
+        test["fires"], pred, test[BASELINE_FEATURE], ks, cfg.headline_k,
         cfg["evaluation"]["n_deciles"])
     result["protocol"] = "temporal_holdout"
     result["train_years"] = train_years
     result["test_year"] = int(test_year)
+
+    # 기획서에 없던 것들. '73%가 잘한 건가'에 답하려면 이만큼이 더 필요하다.
+    E.extend_with_standard_indices(result["model"], test["fires"], pred, ks)
+    E.extend_with_standard_indices(result["baseline"], test["fires"],
+                                   test[BASELINE_FEATURE], ks)
+    result["calibration"] = E.calibration(test["fires"], pred)
+    if "sgg" in test.columns:
+        eq = E.equity(test["fires"], pred, test["sgg"], cfg.headline_k)
+        result["equity"] = eq.to_dict(orient="records")
+        result["equity_summary"] = E.equity_summary(eq)
+    prev = panel[panel["year"] == test_year - 1]
+    if not prev.empty:
+        merged = test[["grid_id", "fires"]].merge(
+            prev[["grid_id", "fires"]], on="grid_id", how="left",
+            suffixes=("_curr", "_prev"))
+        result["recapture"] = E.recapture_rate(
+            merged["fires_prev"].fillna(0), merged["fires_curr"], pred, cfg.headline_k)
+
     return {"result": result, "model": model,
             "predictions": test[["grid_id", "year", "fires"]].assign(pred=pred)}
 
@@ -173,3 +191,60 @@ def single_feature_probe(panel: pd.DataFrame, cfg,
             f"capture_top{cfg.headline_k}": E.capture_at_k(test["fires"], test[c], cfg.headline_k),
         })
     return pd.DataFrame(rows).sort_values(f"capture_top{cfg.headline_k}", ascending=False)
+
+
+def ranking_comparison(panel: pd.DataFrame, feature_cols: list[str], cfg) -> dict:
+    """같은 프로토콜에서 회귀(Poisson) vs 순위학습(LambdaRank)을 비교한다.
+
+    이 도구의 출력은 '건수'가 아니라 '점검 순서'다. 그렇다면 순위를 직접
+    학습하는 편이 목적함수와 맞다 — 라는 가설을 실제로 확인한다.
+    기준선(LightGBM Poisson)은 그대로 두고 후보를 옆에 세우는 방식이라,
+    기획서 수치와의 연속성이 끊기지 않는다.
+    """
+    from lightgbm import LGBMRanker
+
+    train_years = [y for y in sorted(panel["year"].unique()) if y <= cfg.split_year]
+    test = panel[panel["year"] == cfg.holdout_year]
+    tr = panel[panel["year"].isin(train_years)]
+    if test.empty or tr.empty:
+        return {}
+
+    ks = cfg["evaluation"]["top_k_percents"]
+    out: dict = {"protocol": "temporal_holdout", "test_year": int(cfg.holdout_year)}
+
+    # --- 후보 1: Poisson 회귀 (기준선) ---
+    base = fit(panel, feature_cols, cfg, train_years)
+    out["poisson"] = _score_block(test, base.predict(test), ks, cfg)
+
+    # --- 후보 2: LambdaRank ---
+    # 연도를 쿼리 그룹으로 둔다. '그 해 안에서의 순서'가 우리가 원하는 것이다.
+    tr_sorted = tr.sort_values("year")
+    groups = tr_sorted.groupby("year").size().tolist()
+    # 관련도 라벨은 정수여야 한다. 화재 건수를 0~4 로 자른다.
+    labels = np.clip(tr_sorted["fires"].to_numpy(), 0, 4).astype(int)
+    params = {k: v for k, v in cfg["model"].items() if k != "objective"}
+    try:
+        ranker = LGBMRanker(objective="lambdarank", verbose=-1,
+                            label_gain=list(range(5)), **params)
+        ranker.fit(tr_sorted[feature_cols], labels, group=groups)
+        out["lambdarank"] = _score_block(test, ranker.predict(test[feature_cols]), ks, cfg)
+    except Exception as exc:                                   # noqa: BLE001
+        log.warning("LambdaRank 학습 실패: %s", exc)
+        out["lambdarank"] = {"error": str(exc)}
+
+    # --- 후보 3: 베이스라인 (작년 화재 순) ---
+    out["baseline_last_year"] = _score_block(test, test[BASELINE_FEATURE], ks, cfg)
+
+    key = f"top{int(cfg.headline_k)}"
+    ranked = {k: v["capture"][key] for k, v in out.items()
+              if isinstance(v, dict) and "capture" in v}
+    if ranked:
+        out["winner"] = max(ranked, key=ranked.get)
+        out["capture_by_model"] = ranked
+    return out
+
+
+def _score_block(test: pd.DataFrame, score, ks: list[float], cfg) -> dict:
+    r = E.evaluate_ranking(test["fires"], score, ks, cfg["evaluation"]["n_deciles"])
+    E.extend_with_standard_indices(r, test["fires"], score, ks)
+    return r

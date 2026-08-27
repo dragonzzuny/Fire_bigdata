@@ -84,6 +84,44 @@ def within_bbox(lon: pd.Series, lat: pd.Series, bbox: dict | None) -> pd.Series:
 
 # ---------------------------------------------------------------- 도시 적재
 
+#: 같은 화재를 가리키는 자연키. 접수시각이 초 단위까지 같고 같은 동에서 같은 종별
+#: 화재를 같은 안전센터가 접수했다면 같은 사건이다.
+FIRE_IDENTITY_KEYS = ("occurred_at", "sgg", "emd", "fire_type", "center")
+
+
+def deduplicate_fires(fires: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """한 화재가 여러 출동 행으로 들어온 것을 하나로 접는다.
+
+    울산 _2021 파일은 3,039행인데 그중 1,657행(55%)이 같은 사건의 중복이다.
+    고층건물·대형화재가 다른 해의 6~8배로 보이는 것도 그래서다 —
+    큰 화재일수록 출동 차량이 많고, 행이 그만큼 늘어난다.
+    중복 제거 후 1,382건이 되어 2020년(1,344)·2019년(1,306)과 나란해진다.
+
+    반면 _0000 파일은 같은 키로 4행(0.01%)만 줄어든다. 즉 이 키는
+    진짜 중복만 잡고 서로 다른 사건은 건드리지 않는다.
+
+    이걸 안 하면 홀드아웃 연도의 라벨이 2.2배로 부풀고, 그 위에서 잰
+    포착률은 아무 뜻이 없다.
+    """
+    if fires.empty:
+        return fires, {}
+    keys = [c for c in FIRE_IDENTITY_KEYS if c in fires.columns]
+    if not keys:
+        return fires, {"note": "식별 키가 없어 중복 제거를 건너뜀"}
+
+    before = len(fires)
+    out = fires.drop_duplicates(subset=keys, keep="first").copy()
+    removed = before - len(out)
+    info = {"keys": keys, "rows_before": before, "rows_after": int(len(out)),
+            "removed": int(removed),
+            "removed_share": float(removed / before) if before else 0.0}
+    if "_source_file" in fires.columns:
+        per_file = (fires.groupby("_source_file").size()
+                    - out.groupby("_source_file").size()).fillna(0)
+        info["removed_by_file"] = {str(k): int(v) for k, v in per_file.items() if v}
+    return out, info
+
+
 def select_fire_source_per_year(fires: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """같은 연도가 여러 원본 파일에 들어 있으면 하나만 남긴다.
 
@@ -209,6 +247,13 @@ def load_city(cfg, city: str, *, use_api: bool = True) -> CityData:
         if not_fire.any():
             log.info("[%s] 재난종별이 '화재'가 아닌 %d행 제외", city, int(not_fire.sum()))
             fires = fires[~not_fire].copy()
+
+    fires, dedup_info = deduplicate_fires(fires)
+    if dedup_info.get("removed"):
+        manifest["fire_deduplication"] = dedup_info
+        log.info("[%s] 같은 화재의 중복 출동행 %d건 제거 (%.0f%%) — 파일별 %s",
+                 city, dedup_info["removed"], dedup_info["removed_share"] * 100,
+                 dedup_info.get("removed_by_file"))
 
     fires, source_choice = select_fire_source_per_year(fires)
     if source_choice:

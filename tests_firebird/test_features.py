@@ -147,3 +147,60 @@ class TestFireSourceSelection(unittest.TestCase):
         kept, _ = self.D.select_fire_source_per_year(fires)
         self.assertEqual(set(kept["_source_file"]), {"a.csv"})
         self.assertEqual(len(kept), 3)
+
+
+class TestFireDeduplication(unittest.TestCase):
+    """한 화재의 여러 출동 행을 하나로 접는다.
+
+    울산 _2021 은 55%가 이런 중복이었고, 그대로 두면 홀드아웃 연도의
+    라벨이 2배로 부풀어 그 위의 모든 수치가 무의미해진다.
+    """
+
+    def setUp(self):
+        from firebird import dataset as D
+        self.D = D
+
+    def test_same_incident_multiple_dispatch_rows_collapse(self):
+        fires = pd.DataFrame({
+            "occurred_at": ["20210101120000"] * 3,
+            "sgg": ["남구"] * 3, "emd": ["삼산동"] * 3,
+            "fire_type": ["고층건물(3층이상,아파트)"] * 3,
+            "center": ["삼산119안전센터"] * 3,
+        })
+        out, info = self.D.deduplicate_fires(fires)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(info["removed"], 2)
+
+    def test_different_incidents_are_kept(self):
+        """같은 날 같은 동이라도 접수시각이 다르면 다른 사건이다."""
+        fires = pd.DataFrame({
+            "occurred_at": ["20210101120000", "20210101183000"],
+            "sgg": ["남구"] * 2, "emd": ["삼산동"] * 2,
+            "fire_type": ["기타화재"] * 2, "center": ["삼산119안전센터"] * 2,
+        })
+        out, _ = self.D.deduplicate_fires(fires)
+        self.assertEqual(len(out), 2)
+
+    def test_different_dong_same_time_kept(self):
+        fires = pd.DataFrame({
+            "occurred_at": ["20210101120000"] * 2,
+            "sgg": ["남구", "중구"], "emd": ["삼산동", "태화동"],
+            "fire_type": ["기타화재"] * 2, "center": ["A", "B"],
+        })
+        out, _ = self.D.deduplicate_fires(fires)
+        self.assertEqual(len(out), 2)
+
+    def test_removal_is_reported_per_file(self):
+        fires = pd.DataFrame({
+            "occurred_at": ["20210101120000"] * 2 + ["20200101120000"],
+            "sgg": ["남구"] * 3, "emd": ["삼산동"] * 3,
+            "fire_type": ["기타화재"] * 3, "center": ["A"] * 3,
+            "_source_file": ["b_2021.csv", "b_2021.csv", "a_0000.csv"],
+        })
+        _, info = self.D.deduplicate_fires(fires)
+        self.assertEqual(info["removed_by_file"], {"b_2021.csv": 1})
+
+    def test_empty_input_is_safe(self):
+        out, info = self.D.deduplicate_fires(pd.DataFrame())
+        self.assertTrue(out.empty)
+        self.assertEqual(info, {})

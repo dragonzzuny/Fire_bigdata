@@ -18,7 +18,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from firebird import dataset as D, explain as X, features as F, hydrant as H, \
-    llm as L, model as M, patrol as P, rules as R  # noqa: E402
+    llm as L, model as M, operations as OP, patrol as P, rules as R  # noqa: E402
 from firebird.config import load_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -47,6 +47,9 @@ def main() -> int:
     ap.add_argument("--plans", type=int, default=10, help="점검계획서를 만들 상위 격자 수")
     ap.add_argument("--patrol-top", type=int, default=15, help="순찰 동선에 넣을 상위 격자 수")
     ap.add_argument("--no-llm", action="store_true", help="LLM 없이 규칙기반 초안만")
+    ap.add_argument("--inspectors", type=int, default=4, help="점검 가능 인원")
+    ap.add_argument("--per-day", type=int, default=8, help="1인 1일 점검 건수(대상물 기준)")
+    ap.add_argument("--days", type=int, default=20, help="점검 기간(일)")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -105,6 +108,22 @@ def main() -> int:
     print(f"  -> {plan_dir}/ ({len(plans)}개 파일)")
     print("  예시:\n" + "\n".join("    " + l for l in plans[0]["text"].splitlines()[:12]))
 
+    # ---------- 화면1b: 제약 하 점검 배분 ----------
+    # '상위 20%'는 아무 데서도 나오지 않은 숫자다. 현장 제약은
+    # '점검관 N명 × 1일 M건 × D일'로 생겼고, 격자마다 돌아야 할 집의 수도 다르다.
+    cap = OP.Capacity(inspectors=args.inspectors, per_day=args.per_day, days=args.days)
+    alloc_cmp = OP.compare_to_topk(cur, cur["pred"], cap, cfg.headline_k)
+    print(f"\n[화면1b] 제약 하 점검 배분")
+    print("  " + OP.format_allocation_report(alloc_cmp).replace("\n", "\n  "))
+    alloc = OP.allocate(cur, cur["pred"], cap)
+    alloc_cols = [c for c in ["점검순서", "grid_id", "sgg", "lon", "lat", "위험점수",
+                              "expected_fires", "cost", "누적비용", "누적기대화재", "fires"]
+                  if c in alloc.columns]
+    alloc[alloc_cols].rename(columns={
+        "grid_id": "격자", "sgg": "시군구", "expected_fires": "기대화재",
+        "cost": "점검대상수", "fires": "실제화재"}).to_csv(
+        out / f"allocation_{args.city}_{year}.csv", index=False, encoding="utf-8-sig")
+
     # ---------- 화면3: 순찰 시간대·요일·동선 ----------
     fires_path = cfg.paths.processed / f"fires_{args.city}.parquet"
     patrol_info: dict = {}
@@ -151,6 +170,7 @@ def main() -> int:
 
     summary = {
         "city": args.city, "year": int(year), "n_grids": int(len(cur)),
+        "allocation": alloc_cmp,
         "hydrant_coverage": cov,
         "n_blind_spots": int(len(blind)),
         "n_surge_alerts": int(len(surge)),

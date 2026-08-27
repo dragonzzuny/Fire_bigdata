@@ -4,6 +4,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .operations import two_opt
+
 WEEKDAY_KOR = ["월", "화", "수", "목", "금", "토", "일"]
 
 
@@ -72,14 +74,19 @@ def patrol_route(top_grids: pd.DataFrame, start_grid: str | None = None) -> pd.D
 
     order = [start]
     remaining = set(range(len(df))) - {start}
-    dists = [0.0]
     while remaining:
         cur = order[-1]
         nxt = min(remaining, key=lambda j: float(np.hypot(*(pts[j] - pts[cur]))))
-        dists.append(float(np.hypot(*(pts[nxt] - pts[cur]))))
         order.append(nxt)
         remaining.discard(nxt)
 
+    # 최근접 이웃만 쓰면 마지막에 먼 격자로 되돌아가는 교차 구간이 남는다.
+    # 2-opt 로 그걸 풀면 같은 격자를 도는데 이동거리가 크게 준다.
+    if len(order) > 3:
+        order = two_opt(pts, order)
+
+    dists = [0.0] + [float(np.hypot(*(pts[order[i]] - pts[order[i - 1]])))
+                     for i in range(1, len(order))]
     out = df.iloc[order].copy().reset_index(drop=True)
     out.insert(0, "순번", range(1, len(out) + 1))
     out["이동거리_m"] = np.round(dists, 0)

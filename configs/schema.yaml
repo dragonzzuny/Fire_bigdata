@@ -72,15 +72,22 @@ datasets:
       lon:         ["FRUSWTR_LOT"]
       station:     ["PLCSCN_NM"]
 
-  inspection:                 # 화재안전특별조사 — 보조. 결합 실패해도 무방.
-    file_glob: ["*화재안전특별조사*"]
+  inspection:                 # 화재안전특별조사 — 실측 결과 결합 불가. 기본 비활성.
+    #
+    # 울산 887,753행을 열어 확인한 결과:
+    #   OJTFT_MNG_NO(대상물 관리번호) 862,790개 고유 · CHCK_DT(점검일) 96% 채움
+    #   SFTY_MNG_GRD_CD(안전관리등급) 0% · EVL2_CD(평가결과) 0% · 주소 컬럼 없음
+    # 관리번호로만 대상물을 가리키는데 특정소방대상물 데이터셋에는 그 번호가 없다.
+    # 즉 격자에 붙일 방법이 없다 — 기획서 6.기타의 '점검이력 결합 불가'가 이것이다.
+    #
+    # file_glob 을 비워 두면 파이프라인이 아예 찾지 않는다. 나중에 관리번호가 있는
+    # 대상물 데이터를 확보하면 아래 주석을 풀어 되살릴 수 있다.
+    file_glob: []               # ["*화재안전특별조사*"]
     required: {}
     optional:
-      emd:         ["DONG_NM"]
-      sido:        ["CTPV_NM"]
-      sgg:         ["GUGUN_NM"]
-      road:        ["ROAD_NM"]
-      inspected_at: ["INSP_DT", "CHCK_DT", "조사일자"]
+      inspected_at: ["CHCK_DT"]
+      target_id:    ["OJTFT_MNG_NO"]
+      progress:     ["PRGRS_STTS_CD"]
 
 # ---------------------------------------------------------------------------
 # 특정소방대상물 용도(MUSES_NM) 정규화: 부분일치 키워드 -> 표준 용도

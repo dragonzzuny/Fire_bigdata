@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import joblib  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from firebird import dataset as D, evaluate as E, explain as X, features as F, model as M  # noqa: E402
+from firebird import dataset as D, evaluate as E, explain as X, features as F, \
+    model as M, resolution as RES  # noqa: E402
 from firebird.config import load_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -101,6 +102,53 @@ def main() -> int:
         except (KeyError, ValueError) as exc:
             log.warning("LOGO 생략: %s", exc)
 
+    # --- 3b) 해상도 정직성: 읍면동 뭉침이 포착률을 얼마나 부풀리는가 ---
+    print(f"\n{'='*78}\n[3b] 해상도 검사 — 동 중심점 뭉침의 영향")
+    fires_path = cfg.paths.processed / f"fires_{args.city}.parquet"
+    if fires_path.exists():
+        fires = pd.read_parquet(fires_path)
+        conc = RES.concentration(fires[fires["grid_id"].notna()])
+        print(f"  화재 {conc['n_fires']:,}건이 격자 {conc['n_grids']:,}개에 분포 "
+              f"(지니 {conc['gini']:.2f}, 최다 격자 1개가 {conc['top1_share']:.1%})")
+        if "share_from_emd_centroid" in conc:
+            print(f"  이 중 {conc['share_from_emd_centroid']:.1%} 는 읍면동 중심점으로 배정됨 "
+                  f"— 격자 {conc.get('emd_centroid_grids',0):,}개에 최대 "
+                  f"{conc.get('max_fires_in_one_centroid_grid',0):,}건이 쌓여 있다")
+        report["resolution_concentration"] = conc
+
+        scenarios = {"원본(동 뭉침 포함)": temporal["result"]}
+        road_panel = RES.road_only_panel(panel, fires, cfg)
+        if road_panel["fires"].sum() > 0:
+            try:
+                scenarios["도로명 좌표만"] = M.temporal_validation(road_panel, feats, cfg)["result"]
+            except (ValueError, KeyError) as exc:
+                log.warning("도로명 한정 평가 생략: %s", exc)
+
+        table = RES.compare_resolutions(scenarios, cfg.headline_k)
+        if not table.empty:
+            print()
+            print(table.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+            report["resolution_scenarios"] = table.to_dict(orient="records")
+    else:
+        log.warning("fires parquet 없음 — 해상도 검사 생략")
+
+    # --- 3c) 순위학습 비교 ---
+    print(f"\n{'='*78}\n[3c] 모델 비교: 회귀(Poisson) vs 순위학습(LambdaRank) vs 베이스라인")
+    print("     이 도구의 출력은 '건수'가 아니라 '점검 순서'다. 순위를 직접 배우면 나은가?")
+    try:
+        rank_cmp = M.ranking_comparison(panel, feats, cfg)
+        if rank_cmp.get("capture_by_model"):
+            key = f"top{cfg.headline_k}"
+            for name, r in rank_cmp.items():
+                if not isinstance(r, dict) or "capture" not in r:
+                    continue
+                print(f"  {name:<20} 포착 {r['capture'][key]:.1%}  "
+                      f"PAI {r['pai'][key]:.2f}  PEI {r['pei'][key]:.1%}")
+            print(f"  -> 우승: {rank_cmp['winner']}")
+            report["ranking_comparison"] = rank_cmp
+    except Exception as exc:                                   # noqa: BLE001
+        log.warning("순위학습 비교 생략: %s", exc)
+
     # --- 4) 도시 이식 ---
     if args.transfer_to:
         print(f"\n{'='*78}\n[4] 도시 이식: {args.city} 학습 -> {args.transfer_to} 적용")
@@ -121,6 +169,27 @@ def main() -> int:
         print(imp.to_string(index=False))
         imp.to_csv(cfg.paths.outputs / "shap_importance.csv", index=False, encoding="utf-8-sig")
         report["shap_importance"] = imp.to_dict(orient="records")
+
+    # --- 6) 기획서에 없던 지표 요약 ---
+    t = report["temporal"]
+    print(f"\n{'='*78}\n[6] 예측치안 표준지표 · 캘리브레이션 · 형평성")
+    key = f"top{cfg.headline_k}"
+    print(f"  PEI(이론상 최선 대비) 상위{cfg.headline_k}%: "
+          f"{t['model']['pei'][key]:.1%}  (PAI {t['model']['pai'][key]:.2f} / "
+          f"도달가능 최대 {t['model']['pai_max'][key]:.2f})")
+    c = t["calibration"]
+    print(f"  캘리브레이션: 실제 {c['total_actual']:.0f}건 vs 예측 {c['total_predicted']:.0f}건 "
+          f"(비율 {c['total_ratio']:.2f}) — 값 자체를 인력 배분에 쓸 수 있는가의 척도")
+    if "equity_summary" in t:
+        es = t["equity_summary"]
+        print(f"  형평성: 점검/위험 비율 {es['inspection_vs_risk_min']:.2f}~"
+              f"{es['inspection_vs_risk_max']:.2f}"
+              + (f", 상대적 소외 {es['underserved']}" if es.get("underserved") else ", 편중 없음"))
+    if "recapture" in t:
+        rc = t["recapture"]
+        print(f"  재발: 작년 화재 격자({rc['share_of_grids']:.0%})가 올해 화재의 "
+              f"{rc['share_of_curr_fires_in_prev_grids']:.0%}를 담는다 "
+              f"— 베이스라인이 센 이유")
 
     out = cfg.paths.outputs / "evaluation.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=float),

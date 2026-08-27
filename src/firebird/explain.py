@@ -22,6 +22,8 @@ FEATURE_LABELS = {
     "neigh_fires_lag1": "주변 격자 작년 화재(전파)",
     "neigh_fires_cum": "주변 격자 누적 화재(전파)",
     "target_total": "특정소방대상물 수",
+    "usage_total": "특정소방대상물 수",
+    "fac_total": "소방시설 설치대상 수",
     "biz_total": "다중이용업소 수",
     "n_hydrant": "소화전 수",
     "dist_hydrant_m": "최근접 소화전 거리",
