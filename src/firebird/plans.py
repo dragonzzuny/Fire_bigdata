@@ -450,6 +450,13 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
             f"- 이동거리는 "
             f"{'실제 도로 주행거리' if plan['distance_source'] == 'osrm' else '직선거리 환산값'}"
             f"이며 교통 상황에 따라 달라질 수 있습니다."]
+    forms = getattr(mode, "official_forms", ()) or ()
+    if forms:
+        out += ["", "**아. 관련 법정 서식**", "",
+                "   순찰 결과 조치가 필요한 경우 아래 법정 서식을 사용합니다."
+                " (「화재의 예방 및 안전관리에 관한 법률 시행규칙」 별지)", ""]
+        for f in forms:
+            out.append(f"   - {f}")
     out += _doc_footer(meta, ["순찰 대상 격자 목록", "관서별 순찰 동선도"])
     return "\n".join(out)
 

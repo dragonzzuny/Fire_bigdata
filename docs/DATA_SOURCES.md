@@ -36,3 +36,29 @@
 | 계절·기상 보조 | 기상청 API 허브 https://apihub.kma.go.kr | 선택 |
 
 키는 저장소에 넣지 않는다. `.env` 에 `KAKAO_REST_API_KEY=...` 로 둔다 (.gitignore 처리됨).
+
+
+## 소방 법령 및 법정 서식 (국가법령정보센터)
+
+`scripts/` 실행 시 자동으로 수집·캐시된다. 별도 신청 없이 `OC=test` 로 조회된다.
+
+| 항목 | 수량 | 저장 위치 |
+|---|---|---|
+| 법령 조문 | 7개 법령 457개 조문 | `data/cache/law_articles.parquet` |
+| 별표·서식 목록 | 68건 | `data/cache/law_forms.parquet` |
+| 법정 서식 파일(HWP) | 39건 | `data/processed/forms/` |
+
+수집 명령:
+
+```python
+from firebird.config import load_config
+from firebird import lawdata as LW
+cfg = load_config()
+LW.collect(cfg)                                   # 조문
+forms = LW.collect_forms(cfg)                     # 별표·서식 목록
+LW.download_forms(cfg, forms)                     # HWP 내려받기
+```
+
+주의: 본문 조회는 `MST`(법령일련번호) 파라미터로만 된다. 검색 결과의 `ID` 를 그대로
+넣으면 "일치하는 법령이 없습니다"가 돌아온다. 또 검색어에 공백이 있으면 다른 법령이
+1순위로 오므로 공백을 제거해 질의한다.

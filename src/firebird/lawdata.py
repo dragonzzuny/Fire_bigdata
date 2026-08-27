@@ -147,3 +147,107 @@ def collect(cfg, laws: list[str] | None = None, *, oc: str = "test",
         cache.parent.mkdir(parents=True, exist_ok=True)
         df.to_parquet(cache, index=False)
     return df
+
+
+# ---------------------------------------------------------------- 법정 서식
+
+FORM_DIR_NAME = "forms"
+
+
+def _tag(block: str, tag: str) -> str:
+    m = re.search(rf"<{tag}>(.*?)</{tag}>", block, re.S)
+    return _clean(m.group(1)) if m else ""
+
+
+def list_forms(mst: str, law_name: str, *, oc: str = "test",
+               timeout: int = 90) -> list[dict]:
+    """법령의 별표·서식 목록과 HWP/PDF 내려받기 링크.
+
+    계획서를 우리 마음대로 만들면 결재에서 되돌아온다. 법정 서식이 있는 업무는
+    그 서식을 써야 한다. 서식 파일 링크가 응답에 들어 있어 그대로 받을 수 있다.
+    """
+    try:
+        r = requests.get(SERVICE_URL, timeout=timeout,
+                         params={"OC": oc, "target": "law", "type": "XML", "MST": mst})
+        r.raise_for_status()
+        t = r.text
+    except requests.RequestException as exc:
+        log.warning("별표·서식 조회 실패(%s): %s", law_name, exc)
+        return []
+
+    out = []
+    for block in re.findall(r"<별표단위[^>]*>(.*?)</별표단위>", t, re.S):
+        hwp = _tag(block, "별표서식파일링크")
+        pdf = _tag(block, "별표서식PDF파일링크")
+        if not (hwp or pdf):
+            continue
+        out.append({
+            "law": law_name,
+            "kind": _tag(block, "별표구분"),
+            "no": _tag(block, "별표번호").lstrip("0") or "0",
+            "title": _tag(block, "별표제목"),
+            "hwp_url": f"https://www.law.go.kr{hwp}" if hwp else "",
+            "pdf_url": f"https://www.law.go.kr{pdf}" if pdf else "",
+            "hwp_name": _tag(block, "별표HWP파일명"),
+        })
+    return out
+
+
+def collect_forms(cfg, laws: list[str] | None = None, *, oc: str = "test",
+                  refresh: bool = False) -> pd.DataFrame:
+    """모든 대상 법령의 별표·서식 목록."""
+    cache = cfg.paths.cache / "law_forms.parquet"
+    if cache.exists() and not refresh:
+        return pd.read_parquet(cache)
+    rows: list[dict] = []
+    for name in (laws or FIRE_LAWS):
+        found = search_law(name, oc=oc)
+        if not found:
+            continue
+        got = list_forms(found["mst"], found["name"], oc=oc)
+        log.info("%s — 별표·서식 %d개", found["name"], len(got))
+        rows += got
+        time.sleep(0.4)
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(cache, index=False)
+    return df
+
+
+def download_forms(cfg, forms: pd.DataFrame, *, only_forms: bool = True,
+                   limit: int | None = None, timeout: int = 90) -> pd.DataFrame:
+    """서식 파일을 내려받아 저장한다.
+
+    only_forms=True 면 '별표'(기준표)는 건너뛰고 '서식'(작성 양식)만 받는다.
+    실제로 담당자가 채워 넣는 것은 서식이다.
+    """
+    if forms.empty:
+        return forms
+    target = forms[forms["kind"] == "서식"] if only_forms else forms
+    if limit:
+        target = target.head(limit)
+
+    out_dir = cfg.paths.processed / FORM_DIR_NAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for r in target.itertuples():
+        safe = re.sub(r"[^\w가-힣ㆍ()\-]+", "_", f"{r.law}_{r.kind}{r.no}_{r.title}")[:120]
+        path = out_dir / f"{safe}.hwp"
+        if path.exists():
+            saved.append({"title": r.title, "path": str(path), "status": "캐시"})
+            continue
+        url = r.hwp_url or r.pdf_url
+        if not url:
+            continue
+        try:
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            path.write_bytes(resp.content)
+            saved.append({"title": r.title, "path": str(path),
+                          "status": f"{len(resp.content)/1024:.0f} KB"})
+        except requests.RequestException as exc:
+            log.warning("서식 내려받기 실패 %s: %s", r.title, exc)
+            saved.append({"title": r.title, "path": "", "status": f"실패: {exc}"})
+        time.sleep(0.25)
+    return pd.DataFrame(saved)

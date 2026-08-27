@@ -38,3 +38,6 @@ __pycache__/
 
 # --- OS ---
 .DS_Store
+
+# 법정 서식 원본(hwp) — 국가법령정보센터에서 재다운로드 가능
+data/processed/forms/
