@@ -103,3 +103,47 @@ class TestFeatureSelection(unittest.TestCase):
         df = pd.DataFrame({"fires": [1.0], "pred": [0.5], "risk_score": [90.0],
                            "rank": [1], "percentile": [2.0], "fires_lag1": [0.0]})
         self.assertEqual(F.feature_columns(df), ["fires_lag1"])
+
+
+class TestFireSourceSelection(unittest.TestCase):
+    """같은 연도가 두 원본 파일에 있으면 하나만 남아야 한다.
+
+    라벨이 두 배가 되면 그 뒤의 모든 수치가 무의미해진다.
+    """
+
+    def setUp(self):
+        from firebird import dataset as D
+        self.D = D
+
+    def test_overlapping_years_are_collapsed(self):
+        fires = pd.DataFrame({
+            "year": [2019, 2019, 2019, 2019],
+            "_source_file": ["a_0000.csv", "a_0000.csv", "b_2021.csv", "b_2021.csv"],
+            "has_time": [True, True, False, False],
+        })
+        kept, decisions = self.D.select_fire_source_per_year(fires)
+        self.assertEqual(len(kept), 2)
+        self.assertEqual(set(kept["_source_file"]), {"a_0000.csv"})   # 시각 있는 쪽
+        self.assertIn(2019, decisions)
+        self.assertEqual(decisions[2019]["picked"], "a_0000.csv")
+
+    def test_non_overlapping_years_are_both_kept(self):
+        """울산처럼 기간이 겹치지 않으면 두 파일 다 살아야 한다."""
+        fires = pd.DataFrame({
+            "year": [2020, 2020, 2021, 2021],
+            "_source_file": ["a_0000.csv", "a_0000.csv", "b_2021.csv", "b_2021.csv"],
+            "has_time": [True, True, False, False],
+        })
+        kept, decisions = self.D.select_fire_source_per_year(fires)
+        self.assertEqual(len(kept), 4)
+        self.assertEqual(decisions, {})
+
+    def test_tie_on_time_rate_prefers_more_rows(self):
+        fires = pd.DataFrame({
+            "year": [2018] * 5,
+            "_source_file": ["a.csv", "a.csv", "a.csv", "b.csv", "b.csv"],
+            "has_time": [False] * 5,
+        })
+        kept, _ = self.D.select_fire_source_per_year(fires)
+        self.assertEqual(set(kept["_source_file"]), {"a.csv"})
+        self.assertEqual(len(kept), 3)

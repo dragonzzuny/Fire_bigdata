@@ -25,22 +25,22 @@ log = logging.getLogger("geocode")
 
 
 def collect_keys(cfg, city: str) -> list[str]:
-    default_sido = cfg.city(city)["label"]
+    """이 도시가 필요로 하는 모든 정밀도의 지오코딩 키."""
+    label = cfg.city(city)["label"]
     keys: list[str] = []
-    for kind in ("fire", "target", "business", "hydrant", "inspection"):
+    for kind in ("fire", "target", "business", "hydrant"):
         try:
             df = load_dataset(cfg, city, kind)
         except (FileNotFoundError, KeyError) as exc:
             log.warning("[%s/%s] 건너뜀: %s", city, kind, str(exc).splitlines()[0])
             continue
-        if "address" not in df.columns:
-            continue
-        keyed = addresses.add_address_columns(df, "address", default_sido)
-        got = keyed["geo_key"]
-        n_empty = int((got == "").sum())
-        log.info("[%s/%s] %d행 -> 키 %d개(고유 %d), 도로 추출 실패 %d행",
-                 city, kind, len(df), len(got) - n_empty, got[got != ""].nunique(), n_empty)
-        keys += got[got != ""].tolist()
+        keyed = addresses.build_keys(df, label)
+        got = addresses.all_keys(keyed)
+        n_road = int((keyed["key_road"] != "").sum()) if "key_road" in keyed else 0
+        log.info("[%s/%s] %d행 -> 고유키 %d개 (도로명 보유 %d행 = %.0f%%)",
+                 city, kind, len(df), len(got), n_road,
+                 (n_road / len(df) * 100) if len(df) else 0)
+        keys += got
     return keys
 
 

@@ -148,7 +148,7 @@ NON_FEATURE_COLUMNS = {
 #: 학습행에 섞이는 것이므로, 시간분할 검증을 '미래에 안전하다'고 말하려면
 #: 이 피처들을 뺀 결과도 함께 봐야 한다. 데이터로는 못 없애는 한계이므로
 #: 숨기는 대신 측정한다 (scripts/04_train_eval.py 의 [1b]).
-SNAPSHOT_FEATURE_PREFIXES = ("target_", "biz_")
+SNAPSHOT_FEATURE_PREFIXES = ("target_", "biz_", "usage_", "fac_")
 SNAPSHOT_FEATURE_NAMES = {"n_hydrant", "dist_hydrant_m"}
 
 

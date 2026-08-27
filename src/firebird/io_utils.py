@@ -129,15 +129,32 @@ def load_dataset(cfg, city: str, kind: str) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     for path in files:
         df = read_csv_any(path)
+        # 플랫폼 CSV 의 첫 컬럼에는 BOM 이 붙어 오고, 값에는 자리맞춤 공백이 붙어 온다.
+        df.columns = [str(c).replace("\ufeff", "").strip() for c in df.columns]
         ctx = f"{city}/{kind}/{path.name}"
         cols = resolve_columns(df, spec.get("required", {}), required=True, context=ctx)
         cols |= resolve_columns(df, spec.get("optional", {}), required=False, context=ctx)
         sub = df[list(cols.values())].copy()
         sub.columns = list(cols.keys())
+        sub = strip_object_columns(sub)
         sub["_source_file"] = path.name
         frames.append(sub)
         log.info("%s: %d행 %d컬럼", ctx, len(sub), len(cols))
 
     out = pd.concat(frames, ignore_index=True, sort=False)
     out["city"] = city
+    return out
+
+
+def strip_object_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """문자열 컬럼의 앞뒤 공백을 떼고 빈 문자열을 결측으로 바꾼다.
+
+    원본은 고정폭으로 채워져 있어 '울산 ' 과 '울산' 이 다른 값이 된다.
+    이걸 그대로 두면 격자 집계가 조용히 두 갈래로 갈라진다.
+    """
+    out = df.copy()
+    for col in out.columns:
+        if out[col].dtype == object:
+            cleaned = out[col].astype(str).str.strip()
+            out[col] = cleaned.mask(cleaned.isin(["", "nan", "None", "NaN"]), pd.NA)
     return out

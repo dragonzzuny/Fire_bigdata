@@ -21,10 +21,15 @@ cities:
     label: 울산광역시
     raw_subdir: ulsan
     role: primary            # 학습·검증 1차 데이터
+    # 원본 좌표 검증용 경계. 이 밖의 좌표는 버리고 주소 지오코딩으로 대체한다.
+    # 세종 소방용수시설 좌표가 실제로 경북 방향(lat 35.5 / lon 128.5)을 가리켜서
+    # 넣은 장치다. 좌표가 '있다'와 '맞다'는 다른 문제다.
+    bbox: {lat_min: 35.25, lat_max: 35.80, lon_min: 128.90, lon_max: 129.55}
   sejong:
     label: 세종특별자치시
     raw_subdir: sejong
     role: transfer           # 도시 이식 검증
+    bbox: {lat_min: 36.35, lat_max: 36.80, lon_min: 127.00, lon_max: 127.45}
 
 years:
   # 화재발생현황 라벨 범위 (기획서 3.활용데이터: 2014~2021)

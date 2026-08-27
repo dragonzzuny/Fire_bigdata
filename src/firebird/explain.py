@@ -31,7 +31,8 @@ FEATURE_LABELS = {
 def label_of(feature: str) -> str:
     if feature in FEATURE_LABELS:
         return FEATURE_LABELS[feature]
-    for prefix, kor in (("target_n_", "특정소방대상물 "), ("target_share_", "대상물 비율 "),
+    for prefix, kor in (("usage_n_", "대상물 용도 "), ("usage_share_", "대상물 용도비율 "),
+                        ("fac_n_", "소방시설 "), ("fac_share_", "소방시설 비율 "),
                         ("biz_n_", "다중이용업소 "), ("biz_share_", "업소 비율 ")):
         if feature.startswith(prefix):
             return kor + feature[len(prefix):]
