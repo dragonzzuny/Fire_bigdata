@@ -235,6 +235,15 @@ src/firebird/
   llm.py           Ollama 점검계획서 (실패 시 규칙기반 폴백)
   hydrant.py       소화전 사각지대, 화재 급증 경보
   patrol.py        시간대·요일 프로파일, 순찰 동선(최근접 + 2-opt)
+  patrol_modes.py  순찰 목적별 유형 6종(일반/야간업소/강화지구/피난약자/용수/건조기)
+  routing.py       도로 거리행렬(OSRM), 구역 분할, TSP 휴리스틱(2-opt+Or-opt),
+                   관서 출발·복귀 왕복 경로, 근무시간 제약 회차 분할
+  stations.py      소방서·119안전센터 위치(카카오 키워드 검색), 출동관서 배정
+  monthly.py       월 위험계수(계절지수 x 기상), 월별 계획
+  weather.py       기상청 API 허브 일자료, 실효습도(건조주의보 기준) 산출
+  lawdata.py       국가법령정보센터 조문 수집(7개 법령 457개 조문)
+  assistant.py     법령·업무규칙·분석결과 BM25 색인, 근거 제시형 질의응답
+  plans.py         일별/월별/연간 순찰계획서 생성(법령 근거 자동 첨부)
   operations.py    가용 인력 제약 하 점검 배분(배낭), 경로 개선
   resolution.py    주소 해상도 정직성 검사(동 중심점 뭉침의 영향 측정)
 scripts/           01~07 단계별 실행 + run_all.sh (06 그림, 07 발표자료)

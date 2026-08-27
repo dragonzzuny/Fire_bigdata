@@ -19,6 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from datetime import date  # noqa: E402
+
 import joblib  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -27,7 +29,8 @@ import streamlit as st  # noqa: E402
 
 from firebird import dataset as D, evaluate as E, explain as X, grid as G, \
     hydrant as H, llm as L, model as M, operations as OP, patrol as P, \
-    monthly as MO, patrol_modes as PM, routing as RT, rules as R  # noqa: E402
+    monthly as MO, patrol_modes as PM, plans as PLN, routing as RT, rules as R, \
+    assistant as AS, lawdata as LW, stations as ST  # noqa: E402
 from firebird.config import load_config  # noqa: E402
 
 st.set_page_config(page_title="불씨예보 K-Firebird", page_icon="🔥", layout="wide")
@@ -92,6 +95,28 @@ def get_month_fit(city: str) -> dict:
         return {}
     mf = MO.fires_by_month(fires, cfg.year_min, cfg.year_max)
     return MO.fit_month_risk(mf, get_weather(city))
+
+
+@st.cache_data(show_spinner="소방 법령 불러오는 중…")
+def get_law_articles() -> pd.DataFrame:
+    try:
+        return LW.collect(get_config())
+    except Exception:                                   # noqa: BLE001
+        return pd.DataFrame()
+
+
+@st.cache_data(show_spinner="관서 위치 확인 중…")
+def get_stations(city: str, year: int, level: str) -> pd.DataFrame:
+    cfg = get_config()
+    return ST.station_table(scored(city, year), cfg, level=level,
+                            city_label=cfg.city(city)["label"])
+
+
+@st.cache_resource(show_spinner="업무 자료 색인 중…")
+def get_index(city: str, year: int):
+    cfg = get_config()
+    return AS.build_index(get_law_articles(), scored(city, year),
+                          city_label=cfg.city(city)["label"], year=year)
 
 
 @st.cache_data
@@ -197,7 +222,7 @@ if man:
                        f"· 좌표 확보 {cov.get('rate',0):.1%}")
 
 tabs = st.tabs(["예방점검 배분", "위험요인·점검계획서", "예방순찰 계획",
-                "대응취약 구역", "모델 검증"])
+                "순찰·점검 계획서", "대응취약 구역", "모델 검증", "업무 도우미"])
 
 
 # ================================================================== ① 배분
@@ -307,15 +332,15 @@ with tabs[1]:
 
         with right:
             st.markdown("**점검계획서 초안**")
-            backends = L.available_backends(cfg)
-            real = [b for b in backends if b != "rule_based"]
-            st.caption("생성 방식: " + (f"{real[0]}" if real else "규칙 기반"))
+            ai_on = L.is_available(cfg)
+            st.caption("AI 문서 작성 " + ("사용 가능" if ai_on else "미연결 — 표준 서식으로 작성됩니다"))
             if st.button("계획서 작성", type="primary"):
                 risk = {"score_0_100": float(row["위험점수"]), "rank": int(row["순위"]),
                         "percentile": float(row["상위%"])}
                 with st.spinner("작성 중입니다…"):
                     plan = L.inspection_plan(cfg, str(gid), risk, drivers, checklist)
-                st.caption(f"작성 경로: `{plan['source']}`")
+                st.caption("AI 작성" if str(plan["source"]).startswith(("cli", "api", "ollama"))
+                           else "표준 서식 작성")
                 st.markdown(plan["text"])
                 st.download_button("계획서 내려받기", plan["text"].encode("utf-8"),
                                    file_name=f"점검계획서_{gid}.md")
@@ -325,94 +350,111 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("예방순찰 계획")
 
-    c1, c2, c3 = st.columns([2, 1, 1])
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
     mode_key = c1.selectbox(
-        "순찰 목적", list(PM.MODES),
-        format_func=lambda k: PM.MODES[k].label,
+        "순찰 목적", list(PM.MODES), format_func=lambda k: PM.MODES[k].label,
         help="목적이 다르면 가야 할 곳도, 시간도, 볼 것도 다릅니다.")
     mode = PM.MODES[mode_key]
-    n_teams = c2.number_input("동시 순찰 팀 수", 1, 12, 2,
-                              help="팀 수만큼 구역을 나눠 서로 겹치지 않게 배분합니다.")
-    n_grids = c3.number_input("순찰 격자 수", 4, 60, mode.default_k)
-
+    level = c2.selectbox("출동 단위", ["center", "station"],
+                         format_func=lambda x: "119안전센터" if x == "center" else "소방서")
+    n_grids = c3.number_input("순찰 격자 수", 4, 80, mode.default_k)
+    budget = c4.number_input("1회 순찰 시간(분)", 0, 240, 60,
+                             help="0이면 제한 없음. 초과하면 회차를 나눕니다.")
     st.caption(mode.purpose)
 
-    r1, r2 = st.columns([3, 1])
-    sgg_all = sorted(x for x in cur.get("sgg", pd.Series(dtype=str)).unique() if str(x).strip())
-    pick_sgg = r1.multiselect("순찰 관할 (여러 개 선택 가능 · 비우면 전체)", sgg_all,
-                              default=[sgg] if sgg != "전체" and sgg in sgg_all else [])
-    use_road = r2.toggle("도로 기준 거리", value=True,
-                         help="끄면 직선거리 × 우회계수로 계산합니다(빠르지만 부정확).")
-    respect = r2.toggle("관할 경계 존중", value=False,
-                        help="켜면 한 팀이 두 관할에 걸치지 않게 배정합니다.")
+    r1, r2, r3 = st.columns([3, 1, 1])
+    admin_level = r2.selectbox("지역 단위", ["emd", "sgg", "station", "center"],
+                               format_func=lambda x: dict(D.ADMIN_LEVELS)[x])
+    opts = sorted(x for x in cur.get(admin_level, pd.Series(dtype=str)).unique()
+                  if str(x).strip())
+    pick = r1.multiselect(f"{dict(D.ADMIN_LEVELS)[admin_level]} 선택 (비우면 전체)", opts)
+    use_road = r3.toggle("도로 기준", value=True)
+    st.session_state["patrol_mode_key"] = mode_key
 
-    targets = PM.select_targets(cur, mode, int(n_grids), sgg=pick_sgg or None)
+    scope = cur if not pick else cur[cur[admin_level].astype(str).isin(pick)]
+    targets = PM.select_targets(scope, mode, int(n_grids))
+
     if targets.empty:
-        st.info("선택한 관할에 순찰 대상 격자가 없습니다.")
+        st.info("선택한 지역에 순찰 대상 격자가 없습니다.")
     else:
+        stations = get_stations(city, year, level)
+        targets = ST.assign_dispatch(targets, stations, level=level)
         hours = PM.recommended_hours(mode, get_fires(city))
+
+        with st.spinner("관서 출발 동선 계산 중…"):
+            plan = RT.plan_from_stations(targets, stations, level=level,
+                                         use_road=use_road, budget_min=float(budget))
+        st.session_state["patrol_plan"] = plan
+        st.session_state["patrol_targets"] = targets
+
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("순찰 대상", f"{len(targets):,}격자")
         m2.metric("권장 시간대", f"{hours[0]:02d}–{hours[1]:02d}시")
-        m3.metric("순찰 팀", f"{int(n_teams)}개")
+        m3.metric("출동 관서", f"{targets['출동관서'].nunique()}개")
+        m4.metric("총 이동", f"{plan['total_km']:.1f} km",
+                  f"최장 {plan['max_team_km']:.1f} km", delta_color="off")
 
-        with st.spinner("도로 경로 계산 중…" if use_road else "경로 계산 중…"):
-            plan = RT.plan_patrol(targets, int(n_teams), use_road=use_road,
-                                  weight_col="순찰점수", respect_groups=respect)
-        m4.metric("최장 팀 이동", f"{plan['max_team_km']:.1f} km",
-                  f"총 {plan['total_km']:.1f} km", delta_color="off")
+        st.caption("거리 기준: " + ("실제 도로 주행거리 (OSRM)"
+                                 if plan["distance_source"] == "osrm"
+                                 else "직선거리 × 우회계수 1.35 (도로망 서버 미응답)")
+                   + " · 동선은 관서에서 출발해 관서로 복귀합니다.")
 
-        src = ("실제 도로 주행거리 (OSRM)" if plan["distance_source"] == "osrm"
-               else "직선거리 × 우회계수 1.35 (도로망 서버 응답 없음)")
-        st.caption(f"거리 기준: {src}")
+        if plan["summary"].empty:
+            st.warning("관서 좌표를 확인하지 못해 동선을 만들지 못했습니다.")
+        else:
+            st.markdown("**관서별 순찰 구역**")
+            st.dataframe(plan["summary"], hide_index=True, width='stretch')
 
-        if respect and len(sgg_all) > int(n_teams):
-            st.info(f"관할이 {len(sgg_all)}개인데 팀이 {int(n_teams)}개라 "
-                    f"일부 팀은 여러 관할을 맡습니다. 팀을 늘리면 해소됩니다.")
+            palette = [[227, 74, 51], [43, 108, 176], [47, 158, 110], [200, 120, 20],
+                       [130, 70, 180], [20, 150, 160], [180, 60, 120], [90, 110, 40],
+                       [230, 160, 40], [70, 70, 200], [160, 40, 40], [40, 160, 90]]
+            layers, depots = [], []
+            for i, r in enumerate(plan["routes"]):
+                col = palette[i % len(palette)]
+                dep = r.attrs.get("depot", {})
+                path = ([[dep.get("lon"), dep.get("lat")]] if dep else []) \
+                    + r[["lon", "lat"]].astype(float).values.tolist() \
+                    + ([[dep.get("lon"), dep.get("lat")]] if dep else [])
+                layers.append(pdk.Layer("PathLayer", [{"path": path}], get_path="path",
+                                        get_width=45, get_color=col, width_min_pixels=3))
+                layers.append(pdk.Layer("ScatterplotLayer", r, get_position=["lon", "lat"],
+                                        get_radius=180, get_fill_color=col + [200],
+                                        pickable=True))
+                if dep:
+                    depots.append({"lon": dep["lon"], "lat": dep["lat"],
+                                   "name": dep.get("name", "")})
+            if depots:
+                layers.append(pdk.Layer("ScatterplotLayer", pd.DataFrame(depots),
+                                        get_position=["lon", "lat"], get_radius=330,
+                                        get_fill_color=[20, 20, 20, 230], pickable=True))
+            st.pydeck_chart(deck(layers, targets))
+            st.caption("검은 점 = 출동 관서 · 색깔 = 관서별 순찰 동선")
 
-        st.markdown("**팀별 순찰 구역**")
-        st.dataframe(plan["summary"], hide_index=True, width='stretch')
-
-        # 팀별 색으로 구분한 지도
-        palette = [[227, 74, 51], [43, 108, 176], [47, 158, 110], [200, 120, 20],
-                   [130, 70, 180], [20, 150, 160], [180, 60, 120], [90, 110, 40],
-                   [230, 160, 40], [70, 70, 200], [160, 40, 40], [40, 160, 90]]
-        layers = []
-        for i, r in enumerate(plan["routes"]):
-            col = palette[i % len(palette)]
-            layers.append(pdk.Layer(
-                "PathLayer", [{"path": r[["lon", "lat"]].astype(float).values.tolist()}],
-                get_path="path", get_width=50, get_color=col, width_min_pixels=3))
-            layers.append(pdk.Layer(
-                "ScatterplotLayer", r.assign(팀=i + 1),
-                get_position=["lon", "lat"], get_radius=190,
-                get_fill_color=col + [200], pickable=True))
-        st.pydeck_chart(deck(layers, targets))
-
-        team_pick = st.selectbox("상세 경로", [f"{i+1}팀" for i in range(len(plan["routes"]))])
-        r = plan["routes"][int(team_pick[0]) - 1] if plan["routes"] else pd.DataFrame()
-        if not r.empty:
-            cols = [c for c in ["순번", "grid_id", "sgg", "순찰점수", "이동거리_m",
-                                "누적거리_m", "이동시간_분", "누적시간_분"] if c in r.columns]
-            st.dataframe(r[cols].rename(columns={"grid_id": "격자", "sgg": "관할"}),
+            names = [f"{r.attrs.get('depot', {}).get('name', '')} "
+                     f"{int(r['회차'].iloc[0]) if '회차' in r else 1}회차"
+                     for r in plan["routes"]]
+            sel = st.selectbox("상세 동선", names)
+            r = plan["routes"][names.index(sel)]
+            cols = [c for c in ["순번", "grid_id", "emd", "sgg", "순찰점수",
+                                "이동거리_m", "누적거리_m", "이동시간_분", "누적시간_분"]
+                    if c in r.columns]
+            st.dataframe(r[cols].rename(columns={"grid_id": "격자", "emd": "읍면동",
+                                                 "sgg": "시군구"}),
                          hide_index=True, width='stretch')
-            st.download_button(
-                f"{team_pick} 순찰 계획 (CSV)",
-                r[cols].to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"순찰_{mode.key}_{team_pick}_{city}_{year}.csv")
 
-        with st.expander(f"{mode.label} — 현장 중점 확인 항목", expanded=True):
+        with st.expander(f"{mode.label} — 현장 중점 확인 항목", expanded=False):
             for chk in mode.checks:
                 st.checkbox(chk, key=f"{mode.key}_{chk}")
 
     st.divider()
-    st.markdown("### 월별 순찰 강도 — 언제 더 돌아야 하는가")
+    st.markdown("### 월별 순찰 강도")
     fit = get_month_fit(city)
     wx = get_weather(city)
     if not fit:
         st.caption("화재 이력 자료가 없어 월별 분석을 표시할 수 없습니다.")
     else:
         plan_m = MO.monthly_plan(cur, "pred", fit, wx, year=year)
+        st.session_state["month_plan"] = plan_m
         if not plan_m.empty:
             k1, k2, k3 = st.columns(3)
             hi = plan_m.loc[plan_m["위험계수"].idxmax()]
@@ -423,40 +465,74 @@ with tabs[2]:
             if fit.get("uses_weather"):
                 k3.metric("기상 반영 설명력", f"{fit['weather_r2']:.2f}",
                           f"계절만 쓸 때 {fit['baseline_r2']:.2f}",
-                          help="월별 화재 변동을 얼마나 설명하는가(R²). "
-                               "습도·건조일수를 넣으면 설명력이 올라갑니다.")
-            else:
-                k3.metric("기상 반영", "미채택",
-                          help="기상을 넣어도 설명력이 늘지 않아 계절 패턴만 사용합니다.")
-
+                          help="월별 화재 변동을 얼마나 설명하는가(R²).")
             st.bar_chart(plan_m.set_index("월")["위험계수"])
-            show = [c for c in ["월", "위험계수", "등급", "예상화재_건",
-                                "humidity_mean", "eh_mean", "dry_days", "wind_mean"]
-                    if c in plan_m.columns]
+            show = [c for c in ["월", "위험계수", "등급", "예상화재_건", "humidity_mean",
+                                "eh_mean", "dry_days", "wind_mean"] if c in plan_m.columns]
             st.dataframe(plan_m[show].rename(columns={
                 "humidity_mean": "평균습도(%)", "eh_mean": "실효습도(%)",
                 "dry_days": "건조일수", "wind_mean": "평균풍속(m/s)"}),
                 hide_index=True, width='stretch')
-            st.caption("위험계수 1.0 = 연평균 수준. 실효습도는 건조주의보 발표 기준값으로, "
-                       "여러 날의 습도를 누적해 계산합니다(기상청 공식, 감쇠계수 0.7). "
-                       "격자 순위 × 월 위험계수 = 그 달 그 격자의 위험도.")
+            st.caption("위험계수 1.0 = 연평균 수준. 실효습도는 건조주의보 발표 기준값입니다.")
 
     st.divider()
     fires = get_fires(city)
-    if fires.empty:
-        st.caption("화재 이력 자료가 없어 시간대 분석을 표시할 수 없습니다.")
-    else:
-        with_time = int(fires["hour"].notna().sum()) if "hour" in fires else 0
+    if not fires.empty:
         st.markdown("**화재 발생 시간대 분포**")
-        st.caption(f"발생 시각이 기록된 화재 {with_time:,}건 기준 "
-                   f"(2021년 자료는 시각이 누락되어 제외)")
         cc1, cc2 = st.columns(2)
         cc1.bar_chart(P.hour_profile(fires).set_index("hour")["n"])
         cc2.bar_chart(P.weekday_profile(fires).set_index("요일")["n"])
 
 
-# ================================================================== ④ 대응취약
+# ================================================================== ④ 계획서
 with tabs[3]:
+    st.subheader("순찰·점검 계획서 생성")
+    st.caption("동선·중점 확인사항·법령 근거가 들어간 결재용 문서를 만듭니다. "
+               "숫자와 법령은 시스템이 확정하고, AI는 문장만 다듬습니다.")
+
+    plan = st.session_state.get("patrol_plan")
+    targets = st.session_state.get("patrol_targets")
+    if plan is None or targets is None:
+        st.info("먼저 **예방순찰 계획** 탭에서 순찰 조건을 설정하십시오.")
+    else:
+        g1, g2, g3 = st.columns([1, 1, 2])
+        kind = g1.radio("계획 종류", ["일별", "월별", "연간"], horizontal=False)
+        plan_date = g2.date_input("기준일", value=date.today())
+        polish = g3.toggle("AI로 문체 다듬기", value=L.is_available(cfg),
+                           disabled=not L.is_available(cfg),
+                           help="숫자·동선·법령 조문은 바뀌지 않습니다.")
+
+        mode = PM.MODES[st.session_state.get("patrol_mode_key", "general")]
+        ctx = PLN.PlanContext(
+            city_label=cfg.city(city)["label"], year=int(year), mode=mode,
+            targets=targets, routes=plan["routes"], summary=plan["summary"],
+            distance_source=plan["distance_source"],
+            month_plan=st.session_state.get("month_plan", pd.DataFrame()),
+            law_index=get_index(city, year), fires=get_fires(city))
+
+        if st.button("계획서 생성", type="primary"):
+            with st.spinner("계획서 작성 중…"):
+                if kind == "일별":
+                    doc = PLN.daily_plan(ctx, plan_date)
+                elif kind == "월별":
+                    doc = PLN.monthly_plan(ctx, plan_date.month)
+                else:
+                    doc = PLN.annual_plan(ctx)
+                md = PLN.render(doc, ctx)
+                if polish:
+                    md = PLN.polish(cfg, md)["text"]
+            st.session_state["last_doc"] = md
+
+        md = st.session_state.get("last_doc")
+        if md:
+            st.download_button("계획서 내려받기 (Markdown)", md.encode("utf-8"),
+                               file_name=f"순찰계획서_{kind}_{city}_{plan_date}.md")
+            st.markdown("---")
+            st.markdown(md)
+
+
+# ================================================================== ⑤ 대응취약
+with tabs[4]:
     st.subheader("소방용수 사각지대 및 급증 구역")
     cov = H.hydrant_coverage(cur)
     if not cov.get("available"):
@@ -489,8 +565,8 @@ with tabs[3]:
         st.dataframe(surge, hide_index=True, width='stretch')
 
 
-# ================================================================== ⑤ 검증
-with tabs[4]:
+# ================================================================== ⑥ 검증
+with tabs[5]:
     st.subheader("예측 성능 검증 결과")
     ev = get_evaluation()
     if not ev:
@@ -583,6 +659,63 @@ with tabs[4]:
 | **위험도 상승 요인** | 이 격자의 점수를 무엇이 얼마나 끌어올렸는가 | SHAP |
 | **위험 등급** | 위험도 순으로 10등분한 것. 1등급이 가장 낮고 10등급이 가장 높습니다 | decile |
 """)
+
+# ================================================================== ⑦ 업무 도우미
+with tabs[6]:
+    st.subheader("화재예방 업무 도우미")
+    st.caption("소방 법령, 업종별 점검 항목, 관할 위험 현황을 근거와 함께 찾아 드립니다. "
+               "답변에는 반드시 근거 조문 또는 자료 출처가 함께 표시됩니다.")
+
+    arts = get_law_articles()
+    if arts.empty:
+        st.warning("법령 자료를 불러오지 못했습니다. 네트워크를 확인하십시오. "
+                   "업무규칙과 분석 결과만으로 답변합니다.")
+    else:
+        st.caption(f"수록 법령 {arts['law'].nunique()}종 · 조문 {len(arts):,}개 "
+                   f"(국가법령정보센터) · 업무규칙 · {cfg.city(city)['label']} 분석 결과")
+
+    examples = [
+        "화재예방강화지구는 어떤 지역을 지정하고, 소방관서장은 무엇을 해야 하나요?",
+        "노래연습장 점검할 때 중점적으로 봐야 할 항목은?",
+        "다중이용업소 안전시설등 설치 기준이 어떻게 되나요?",
+        "소방안전관리자를 선임해야 하는 대상물은?",
+        f"{cur['center'].mode().iloc[0] if 'center' in cur and len(cur['center'].mode()) else '삼산119안전센터'} 관할에서 위험이 높은 곳은?",
+    ]
+    pick_ex = st.selectbox("예시 질문", ["(직접 입력)"] + examples)
+    default_q = "" if pick_ex == "(직접 입력)" else pick_ex
+    question = st.text_area("질문", value=default_q, height=80,
+                            placeholder="예) 3급 대상물 자체점검 주기가 어떻게 되나요?")
+
+    col_a, col_b = st.columns([1, 3])
+    ask = col_a.button("질문하기", type="primary")
+    top_k = col_b.slider("참고 자료 수", 3, 10, 5)
+
+    if ask and question.strip():
+        index = get_index(city, year)
+        with st.spinner("자료를 찾고 답변을 작성 중…"):
+            res = AS.answer(cfg, question.strip(), index, top_k=int(top_k))
+        st.session_state["qa_result"] = res
+
+    res = st.session_state.get("qa_result")
+    if res:
+        if res["source_backend"] == "search_only":
+            st.info("AI 답변 생성이 연결되지 않아 관련 자료를 그대로 보여 드립니다.")
+        elif res["source_backend"] == "no_match":
+            st.warning("관련 자료를 찾지 못했습니다.")
+        st.markdown("### 답변")
+        st.markdown(res["answer"])
+
+        if res["sources"]:
+            st.markdown("### 근거 자료")
+            for i, src in enumerate(res["sources"], 1):
+                icon = {"법령": "📘", "업무규칙": "📋", "데이터": "📊"}.get(src["source"], "📄")
+                with st.expander(f"{icon} ({i}) {src['title']}", expanded=(i <= 2)):
+                    if src["ref"]:
+                        st.caption(f"근거: {src['ref']}")
+                    st.write(src["excerpt"])
+        st.caption("법령 원문은 국가법령정보센터(law.go.kr)에서 확인하십시오. "
+                   "본 답변은 업무 참고용이며 법적 효력을 갖지 않습니다.")
+
 
 st.divider()
 st.caption("본 시스템은 공개 데이터 기반 예측 결과이며, 법정 점검주기 및 관할 판단을 "

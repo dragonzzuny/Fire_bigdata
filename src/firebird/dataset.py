@@ -345,6 +345,8 @@ def build_panel(cfg, fires: pd.DataFrame, targets: pd.DataFrame,
     panel = F.attach_static(panel, *tables)
     panel = attach_grid_geometry(panel, cfg)
     panel = attach_sgg(panel, cfg, fires, targets, businesses)
+    # 소방서 · 119안전센터 · 읍면동까지 붙인다. 시군구만으로는 순찰 계획을 못 짠다.
+    panel = attach_admin(panel, fires, targets, businesses, hydrants)
     if "n_hydrant" in panel.columns:
         panel["dist_hydrant_m"] = nearest_hydrant_distance(panel, hydrants, cfg)
     F.assert_no_leakage(panel)
@@ -361,6 +363,74 @@ def attach_grid_geometry(panel: pd.DataFrame, cfg) -> pd.DataFrame:
     centers = grid.grid_centers(panel["grid_id"], cfg)[["grid_id", "lon", "lat"]]
     out = panel.drop(columns=[c for c in ("lon", "lat") if c in panel.columns])
     return out.merge(centers, on="grid_id", how="left")
+
+
+#: 격자에 붙일 행정·관할 단위. 소방 업무의 실제 단위 순서대로.
+#:
+#: 시군구만으로는 계획을 못 짠다 — 울산 남구 하나가 25개 읍면동을 품는다.
+#: 소방에서 실제로 쓰는 단위는 소방서와 119안전센터이고, 행정 협조·통계는
+#: 읍면동 단위로 움직인다. 그래서 넷을 모두 붙인다.
+ADMIN_LEVELS = [
+    ("station", "소방서"),
+    ("center", "119안전센터"),
+    ("sgg", "시군구"),
+    ("emd", "읍면동"),
+]
+
+
+def attach_admin(panel: pd.DataFrame, *sources: pd.DataFrame) -> pd.DataFrame:
+    """격자별 대표 행정·관할 단위를 붙인다 (최빈값).
+
+    한 격자가 두 읍면동에 걸칠 수 있다. 그때는 그 격자에 속한 대상물·업소·화재가
+    가장 많은 쪽을 대표로 삼는다. 경계를 정확히 나누려면 행정동 경계 폴리곤이
+    필요한데 공개 데이터에 없다 — 대표값이라는 사실을 이름으로 남겨 둔다.
+    """
+    out = panel.copy()
+    for col, _label in ADMIN_LEVELS:
+        frames = [s[["grid_id", col]] for s in sources
+                  if s is not None and not s.empty and {"grid_id", col}.issubset(s.columns)]
+        if not frames:
+            if col not in out.columns:
+                out[col] = ""
+            continue
+        allv = pd.concat(frames, ignore_index=True).dropna(subset=["grid_id"])
+        allv[col] = allv[col].fillna("").astype(str).str.strip()
+        allv = allv[allv[col] != ""]
+        if allv.empty:
+            if col not in out.columns:
+                out[col] = ""
+            continue
+        mode = (allv.groupby(["grid_id", col]).size().rename("n").reset_index()
+                    .sort_values(["grid_id", "n"], ascending=[True, False])
+                    .drop_duplicates("grid_id")[["grid_id", col]])
+        out = out.drop(columns=[col], errors="ignore").merge(mode, on="grid_id", how="left")
+        out[col] = out[col].fillna("")
+    return _fill_nearest(out, "center")
+
+
+def _fill_nearest(panel: pd.DataFrame, col: str) -> pd.DataFrame:
+    """비어 있는 관할을 가장 가까운 격자의 값으로 채운다.
+
+    119안전센터는 화재 자료에만 있어서, 그 격자에 화재가 한 번도 없었으면
+    센터를 알 수 없다. 그런데 순찰 계획은 화재가 없던 격자에도 필요하다.
+    센터 관할은 공간적으로 연속하므로 최근접 격자의 값이 합리적인 추정이다.
+    """
+    if col not in panel.columns or "lon" not in panel.columns:
+        return panel
+    out = panel.copy()
+    known = out[(out[col].astype(str).str.strip() != "") & out["lon"].notna()]
+    unknown = out[(out[col].astype(str).str.strip() == "") & out["lon"].notna()]
+    if known.empty or unknown.empty:
+        return out
+
+    ref = known.drop_duplicates("grid_id")
+    kxy = np.column_stack([ref["lon"].astype(float), ref["lat"].astype(float)])
+    kval = ref[col].to_numpy()
+    uxy = np.column_stack([unknown["lon"].astype(float), unknown["lat"].astype(float)])
+    # 격자 수가 많지 않아 전수 비교로 충분하다.
+    idx = np.argmin(((uxy[:, None, :] - kxy[None, :, :]) ** 2).sum(axis=2), axis=1)
+    out.loc[unknown.index, col] = kval[idx]
+    return out
 
 
 def attach_sgg(panel: pd.DataFrame, cfg, *sources: pd.DataFrame) -> pd.DataFrame:
