@@ -1,6 +1,8 @@
 # --- data (플랫폼 원본은 저장소에 넣지 않는다: 용량/재배포 문제) ---
 data/raw/**
-!data/raw/.gitkeep
+!data/raw/
+!data/raw/*/
+!data/raw/**/.gitkeep
 data/interim/**
 !data/interim/.gitkeep
 data/processed/**
