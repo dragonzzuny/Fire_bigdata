@@ -121,6 +121,8 @@ data/raw/sejong/   세종 화재발생현황 / 특정소방대상물 / 다중이
 .venv/bin/python scripts/03_build_dataset.py   # 격자×연도 패널
 .venv/bin/python scripts/04_train_eval.py      # 학습 + 3가지 검증
 .venv/bin/python scripts/05_artifacts.py       # 현장 산출물
+.venv/bin/python scripts/06_figures.py        # 발표용 그림 (실측값에서만)
+.venv/bin/python scripts/07_deck.py           # 발표자료 PPTX
 ```
 
 ### 3) 대시보드
@@ -232,8 +234,10 @@ src/firebird/
   rules.py         업종·등급·현장여건별 점검 체크리스트
   llm.py           Ollama 점검계획서 (실패 시 규칙기반 폴백)
   hydrant.py       소화전 사각지대, 화재 급증 경보
-  patrol.py        시간대·요일 프로파일, 최근접 순찰 동선
-scripts/           01~05 단계별 실행 + run_all.sh
+  patrol.py        시간대·요일 프로파일, 순찰 동선(최근접 + 2-opt)
+  operations.py    가용 인력 제약 하 점검 배분(배낭), 경로 개선
+  resolution.py    주소 해상도 정직성 검사(동 중심점 뭉침의 영향 측정)
+scripts/           01~07 단계별 실행 + run_all.sh (06 그림, 07 발표자료)
 app/               Streamlit 4화면 대시보드
 tests_firebird/    단위 + 통합 + 스크립트 스모크 테스트
 docs/              DATA_SOURCES.md (원본 링크), DATA_REALITY.md (원본 실측 vs 기획서 가정),
