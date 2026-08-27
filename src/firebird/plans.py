@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import logging
+import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -58,26 +60,36 @@ def _hangul_ordinal(i: int) -> str:
 
 
 def _doc_header(meta: DocMeta, title: str, basis: list[str]) -> list[str]:
-    """공문 머리 — 기관·수신·제목·관련 근거."""
+    """공문 머리.
+
+    「행정업무의 운영 및 혁신에 관한 규정」 별지 제1호서식(일반기안문)의
+    배열을 따른다. 기관명 → 수신 → (경유) → 제목 → 본문 순이다.
+    '항목 / 내용' 같은 표 머리를 붙이면 그 순간 공문이 아니라 보고서 표가 된다.
+
+    줄 끝의 공백 두 칸은 마크다운의 줄바꿈 표시다. 이것이 없으면 수신·경유·
+    제목이 한 문단으로 붙어 버린다.
+    """
     d = meta.시행일 or date.today()
-    out = [
-        f"# {title}",
-        "",
-        f"**{meta.기관명}**" + (f" {meta.부서}" if meta.부서 else ""),
-        "",
-        "| 항목 | 내용 |",
-        "|---|---|",
-        f"| 수신 | {meta.수신} |",
-        f"| 시행일 | {d.year}. {d.month}. {d.day}. |",
-    ]
-    if meta.문서번호:
-        out.append(f"| 문서번호 | {meta.문서번호} |")
-    if meta.기안자:
-        out.append(f"| 담당 | {meta.부서} {meta.기안자}"
-                   + (f" ({meta.연락처})" if meta.연락처 else "") + " |")
+    out = [f"# {title}", "", f"**{meta.기관명}**", ""]
+    out.append(f"수신　　{meta.수신}  ")
+    out.append("(경유)  ")
+    out.append(f"제목　　{title}  ")
     out.append("")
+
+    sub = []
+    if meta.문서번호:
+        sub.append(f"문서번호 {meta.문서번호}")
+    sub.append(f"시행일 {d.year}. {d.month}. {d.day}.")
+    if meta.기안자:
+        sub.append(f"담당 {meta.부서} {meta.기안자}"
+                   + (f" ({meta.연락처})" if meta.연락처 else ""))
+    elif meta.부서:
+        sub.append(f"담당 {meta.부서}")
+    out.append("　　".join(sub))
+    out.append("")
+
     if basis:
-        out.append("**1. 관련**")
+        out.append("1. 관련")
         out.append("")
         for i, b in enumerate(basis):
             out.append(f"   {_hangul_ordinal(i)}. {b}")
@@ -86,13 +98,22 @@ def _doc_header(meta: DocMeta, title: str, basis: list[str]) -> list[str]:
 
 
 def _doc_footer(meta: DocMeta, attachments: list[str]) -> list[str]:
-    """붙임과 결재란. '끝.' 은 공문의 종결 표시다."""
-    out = ["", "---", "", "**붙임**", ""]
-    for i, a in enumerate(attachments, 1):
-        out.append(f"   {i}. {a} 1부.")
-    out.append("")
-    out.append("   끝.")
-    out += ["", "| 기안 | 검토 | 결재 |", "|---|---|---|",
+    """붙임, 종결 표시, 발신 명의, 결재란.
+
+    공문은 마지막 붙임 뒤에 두 칸 띄우고 '끝.' 을 찍는다. 붙임이 없으면
+    본문 마지막 글자 뒤에 찍는다. 그 아래에 발신 명의를 둔다.
+    """
+    out = ["", "---", ""]
+    if attachments:
+        out.append("붙임")
+        out.append("")
+        for i, a in enumerate(attachments, 1):
+            tail = "  끝." if i == len(attachments) else ""
+            out.append(f"   {i}. {a} 1부.{tail}")
+    else:
+        out.append("   끝.")
+    out += ["", f"**{meta.기관명}장**", ""]
+    out += ["| 기안 | 검토 | 결재 |", "|---|---|---|",
             "| | | |", "| | | |", ""]
     return out
 
@@ -401,7 +422,7 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
 
     out = _doc_header(meta, f"{d.year}년 {d.month}월 {d.day}일 예방순찰 계획(안)", basis)
     out += [
-        "**2. 위 호와 관련하여 아래와 같이 예방순찰을 실시하고자 합니다.**", "",
+        "2. 위 호와 관련하여 아래와 같이 예방순찰을 실시하고자 합니다.", "",
         "**가. 순찰 개요**", "",
         "| 구분 | 내용 |", "|---|---|",
         f"| 순찰 종류 | {mode.label} |",
@@ -430,7 +451,7 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
                 "   ※ 색이 짙을수록 화재위험이 높은 구역. 검은 사각형이 출동 관서, "
                 "선이 순찰 동선입니다.", ""]
     for t in plan["teams"]:
-        out.append(f"○ {t['출동관서']} (출발 → 순찰 → 복귀, 총 {t['총_km']:.1f} km)")
+        out.append(f"○ {t['출동관서']} (관서 출발·복귀 기준 총 {t['총_km']:.1f} km)")
         out.append("")
         out.append("| 순번 | 격자 | 읍면동 | 이동거리 | 누적시간 |")
         out.append("|---|---|---|---|---|")
@@ -478,7 +499,7 @@ def render_monthly(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) ->
 
     out = _doc_header(meta, f"{plan['year']}년 {plan['month']}월 예방순찰 계획(안)", basis)
     out += [
-        "**2. 위 호와 관련하여 아래와 같이 월간 예방순찰 계획을 수립하고자 합니다.**", "",
+        "2. 위 호와 관련하여 아래와 같이 월간 예방순찰 계획을 수립하고자 합니다.", "",
         "**가. 계획 개요**", "",
         "| 구분 | 내용 |", "|---|---|",
         f"| 중점 순찰 | {plan['mode'].label} |",
@@ -526,7 +547,7 @@ def render_annual(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> 
 
     out = _doc_header(meta, f"{plan['year']}년 화재예방 순찰·점검 연간계획(안)", basis)
     out += [
-        "**2. 위 호와 관련하여 아래와 같이 연간계획을 수립하고자 합니다.**", "",
+        "2. 위 호와 관련하여 아래와 같이 연간계획을 수립하고자 합니다.", "",
         "**가. 분기별 운영 방향**", "",
         "| 분기 | 기간 | 평균 위험계수 | 중점 순찰 |", "|---|---|---|---|",
     ]
@@ -640,6 +661,57 @@ def strip_meta(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+# ---------------------------------------------------------------- 사실성 검사
+
+#: 문서에서 절대 바뀌면 안 되는 것들. 문체는 바뀌어도 이 값들은 그대로여야 한다.
+_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+_LEGAL_RE = re.compile(r"제\s*\d+\s*조(?:\s*의\s*\d+)?|제\s*\d+\s*항|제\s*\d+\s*호|별표\s*\d+")
+_LAWNAME_RE = re.compile(r"「([^」]{2,60})」")
+
+
+def _numbers(text: str) -> Counter:
+    """문서에 나온 수를 센다. 자릿점은 표기 차이일 뿐이므로 지운다."""
+    return Counter(_NUM_RE.findall(str(text).replace(",", "")))
+
+
+def _legal_tokens(text: str) -> Counter:
+    """조문·항·호·별표 번호와 법령명. 공백 표기 차이는 무시한다."""
+    t = str(text)
+    items = [re.sub(r"\s+", "", x) for x in _LEGAL_RE.findall(t)]
+    items += [re.sub(r"\s+", "", x) for x in _LAWNAME_RE.findall(t)]
+    return Counter(items)
+
+
+def check_fidelity(original: str, candidate: str) -> dict:
+    """다듬은 문서가 원문의 사실을 그대로 담고 있는지 기계적으로 확인한다.
+
+    LLM 은 문체를 고치라고 하면 숫자도 '보기 좋게' 바꾼다. 68.5% 가 70% 가 되고
+    제7조가 제17조가 되는 일이 실제로 일어난다. 결재 문서에서는 그 한 글자가
+    문서 전체를 무효로 만든다. 그래서 프롬프트로 금지하는 데서 그치지 않고,
+    나온 결과를 원문과 대조해 **새로 생긴 수·조문이 하나라도 있으면 버린다.**
+
+    반환: {ok, added_numbers, dropped_numbers, added_legal, dropped_legal}
+    """
+    on, cn = _numbers(original), _numbers(candidate)
+    ol, cl = _legal_tokens(original), _legal_tokens(candidate)
+    added_n = sorted((cn - on).elements())
+    dropped_n = sorted((on - cn).elements())
+    added_l = sorted((cl - ol).elements())
+    dropped_l = sorted((ol - cl).elements())
+    # 새로 생긴 값은 무조건 차단. 사라진 수는 표 한 줄이 통째로 빠진 신호일 수
+    # 있으므로, 몇 개 안 되는 표기 차이는 넘기고 덩어리로 빠지면 차단한다.
+    total_n = max(sum(on.values()), 1)
+    lost_badly = len(dropped_n) > 2 and len(dropped_n) / total_n > 0.05
+    return {
+        "ok": not (added_n or added_l or dropped_l or lost_badly),
+        "dropped_too_many": bool(lost_badly),
+        "added_numbers": added_n,
+        "dropped_numbers": dropped_n,
+        "added_legal": added_l,
+        "dropped_legal": dropped_l,
+    }
+
+
 def polish(cfg, markdown: str, *, use_llm: bool = True) -> dict:
     """문체만 다듬는다. 숫자와 근거는 규칙이 만든 것을 그대로 둔다.
 
@@ -657,4 +729,15 @@ def polish(cfg, markdown: str, *, use_llm: bool = True) -> dict:
         log.warning("다듬은 문서가 원문의 %.0f%% 로 줄어 원문을 유지한다",
                     len(cleaned) / max(len(markdown), 1) * 100)
         return {"text": markdown, "polished": False, "reason": "내용 손실"}
-    return {"text": cleaned, "polished": True, "backend": backend}
+
+    fid = check_fidelity(markdown, cleaned)
+    if not fid["ok"]:
+        log.warning("다듬은 문서가 원문에 없는 값을 담아 원문을 유지한다 "
+                    "(새로 생긴 수 %s · 새로 생긴 조문 %s · 사라진 조문 %s)",
+                    fid["added_numbers"][:5], fid["added_legal"][:5],
+                    fid["dropped_legal"][:5])
+        return {"text": markdown, "polished": False, "reason": "사실 불일치",
+                "fidelity": fid}
+    if fid["dropped_numbers"]:
+        log.info("다듬는 과정에서 빠진 수: %s", fid["dropped_numbers"][:8])
+    return {"text": cleaned, "polished": True, "backend": backend, "fidelity": fid}

@@ -255,6 +255,59 @@ def build_prompt(question: str, hits: list[tuple[Doc, float]]) -> str:
     return "\n".join(lines)
 
 
+#: 답변에 나온 법령 인용을 골라내는 규칙. 「법령명」 제N조(의N) 제N항 제N호, 별표 N.
+_CITE_RE = re.compile(r"「([^」]{2,60})」|제\s*(\d+)\s*조(?:\s*의\s*(\d+))?|별표\s*(\d+)")
+
+
+def _citations(text: str) -> set[str]:
+    """인용된 법령명과 조문 번호를 표준 표기로 모은다."""
+    out: set[str] = set()
+    for law, art, sub, annex in _CITE_RE.findall(str(text)):
+        if law:
+            out.add("법:" + re.sub(r"\s+", "", law))
+        elif art:
+            out.add(f"조:{art}의{sub}" if sub else f"조:{art}")
+        elif annex:
+            out.add(f"별표:{annex}")
+    return out
+
+
+def check_grounding(answer_text: str, hits: list[tuple["Doc", float]]) -> dict:
+    """답변이 인용한 조문이 실제로 검색된 자료 안에 있는지 대조한다.
+
+    RAG 라도 모델은 '있을 법한' 조문을 만들어 낸다. 소방 실무에서 조문 번호가
+    한 자리 틀리면 그 답변은 쓸모가 없는 정도가 아니라 위험하다. 그래서 답변에
+    등장한 법령명·조문 번호를 전부 뽑아, 검색해 온 원문에 그 표기가 없으면
+    **근거 없는 인용**으로 표시한다. 지우지는 않는다 — 사람이 보고 판단해야 한다.
+
+    대조는 공백을 지운 원문에 대한 포함 검사로 한다. 원문은 법령명을 「」 없이
+    적고 답변은 「」로 감싸는 등 표기가 다를 뿐인데, 그 차이를 위반으로 세면
+    경고가 쏟아져 정작 진짜 위반이 묻힌다.
+    """
+    corpus = " ".join(f"{d.title} {d.ref or ''} {d.text}" for d, _ in hits)
+    flat = re.sub(r"\s+", "", corpus)
+    used = _citations(answer_text)
+
+    unsupported = []
+    for tok in sorted(used):
+        kind, _, val = tok.partition(":")
+        if kind == "법":
+            ok = val in flat
+        elif kind == "조":
+            base, _, sub = val.partition("의")
+            ok = (f"제{base}조의{sub}" in flat) if sub else (f"제{base}조" in flat)
+        else:                                   # 별표
+            ok = f"별표{val}" in flat
+        if not ok:
+            unsupported.append(tok)
+    return {
+        "ok": not unsupported,
+        "cited": sorted(used),
+        "unsupported": unsupported,
+        "n_sources": len(hits),
+    }
+
+
 def answer(cfg, question: str, index: BM25, *, top_k: int = 5,
            use_llm: bool = True) -> dict:
     """질문 -> {answer, sources, prompt, source_backend}.
@@ -283,5 +336,8 @@ def answer(cfg, question: str, index: BM25, *, top_k: int = 5,
         return {"answer": "관련 근거를 찾았습니다. 아래 자료를 확인하십시오.\n\n" + summary,
                 "sources": sources, "prompt": prompt, "source_backend": "search_only",
                 "tried": tried}
+    ground = check_grounding(text, hits)
+    if not ground["ok"]:
+        log.warning("자료에 없는 인용: %s", ground["unsupported"])
     return {"answer": text, "sources": sources, "prompt": prompt,
-            "source_backend": backend}
+            "source_backend": backend, "grounding": ground}

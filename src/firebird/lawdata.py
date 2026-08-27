@@ -36,13 +36,32 @@ FIRE_LAWS = [
 ]
 
 
+#: 표 괘선 문자. 별표·서식 본문은 한글 표를 그대로 옮겨 와서 이 글자들이 섞인다.
+_RULE_CHARS = "│┃┆┇┊┋∣┼┴┬├┤─━┄┅┈┉┌┐└┘╭╮╯╰"
+
+
+def _strip_rules(t: str) -> str:
+    """표 괘선을 걷어낸다.
+
+    법제처 별표·서식 본문은 한글 표를 텍스트로 편 것이라 세로줄이 낱말 한가운데
+    박힌다. 실제로 '제50│조제1항' 처럼 끊겨 있어서, 그대로 두면 검색도 안 걸리고
+    LLM 이 인용한 조문을 원문과 대조할 수도 없다.
+
+    글자와 글자 사이에 낀 괘선은 지우고(낱말을 붙여 주고), 나머지는 칸 경계이므로
+    공백으로 바꾼다.
+    """
+    t = re.sub(rf"(?<=[0-9A-Za-z가-힣])[{_RULE_CHARS}]+(?=[0-9A-Za-z가-힣])", "", t)
+    return re.sub(rf"[{_RULE_CHARS}]+", " ", t)
+
+
 def _clean(text: str) -> str:
-    """XML/CDATA/태그를 걷어내고 공백을 정리한다."""
+    """XML/CDATA/태그를 걷어내고 표 괘선과 공백을 정리한다."""
     if not text:
         return ""
     t = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", text, flags=re.S)
     t = re.sub(r"<[^>]+>", " ", t)
     t = html.unescape(t)
+    t = _strip_rules(t)
     return re.sub(r"[ \t]+", " ", t).strip()
 
 
@@ -204,7 +223,11 @@ def collect_forms(cfg, laws: list[str] | None = None, *, oc: str = "test",
     """모든 대상 법령의 별표·서식 목록."""
     cache = cfg.paths.cache / "law_forms.parquet"
     if cache.exists() and not refresh:
-        return pd.read_parquet(cache)
+        df = pd.read_parquet(cache)
+        # 예전에 받아 둔 캐시에는 괘선이 그대로 남아 있다. 읽을 때 한 번 더 씻는다.
+        if "content" in df.columns:
+            df["content"] = df["content"].fillna("").map(_strip_rules)
+        return df
     rows: list[dict] = []
     for name in (laws or FIRE_LAWS):
         found = search_law(name, oc=oc)

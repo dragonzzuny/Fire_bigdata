@@ -125,10 +125,17 @@ def table(slide, x, y, w, h, rows: list[list[str]], *, col_widths=None,
             cell.text = ""
             p = cell.text_frame.paragraphs[0]
             p.alignment = PP_ALIGN.CENTER if c else PP_ALIGN.LEFT
-            run = p.add_run(); run.text = str(val)
+            # 표 셀은 마크다운을 해석하지 않는다. **굵게** 표기를 그대로 두면
+            # 별표가 화면에 그대로 찍힌다. 별표를 떼고 굵기로 바꾼다.
+            text = str(val)
+            emphasise = "**" in text
+            if emphasise:
+                text = text.replace("**", "")
+            run = p.add_run(); run.text = text
             run.font.size = Pt(size); run.font.name = FONT
-            run.font.bold = (r == 0)
-            run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF) if r == 0 else INK
+            run.font.bold = (r == 0) or emphasise
+            run.font.color.rgb = (RGBColor(0xFF, 0xFF, 0xFF) if r == 0
+                                  else (RED if emphasise else INK))
             cell.fill.solid()
             cell.fill.fore_color.rgb = (header_color if r == 0
                                         else (BG if r % 2 else BAND))
@@ -249,6 +256,11 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
     k = cfg.headline_k
+    # 장표에 손으로 적는 값을 없애기 위해, 필요한 수치는 모두 여기서 뽑아 둔다.
+    grid_m = int(ev.get("grid_size_m", cfg.grid_size_m))
+    conc = ev.get("resolution_concentration", {})
+    probe = ev.get("single_feature_probe", [])
+    probe0 = probe[0] if probe else {}
     t = ev["temporal"]
     h = t["headline"]
     key = f"top{k}"
@@ -275,10 +287,10 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     textbox(s1, Inches(1.2), Inches(4.45), Inches(5.9), Inches(0.4),
             "이름의 뜻", size=14, bold=True, color=RED)
     textbox(s1, Inches(1.2), Inches(4.9), Inches(5.9), Inches(1.3),
-            "· Firebird — 애틀랜타 소방의 화재위험 예측 시스템.\n"
+            "· Firebird: 애틀랜타 소방의 화재위험 예측 시스템.\n"
             "  미국 NFPA 모범사례로 선정된 예방점검 우선순위 모델\n"
-            "· K- — 국내 공개 데이터와 소방 법령 체계에 맞춘 한국형\n"
-            "· 불씨예보 — 일기예보처럼, 불씨를 미리 알린다", size=13.5)
+            "· K-: 국내 공개 데이터와 소방 법령 체계에 맞춘 한국형\n"
+            "· 불씨예보: 일기예보처럼, 불씨를 미리 알린다", size=13.5)
     band(s1, Inches(7.8), Inches(4.25), Inches(4.6), Inches(2.0))
     textbox(s1, Inches(8.1), Inches(4.45), Inches(4.0), Inches(0.4),
             "발표자", size=14, bold=True, color=RED)
@@ -290,8 +302,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 2 왜 (배경) ----
     s2 = section(prs, "1. 배경 및 문제점",
-                 "예방행정의 병목은 출동이 아니라 ‘어디부터 갈 것인가’",
-                 "현재는 법정 점검주기·관할·담당자 경험에 의존합니다")
+                 "점검 대상은 늘고 인력은 그대로입니다",
+                 "무엇을 먼저 볼지는 아직 법정 주기와 담당자 경험으로 정합니다")
     band(s2, Inches(0.8), Inches(2.4), Inches(5.6), Inches(3.5))
     textbox(s2, Inches(1.1), Inches(2.68), Inches(5.0), Inches(3.1),
             "· 소방공무원 증원 정체 (2024년 전년 대비 +5명 수준)\n"
@@ -303,20 +315,20 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     textbox(s2, Inches(7.2), Inches(2.68), Inches(5.1), Inches(0.45),
             "해외는 데이터로 해결하고 있습니다", size=16.5, bold=True, color=RED)
     textbox(s2, Inches(7.2), Inches(3.2), Inches(5.1), Inches(2.6),
-            "· 애틀랜타 소방 ‘Firebird’ — 위험점수로 점검\n"
+            "· 애틀랜타 소방 ‘Firebird’: 위험점수로 점검\n"
             "  우선순위 결정, 미국 NFPA 모범사례 선정\n"
-            "· 뉴욕 FDNY — 위험기반 점검(RBIS) 운영\n\n"
+            "· 뉴욕 FDNY: 위험기반 점검(RBIS) 운영\n\n"
             "국내 소방 정보화는 출동·신고 대응 중심이며,\n"
             "예방점검 대상 우선순위화 영역은 비어 있습니다.", size=15.5)
     textbox(s2, Inches(0.8), Inches(6.15), Inches(11.8), Inches(0.6),
-            "목적 — 소방안전 빅데이터로 지역별 화재위험을 예측해, "
+            "목적: 소방안전 빅데이터로 지역별 화재위험을 예측해, "
             "한정된 인력을 가장 위험한 곳과 시기에 먼저 배치하도록 돕습니다.",
             size=15, bold=True)
 
     # ---- 3 무엇을 (구성) ----
     s3 = section(prs, "2. 제안 내용",
-                 "위험 예측에서 끝내지 않고, 결재 가능한 계획까지",
-                 "예측 → 인력에 맞춘 배분 → 관서별 순찰 동선 → 공문 서식 계획서")
+                 "예측부터 결재 문서까지 한 흐름으로",
+                 "위험 예측 → 인력 기준 배분 → 관서별 순찰 동선 → 공문 서식 계획서")
     picture(s3, figs / "fig_pipeline.png", Inches(1.35), Inches(2.15), Inches(10.6))
     for i, (num, ttl, body) in enumerate([
             ("1", "예방점검 배분", "가용 인력 안에서\n가장 많이 잡히도록 배분"),
@@ -334,17 +346,18 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 4 활용 데이터 (필수 요건) ----
     s4 = section(prs, "3. 활용 데이터",
-                 "소방안전 빅데이터 플랫폼 데이터 상품을 1차 자료로 사용",
-                 "울산 4종으로 만들고, 세종 4종으로 타 지역에서도 되는지 확인했습니다")
+                 "소방안전 빅데이터 플랫폼 데이터 상품 8종",
+                 "울산 4종으로 만들고, 세종 4종으로 타 지역 적용을 확인했습니다")
     rows = [["데이터셋", "제공", "역할", "적재 건수"]] + [list(r) for r in ds_rows]
     table(s4, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.1), rows,
           col_widths=[4.2, 2.4, 3.4, 1.8], size=11.5)
     textbox(s4, Inches(0.8), Inches(5.6), Inches(7.4), Inches(1.3),
-            "· 카카오 로컬 API — 주소를 좌표로 변환 (좌표 확보 "
+            "· 카카오 로컬 API: 주소를 좌표로 변환 (좌표 확보 "
             + pct(manifest.get("coverage", {}).get("fire", {}).get("rate")) + ")\n"
-            "· 기상청 API 허브 — 일자료 8년치로 건조 정도 산출\n"
-            f"· 국가법령정보센터 — 소방 법령 {extra.get('n_law', 7)}종 "
-            f"{extra.get('n_article', 457)}개 조문 · 별표 68건 · 법정 서식 39종\n"
+            "· 기상청 API 허브: 일자료 8년치로 건조 정도 산출\n"
+            f"· 국가법령정보센터: 소방 법령 {extra.get('n_law', 0)}종 "
+            f"{extra.get('n_article', 0)}개 조문 · 별표 {extra.get('n_annex', 0)}건 "
+            f"· 법정 서식 {extra.get('n_form', 0)}종\n"
             "· 개인정보를 다루지 않으며, 집계 단위 공공데이터만 사용",
             size=12.5, color=MUTED)
     band(s4, Inches(8.4), Inches(5.6), Inches(4.2), Inches(1.2),
@@ -358,8 +371,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
     s_map = section(prs, "4. 서비스 화면 ①",
-                    "어디가 위험하고, 어디를 어떤 순서로 도는가",
-                    "화재위험 예측과 순찰 동선을 한 장에서 봅니다")
+                    "화재위험 지도와 관서별 순찰 동선",
+                    "예측 결과와 실제 이동 경로를 한 장에서 봅니다")
     map_img = figs / "map_route.png"
     if map_img.exists():
         # 지도는 세로로 길다. 폭만 맞추면 장표 아래로 넘친다.
@@ -376,8 +389,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             pic.width, pic.height = Inches(width), Inches(width / ratio)
     cards = [
         ("색이 짙을수록 위험",
-         "500m 구역마다 화재위험을 예측합니다. 과거 화재, 주변 구역으로의 확산, "
-         "대상물 용도와 업종 구성을 함께 봅니다."),
+         f"{grid_m}m 구역마다 화재위험을 예측합니다. 과거 화재, 주변 구역으로의 "
+         "확산, 대상물 용도와 업종 구성을 함께 봅니다."),
         ("검은 사각형이 출동 관서",
          "119안전센터에서 출발해 관할을 돌고 복귀합니다. 선이 실제 도로 기준 동선, "
          "번호가 방문 순서입니다."),
@@ -398,8 +411,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     op = alloc.get("optimized", {})
     tk = alloc.get("top_k_percent", {})
     screen_slide(
-        prs, "4. 서비스 화면 ②", "오늘 어느 구역부터 점검할 것인가",
-        "점검관 인원과 기간을 넣으면, 그 인력으로 실제 갈 수 있는 곳만 배분합니다",
+        prs, "4. 서비스 화면 ②", "인력에 맞춘 예방점검 배분",
+        "점검관 인원과 기간을 넣으면 그 인력으로 갈 수 있는 구역만 배분합니다",
         figs / "shot_allocation.png",
         [("인력을 먼저 넣습니다",
           "점검관 몇 명, 하루 몇 건, 며칠. 바꾸면 배분이 즉시 다시 계산됩니다."),
@@ -410,12 +423,12 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           f"인력에 맞춘 배분은 {op.get('n_grids', 0):,}개 구역을 돌아 "
           f"실제 화재 {pct(op.get('actual_capture_rate'))}를 포착 "
           f"({alloc.get('gain_pp', 0):+.1f}%p).")],
-        note="관할별 최소 배분을 지정할 수 있습니다 — 특정 구에 점검이 몰리지 않도록.")
+        note="관할별 최소 배분을 지정할 수 있어, 특정 구에 점검이 몰리지 않습니다.")
 
     # ---- 6 화면② 순찰 ----
     screen_slide(
-        prs, "4. 서비스 화면 ③", "순찰 조건을 바꾸면 계획이 즉시 바뀝니다",
-        "119안전센터에서 출발해 관할을 돌고 복귀하는 실제 도로 기준 동선입니다",
+        prs, "4. 서비스 화면 ③", "목적별 순찰 동선 자동 생성",
+        "119안전센터에서 출발해 관할을 돌고 복귀하는 도로 기준 왕복 동선입니다",
         figs / "shot_patrol.png",
         [("출동 관서 기준",
           f"소방서 {extra.get('n_station', 6)}개 · 119안전센터 "
@@ -431,8 +444,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 7 화면③ 계획서 ----
     screen_slide(
-        prs, "4. 서비스 화면 ④", "그대로 결재를 올릴 수 있는 계획서",
-        "동선·중점 확인사항·법령 근거가 들어간 공문 서식 문서를 자동으로 만듭니다",
+        prs, "4. 서비스 화면 ④", "공문 서식 계획서 자동 작성",
+        "동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 계획서를 만듭니다",
         (figs / "shot_plan_result.png"
          if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
         [("일별 · 월별 · 연간",
@@ -450,12 +463,14 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 8 화면④ 업무 도우미 ----
     screen_slide(
-        prs, "4. 서비스 화면 ⑤", "법령을 조문 근거와 함께 찾아 줍니다",
-        "‘화재예방강화지구는 어떤 지역을 지정하나요?’ 같은 질문에 답합니다",
+        prs, "4. 서비스 화면 ⑤", "소방 법령 검색 및 근거 제시",
+        f"법령 {extra.get('n_article', 0)}개 조문과 별표·서식 "
+        f"{extra.get('n_annex_all', 0)}건을 색인해 조문 번호와 함께 답합니다",
         (figs / "shot_assistant_answer.png"
          if (figs / "shot_assistant_answer.png").exists() else figs / "shot_assistant.png"),
         [("소방 법령을 담았습니다",
-          f"{extra.get('n_law', 7)}종 {extra.get('n_article', 457)}개 조문과 별표 68건에 "
+          f"{extra.get('n_law', 0)}종 {extra.get('n_article', 0)}개 조문과 "
+          f"별표·서식 {extra.get('n_annex_all', 0)}건에 "
           "업종별 점검 항목·관할 위험 현황을 함께 검색합니다."),
          ("반드시 근거를 붙입니다",
           "‘연 1회입니다’만 답하는 시스템은 행정에서 쓸 수 없습니다. "
@@ -468,8 +483,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 9 어떻게 믿나 (검증) ----
     s9 = section(prs, "5. 검증 결과",
-                 f"{tr[0]}~{tr[-1]}년 자료로 만들어 {year}년 화재를 맞혀 봤습니다",
-                 f"{year}년 자료는 만드는 데 한 건도 쓰지 않았습니다")
+                 f"{tr[0]}~{tr[-1]}년 학습, {year}년 예측",
+                 f"{year}년 자료는 학습에 한 건도 쓰지 않았습니다")
     picture(s9, figs / "fig_capture_curve.png", Inches(0.8), Inches(2.25), Inches(7.3))
     x = Inches(8.5)
     kpi(s9, x, Inches(2.3), Inches(4.0), pct(h["model_capture"]),
@@ -487,7 +502,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 10 어디까지 확인했나 ----
     s10 = section(prs, "5. 검증 결과 (계속)",
-                  "한 지역에서만 되는 것은 아닌지 네 가지로 확인했습니다",
+                  "타 지역·타 관할 적용 검증 4건",
                   "")
     rows = [["확인한 것", "질문", f"상위 {k}% 포착", "결과"]]
     rows.append(["미래 예측", f"{year}년을 맞히는가", pct(h["model_capture"]),
@@ -518,15 +533,19 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     textbox(s10, Inches(7.95), Inches(5.2), Inches(4.4), Inches(1.6),
             "‘언제’ 도 함께 봅니다\n\n"
             "월별 화재위험 = 계절 패턴 × 기상(습도·건조일수).\n"
-            "겨울(12·1월)이 연평균의 1.1배, 9월이 0.89배입니다.\n"
+            f"{extra.get('season_hi_month', 0)}월이 연평균의 "
+            f"{extra.get('season_hi', 0):.2f}배, "
+            f"{extra.get('season_lo_month', 0)}월이 "
+            f"{extra.get('season_lo', 0):.2f}배입니다.\n"
             "월별 순찰 횟수를 이 값에 맞춰 정합니다.", size=13)
 
     # ---- 미국 사례 비교 ----
     s_us = section(prs, "5. 검증 결과 (계속)",
-                   "미국 애틀랜타 ‘Firebird’ 와 같은 축에서 비교했습니다",
-                   "NFPA 모범사례로 선정된 시스템입니다 (KDD 2016)")
+                   "해외 사례 비교: 애틀랜타 Firebird",
+                   "미국 NFPA 모범사례 선정 시스템 (KDD 2016)")
     rows = [["", "Firebird (애틀랜타, 2016)", "불씨예보 (울산, 2026)"],
-            ["분석 단위", "상업용 건물 5,000여 개소", "500m 구역 1,459개"],
+            ["분석 단위", "상업용 건물 5,000여 개소",
+             f"{grid_m}m 구역 {t['model']['n_grids']:,}개"],
             ["자료", "8종 결합 (건물대장·화재·인구 등)", "소방안전 빅데이터 8종 + 기상 + 법령"],
             ["예측 성능", "상업용 화재 70% 이상 예측\n(오경보율 20% 기준)",
              f"위험 상위 20% 구역이 화재 {pct(h['model_capture'])} 포착\n"
@@ -535,8 +554,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
              "시간분할 + 관할제외 + 타 지역 + 주소 정밀도"],
             ["산출물", "위험점수 · 지도 시각화",
              "위험지도 · 인력 제약 배분 · 관서별 동선 ·\n공문 계획서 · 법령 질의응답"],
-            ["인력 제약", "**미해결** — 논문에 “19,397개는 현 인력이\n감당할 수 있는 수준을 훨씬 넘는다”고 기술",
-             f"**해결** — 가용 인력 안에서 배분,\n동일 인력 대비 {alloc.get('gain_pp', 0):+.1f}%p 개선"]]
+            ["인력 제약", "**미해결**: 논문에 “19,397개는 현 인력이\n감당할 수 있는 수준을 훨씬 넘는다”고 기술",
+             f"**해결**: 가용 인력 안에서 배분,\n동일 인력 대비 {alloc.get('gain_pp', 0):+.1f}%p 개선"]]
     table(s_us, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.9), rows,
           col_widths=[2.2, 4.8, 4.8], size=11.5)
     band(s_us, Inches(0.8), Inches(6.35), Inches(11.8), Inches(0.75),
@@ -547,7 +566,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 11 기대효과 ----
     s11 = section(prs, "6. 기대효과 및 활용방안",
-                  "같은 인력으로 더 많은 화재를 잡고, 근거를 남깁니다", "")
+                  "동일 인력 기준 포착률 개선과 근거 기록", "")
     if alloc and "gain_pp" in alloc:
         kpi(s11, Inches(0.8), Inches(2.4), Inches(3.8),
             f"{alloc['gain_pp']:+.1f}%p", "같은 인력 기준 포착률 개선",
@@ -569,21 +588,21 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             size=15.5, spacing=1.65)
 
     # ---- 12 한계 ----
-    s12 = section(prs, "7. 기타 — 한계 및 향후 계획",
-                  "알고 있는 한계를 먼저 말씀드립니다",
-                  "자료상 제약과 그에 대한 대응, 개선 방향입니다")
+    s12 = section(prs, "7. 기타 (한계 및 향후 계획)",
+                  "확인된 한계와 대응 방안",
+                  "자료상 제약, 현재 대응, 개선 방향 순으로 정리했습니다")
     rows = [["한계", "현재 대응", "향후"]]
     rows += [
         ["공개 데이터에 건물번호·좌표가 없음",
          "도로명 → 읍면동 순으로 좌표를 찾고 단계를 기록", "상세주소 확보 시 건물 단위"],
-        ["화재의 63%가 읍면동 중심 좌표",
-         "도로명이 있는 건만으로 따로 검증 — 성능 저하 없음", "도로명 기재율 개선 협의"],
+        [f"화재의 {pct(conc.get('share_from_emd_centroid'), 0)}가 읍면동 중심 좌표",
+         "도로명이 있는 건만으로 따로 검증(성능 저하 없음)", "도로명 기재율 개선 협의"],
         ["대상물·업소는 현재 시점 현황",
          "과거 이력만으로도 검증해 함께 제시", "연도별 이력 자료 확보"],
         ["점검 이력을 붙일 수 없음",
          "결합할 키가 없다는 것을 실제로 확인해 기록", "대상물 관리번호 포함 자료 요청"],
         ["단순 기준 대비 개선폭이 크지 않음",
-         "누적 화재만으로도 68.4%임을 먼저 공개",
+         f"누적 화재만으로도 {pct(probe0.get('capture_top20'))}임을 먼저 공개",
          "가치는 설명·확장·인력배분에 있음"],
     ]
     table(s12, Inches(0.8), Inches(2.35), Inches(11.8), Inches(3.5), rows,
@@ -629,6 +648,13 @@ def collect_extra(cfg, city: str) -> dict:
         out["n_law"] = int(df["law"].nunique())
         out["n_article"] = int(len(df))
 
+    forms = cfg.paths.cache / "law_forms.parquet"
+    if forms.exists():
+        fm = pd.read_parquet(forms)
+        out["n_form"] = int((fm["kind"] == "서식").sum())
+        out["n_annex"] = int(len(fm) - out["n_form"])
+        out["n_annex_all"] = int(len(fm))          # 색인에는 별표·서식을 모두 넣는다
+
     try:
         from firebird import monthly as MO
         fp = cfg.paths.processed / f"fires_{city}.parquet"
@@ -638,6 +664,15 @@ def collect_extra(cfg, city: str) -> dict:
             fit = MO.fit_month_risk(mf, pd.read_parquet(wp))
             out["r2_season"] = float(fit.get("baseline_r2", 0.0))
             out["r2_weather"] = float(fit.get("weather_r2", fit.get("baseline_r2", 0.0)))
+            # 계절 지수 최고·최저 달. 장표에 손으로 적지 않기 위해 여기서 뽑는다.
+            si = MO.seasonal_index(mf)
+            if not si.empty:
+                hi = si.loc[si["seasonal_index"].idxmax()]
+                lo = si.loc[si["seasonal_index"].idxmin()]
+                out["season_hi_month"] = int(hi["month"])
+                out["season_hi"] = float(hi["seasonal_index"])
+                out["season_lo_month"] = int(lo["month"])
+                out["season_lo"] = float(lo["seasonal_index"])
     except Exception:                                    # noqa: BLE001
         pass
     return out

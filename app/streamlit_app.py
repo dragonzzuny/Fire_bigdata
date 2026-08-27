@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -27,7 +28,8 @@ import pandas as pd  # noqa: E402
 import pydeck as pdk  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from firebird import dataset as D, evaluate as E, explain as X, grid as G, \
+from firebird import dataset as D, evaluate as E, explain as X, forms as FM, \
+    grid as G, \
     hydrant as H, llm as L, model as M, operations as OP, patrol as P, \
     monthly as MO, mapviz as MV, patrol_modes as PM, plans as PLN, routing as RT, rules as R, \
     assistant as AS, lawdata as LW, stations as ST  # noqa: E402
@@ -82,7 +84,11 @@ st.markdown("""
   .docview th,.docview td { border:1px solid var(--line); padding:.4rem .6rem;
                             font-size:.88rem; }
   .docview th { background:#f7f8f9; font-weight:600; }
-  .docview h1 { font-size:1.5rem; text-align:center; margin:.2rem 0 1.4rem; }
+  .docview h1 { font-size:1.5rem; text-align:center; margin:.2rem 0 1.2rem;
+                padding-bottom:.6rem; border-bottom:2px solid var(--ink); }
+  /* 공문은 줄이 붙어 있다. 문단 간격이 벌어지면 보고서처럼 읽힌다. */
+  .docview p { margin:0 0 .18rem; }
+  .docview h2 { font-size:1.02rem; margin:1rem 0 .35rem; }
   .docview img { max-width:100%; border:1px solid var(--line); border-radius:4px; }
 
   /* 업무 도우미 답변 */
@@ -223,15 +229,80 @@ def grid_layer(df: pd.DataFrame, cfg, color_col: str = "위험점수") -> pdk.La
                      pickable=True, auto_highlight=True)
 
 
-def deck(layers, df, zoom=10.2):
-    lat = float(pd.to_numeric(df["lat"], errors="coerce").mean()) if "lat" in df else 35.54
-    lon = float(pd.to_numeric(df["lon"], errors="coerce").mean()) if "lon" in df else 129.31
-    if not np.isfinite(lat):
-        lat, lon = 35.54, 129.31
-    return pdk.Deck(layers=layers, map_style=None,
-                    initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=zoom),
-                    tooltip={"text": "격자 {grid_id} · {시군구}\n"
-                                     "위험점수 {위험점수} (순위 {순위})\n점검대상 {점검대상수}개소"})
+#: 지도 말풍선 — 층마다 들어 있는 열이 달라 따로 지정한다.
+TIP_GRID = {"text": "격자 {grid_id} · {시군구}\n"
+                    "위험점수 {위험점수} (순위 {순위})\n점검대상 {점검대상수}개소"}
+TIP_PLAIN = {"text": "격자 {grid_id}"}
+
+
+def deck(layers, df, zoom=None, tooltip=TIP_GRID):
+    """데이터가 놓인 범위에 맞춰 화면을 잡는다.
+
+    한 개 읍면동만 골랐는데 시 전체가 보이면 정작 봐야 할 동선이 점으로
+    찍힌다. 고정 배율 대신 실제 좌표 범위에서 배율을 역산한다.
+    """
+    lat_s = pd.to_numeric(df["lat"], errors="coerce") if "lat" in df else pd.Series(dtype=float)
+    lon_s = pd.to_numeric(df["lon"], errors="coerce") if "lon" in df else pd.Series(dtype=float)
+    lat_s, lon_s = lat_s.dropna(), lon_s.dropna()
+    if lat_s.empty or lon_s.empty:
+        return pdk.Deck(layers=layers, map_style=None, tooltip=tooltip,
+                        initial_view_state=pdk.ViewState(latitude=35.54, longitude=129.31,
+                                                         zoom=10.2))
+    lat, lon = float(lat_s.mean()), float(lon_s.mean())
+    if zoom is None:
+        # 위도 1도 ≈ 111km. 경도는 위도만큼 좁아진다.
+        span_km = max(float(lat_s.max() - lat_s.min()) * 111.0,
+                      float(lon_s.max() - lon_s.min()) * 111.0
+                      * math.cos(math.radians(lat)),
+                      0.8)
+        span_km *= 1.35                       # 가장자리가 잘리지 않도록 여유
+        zoom = float(np.clip(math.log2(360.0 * 111.0 / span_km) - 1.2, 8.0, 14.0))
+    return pdk.Deck(layers=layers, map_style=None, tooltip=tooltip,
+                    initial_view_state=pdk.ViewState(latitude=lat, longitude=lon,
+                                                     zoom=zoom))
+
+
+PALETTE = [[227, 74, 51], [43, 108, 176], [47, 158, 110], [200, 120, 20],
+           [130, 70, 180], [20, 150, 160], [180, 60, 120], [90, 110, 40],
+           [230, 160, 40], [70, 70, 200], [160, 40, 40], [40, 160, 90]]
+
+
+def route_layers(routes, *, width=45, radius=180):
+    """관서별 동선을 지도 층으로 만든다. 현재 계획과 직전 계획에 같이 쓴다."""
+    layers, depots = [], []
+    for i, r in enumerate(routes):
+        col = PALETTE[i % len(PALETTE)]
+        dep = r.attrs.get("depot", {})
+        path = ([[dep.get("lon"), dep.get("lat")]] if dep else []) \
+            + r[["lon", "lat"]].astype(float).values.tolist() \
+            + ([[dep.get("lon"), dep.get("lat")]] if dep else [])
+        layers.append(pdk.Layer("PathLayer", [{"path": path}], get_path="path",
+                                get_width=width, get_color=col, width_min_pixels=3))
+        layers.append(pdk.Layer("ScatterplotLayer", r, get_position=["lon", "lat"],
+                                get_radius=radius, get_fill_color=col + [200],
+                                pickable=True))
+        if dep:
+            depots.append({"lon": dep["lon"], "lat": dep["lat"],
+                           "name": dep.get("name", "")})
+    if depots:
+        layers.append(pdk.Layer("ScatterplotLayer", pd.DataFrame(depots),
+                                get_position=["lon", "lat"], get_radius=330,
+                                get_fill_color=[20, 20, 20, 230], pickable=True))
+    return layers, depots
+
+
+def plan_facts(plan, targets) -> dict:
+    """계획 하나를 몇 개의 숫자로 요약한다. 비교는 이 숫자들로 한다."""
+    summ = plan.get("summary")
+    return {
+        "격자": int(len(targets)),
+        "관서": int(len(summ)) if summ is not None and not summ.empty else 0,
+        "회차": (int(summ["회차"].max()) if summ is not None and not summ.empty
+                and "회차" in summ else 1),
+        "총이동": float(plan.get("total_km", 0.0)),
+        "최장": float(plan.get("max_team_km", 0.0)),
+        "grids": set(targets["grid_id"].astype(str)) if "grid_id" in targets else set(),
+    }
 
 
 def _md_to_html(md: str) -> str:
@@ -309,9 +380,13 @@ def _doc_html(md: str, map_path: str = "") -> str:
 <title>순찰계획서</title><style>
 @page {{ size: A4; margin: 18mm 16mm; }}
 body {{ font-family:'Malgun Gothic','Noto Sans KR',sans-serif; color:#1a1d23;
-        line-height:1.75; font-size:10.5pt; }}
-h1 {{ font-size:16pt; text-align:center; margin:0 0 14pt; }}
-h2 {{ font-size:12pt; margin:16pt 0 6pt; }}
+        line-height:1.6; font-size:10.5pt; }}
+/* 공문은 줄이 붙어 있다. 문단마다 간격이 벌어지면 보고서처럼 보인다. */
+p {{ margin:0 0 3pt; }}
+p + p {{ margin-top:0; }}
+h1 {{ font-size:16pt; text-align:center; margin:0 0 16pt;
+      padding-bottom:8pt; border-bottom:2px solid #1a1d23; }}
+h2 {{ font-size:12pt; margin:14pt 0 5pt; }}
 table {{ width:100%; border-collapse:collapse; margin:6pt 0 12pt; }}
 th,td {{ border:1px solid #c8ccd2; padding:4pt 6pt; font-size:9.5pt; }}
 th {{ background:#f2f4f6; }}
@@ -375,8 +450,8 @@ tabs = st.tabs(["예방점검 배분", "위험요인·점검계획서", "예방�
 # ================================================================== ① 배분
 with tabs[0]:
     st.subheader("가용 인력 기준 예방점검 배분")
-    st.caption("격자마다 점검 대상물 수가 다릅니다. 위험도 순으로만 자르면 "
-               "인력으로 소화할 수 없는 계획이 나오므로, 가용 물량 안에서 배분합니다.")
+    st.caption("구역마다 점검 대상물 수가 다릅니다. 위험도 순으로만 자르면 "
+               "인력으로 감당할 수 없는 계획이 나오므로, 가용 물량 안에서 배분합니다.")
 
     cmp = OP.compare_to_topk(view, view["pred"], capacity, cfg.headline_k)
     alloc, eq_info = OP.allocate_with_equity(view, view["pred"], capacity,
@@ -388,8 +463,12 @@ with tabs[0]:
               help=capacity.describe())
     m2.metric("배분 결과", f"{o['n_grids']:,}개 격자",
               f"{o['cost_used']:,.0f}건 배정")
-    m3.metric(f"위험도 상위 {cfg.headline_k}% 방식", f"{t['n_grids_affordable']:,}개 격자",
-              f"대상 {t['n_grids_selected']:,}개 중 소화 가능분", delta_color="off")
+    m3.metric(f"상위 {cfg.headline_k}% 그대로 갈 때",
+              f"{t['n_grids_affordable']:,} / {t['n_grids_selected']:,}개 격자",
+              f"필요 {t['cost_if_all']:,.0f}건 · 가용 {capacity.total_visits:,}건",
+              delta_color="off",
+              help="위험도 높은 순서대로 격자를 통째로 점검해 나갈 때, "
+                   "가용 물량으로 끝까지 마칠 수 있는 격자 수")
     if "gain_pp" in cmp:
         m4.metric("실제 화재 포착률", f"{o['actual_capture_rate']:.1%}",
                   f"{cmp['gain_pp']:+.1f}%p")
@@ -398,9 +477,14 @@ with tabs[0]:
         st.markdown(
             f"<div class='callout'><b>위험도 상위 {cfg.headline_k}% 안의 점검 대상은 "
             f"{t['cost_if_all']:,.0f}개소입니다.</b><br>"
-            f"현재 가용 물량 {capacity.total_visits:,}건으로는 {t['n_grids_selected']:,}개 격자 중 "
-            f"{t['n_grids_affordable']:,}개까지만 점검할 수 있습니다."
-            f"</div>", unsafe_allow_html=True)
+            + (f"가용 물량 {capacity.total_visits:,}건으로는 첫 번째 격자 하나도 "
+               f"끝내지 못합니다. 위험한 순서대로 줄을 세우는 것만으로는 "
+               f"계획이 되지 않습니다."
+               if t["n_grids_affordable"] == 0 else
+               f"현재 가용 물량 {capacity.total_visits:,}건으로는 "
+               f"{t['n_grids_selected']:,}개 격자 중 "
+               f"{t['n_grids_affordable']:,}개까지만 점검할 수 있습니다.")
+            + "</div>", unsafe_allow_html=True)
         if "gain_pp" in cmp:
             st.markdown(
                 f"<div class='callout good'>동일 인력으로 <b>{o['n_grids']:,}개 격자</b>를 점검하여 "
@@ -413,16 +497,26 @@ with tabs[0]:
         st.pydeck_chart(deck([grid_layer(alloc, cfg)], alloc))
     with right:
         st.markdown("**점검 순위표**")
-        cols = [c for c in ["점검순서", "grid_id", "sgg", "위험점수", "점검대상수",
-                            "expected_fires", "누적비용"] if c in alloc.columns]
-        st.dataframe(alloc[cols].rename(columns={
-            "grid_id": "격자", "sgg": "관할", "expected_fires": "기대화재",
-            "누적비용": "누적건수"}), hide_index=True, height=430, width='stretch')
+        cols = [c for c in ["점검순서", "grid_id", "emd", "sgg", "위험점수",
+                            "점검대상수", "expected_fires", "누적비용"]
+                if c in alloc.columns]
+        rank_tb = alloc[cols].rename(columns={
+            "grid_id": "격자", "emd": "읍면동", "sgg": "관할",
+            "expected_fires": "기대화재", "누적비용": "누적건수"})
+        # 소수점 네 자리는 현장에서 아무 의미가 없다.
+        if "위험점수" in rank_tb:
+            rank_tb["위험점수"] = rank_tb["위험점수"].astype(float).round(1)
+        if "기대화재" in rank_tb:
+            rank_tb["기대화재"] = rank_tb["기대화재"].astype(float).round(2)
+        for c in ("점검대상수", "누적건수"):
+            if c in rank_tb:
+                rank_tb[c] = pd.to_numeric(rank_tb[c], errors="coerce").fillna(0).astype(int)
+        st.dataframe(rank_tb, hide_index=True, height=430, width='stretch')
     if eq_info.get("equity_constrained"):
-        rows = [{"관할": g, "화재 비중": v["risk_share"],
-                 "배분 비중": v["budget_share"],
-                 "비율": (v["budget_share"] / v["risk_score"]) if False else
-                        (v["budget_share"] / v["risk_share"] if v["risk_share"] else float("nan"))}
+        rows = [{"관할": g,
+                 "화재 비중": round(v["risk_share"], 3),
+                 "배분 비중": round(v["budget_share"], 3),
+                 "비율": round(v["budget_share"] / v["risk_share"], 2)}
                 for g, v in eq_info["by_group"].items() if v["risk_share"] > 0]
         if rows:
             with st.expander(f"관할별 배분 형평성 (최소 배분 {equity_share:.2f} 적용)"):
@@ -438,59 +532,104 @@ with tabs[0]:
 
 # ================================================================== ② 이유
 with tabs[1]:
-    st.subheader("선정 사유와 점검 항목")
+    st.subheader("구역별 위험요인 및 점검계획서")
+    st.caption("이 구역의 위험을 끌어올린 요인과, 현장에서 확인할 항목을 "
+               "함께 보여 드립니다.")
+
     if alloc.empty:
-        st.info("배분된 격자가 없습니다.")
+        st.markdown("<div class='callout info'>배분된 구역이 없습니다. "
+                    "‘예방점검 배분’ 탭에서 인력을 설정하십시오.</div>",
+                    unsafe_allow_html=True)
     else:
-        labels = {f"{r['점검순서']}순위 · {r['grid_id']} · {r.get('sgg','')} "
+        labels = {f"{r['점검순서']}순위 · {r['grid_id']} · "
+                  f"{r.get('emd') or r.get('sgg', '')} "
                   f"(위험 {r['위험점수']:.0f} · 대상 {int(r['점검대상수'])}개소)": r["grid_id"]
                   for _, r in alloc.head(60).iterrows()}
-        pick = st.selectbox("점검 대상 격자", list(labels))
+        pick = st.selectbox("점검 대상 구역", list(labels))
         gid = labels[pick]
         row = cur[cur["grid_id"] == gid].iloc[0]
 
+        # --- 구역 한눈에 ---
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("위험점수", f"{row['위험점수']:.0f}",
+                  f"관내 {int(row['순위'])}위 (상위 {row['상위%']:.1f}%)")
+        k2.metric("점검 대상물", f"{int(row.get('점검대상수', 0)):,}개소")
+        if "biz_total" in row:
+            k3.metric("다중이용업소", f"{int(row['biz_total']):,}개소")
+        k4.metric("전년 화재", f"{int(row.get('fires_lag1', 0))}건",
+                  f"누적 {int(row.get('fires_cum', 0))}건", delta_color="off")
+        hyd = int(row.get("n_hydrant", 0) or 0)
+        dist = row.get("dist_hydrant_m", float("nan"))
+        k5.metric("소화전", f"{hyd}개",
+                  ("없음, 인접 수리 확인 필요" if hyd == 0
+                   else (f"최근접 {dist:,.0f} m" if dist == dist and dist < 1e6 else "")),
+                  delta_color="off")
+
+        loc = " · ".join(str(row.get(c, "")) for c in ("station", "center", "emd")
+                         if str(row.get(c, "")).strip())
+        if loc:
+            st.caption(f"관할: {loc}")
+
+        st.divider()
         left, right = st.columns([1, 1])
+
         with left:
-            st.markdown("**위험도 상승 요인**")
+            st.markdown("##### 위험도를 끌어올린 요인")
             model = get_model(city)
             drivers = []
-            if model is not None:
+            if model is None:
+                st.markdown("<div class='callout info'>학습된 모델이 없어 "
+                            "요인 분석을 표시할 수 없습니다.</div>",
+                            unsafe_allow_html=True)
+            else:
                 try:
                     d = X.explain_grids(model, cur[cur["grid_id"] == gid])
                     drivers = d["drivers"].iloc[0] if len(d) else []
-                    if drivers:
-                        dd = pd.DataFrame(drivers)
-                        st.dataframe(dd[["label", "value", "contribution"]].rename(
-                            columns={"label": "요인", "value": "현재값", "contribution": "기여도"}),
-                            hide_index=True, width='stretch')
-                        st.bar_chart(dd.set_index("label")["contribution"])
                 except Exception as exc:                     # noqa: BLE001
-                    st.warning(f"SHAP 계산 실패: {exc}")
-            else:
-                st.info("학습된 모델이 없어 요인 분석을 표시할 수 없습니다.")
-
-            st.markdown("**업종·소방시설별 점검 항목**")
-            checklist = R.checklist_for_grid(row, cfg)
-            st.caption(f"총 {checklist['n_items']}개 항목")
-            for sec in checklist["sections"]:
-                with st.expander(f"{sec['구분']} — {sec['근거']}", expanded=False):
-                    for item in sec["항목"]:
-                        st.checkbox(item, key=f"{gid}_{item}")
+                    st.warning(f"요인 계산 실패: {exc}")
+                if drivers:
+                    dd = pd.DataFrame(drivers)
+                    st.bar_chart(dd.set_index("label")["contribution"],
+                                 color="#c0492f", height=210)
+                    st.dataframe(
+                        dd[["label", "value", "contribution"]].rename(columns={
+                            "label": "요인", "value": "현재값", "contribution": "기여도"}),
+                        hide_index=True, width='stretch')
+                    st.caption("기여도가 클수록 이 구역의 위험을 많이 끌어올린 요인입니다.")
+                else:
+                    st.caption("표시할 요인이 없습니다.")
 
         with right:
-            st.markdown("**점검계획서 초안**")
-            ai_on = L.is_available(cfg)
-            st.caption("AI 문서 작성 " + ("사용 가능" if ai_on else "미연결 — 표준 서식으로 작성됩니다"))
-            if st.button("계획서 작성", type="primary"):
-                risk = {"score_0_100": float(row["위험점수"]), "rank": int(row["순위"]),
-                        "percentile": float(row["상위%"])}
-                with st.spinner("작성 중입니다…"):
-                    plan = L.inspection_plan(cfg, str(gid), risk, drivers, checklist)
-                st.caption("AI 작성" if str(plan["source"]).startswith(("cli", "api", "ollama"))
-                           else "표준 서식 작성")
-                st.markdown(plan["text"])
-                st.download_button("계획서 내려받기", plan["text"].encode("utf-8"),
-                                   file_name=f"점검계획서_{gid}.md")
+            st.markdown("##### 현장 점검 항목")
+            checklist = R.checklist_for_grid(row, cfg)
+            done_key = f"chk_{gid}"
+            st.caption(f"이 구역의 업종·소방시설 구성에 맞춰 {checklist['n_items']}개 항목이 "
+                       "자동으로 구성됩니다.")
+            for i, sec in enumerate(checklist["sections"]):
+                with st.expander(f"{sec['구분']} — {sec['근거']}", expanded=(i == 0)):
+                    for item in sec["항목"]:
+                        st.checkbox(item, key=f"{done_key}_{item}")
+
+        st.divider()
+        st.markdown("##### 점검계획서 초안")
+        c1, c2 = st.columns([1, 3])
+        make = c1.button("계획서 작성", type="primary", width='stretch')
+        c2.caption("AI 문서 작성 " + ("사용 가능 · 20~40초 소요"
+                                   if L.is_available(cfg)
+                                   else "미연결(표준 서식으로 작성됩니다)"))
+        if make:
+            risk = {"score_0_100": float(row["위험점수"]), "rank": int(row["순위"]),
+                    "percentile": float(row["상위%"])}
+            with st.spinner("작성 중입니다…"):
+                doc = L.inspection_plan(cfg, str(gid), risk, drivers, checklist)
+            st.session_state["insp_doc"] = doc
+
+        doc = st.session_state.get("insp_doc")
+        if doc and doc.get("grid_id") == str(gid):
+            st.download_button("계획서 내려받기", doc["text"].encode("utf-8"),
+                               file_name=f"점검계획서_{gid}.md")
+            st.markdown(f"<div class='docview'>{_md_to_html(doc['text'])}</div>",
+                        unsafe_allow_html=True)
 
 
 # ================================================================== ③ 순찰
@@ -531,6 +670,23 @@ with tabs[2]:
         with st.spinner("관서 출발 동선 계산 중…"):
             plan = RT.plan_from_stations(targets, stations, level=level,
                                          use_road=use_road, budget_min=float(budget))
+        # --- 조건이 바뀌면 무엇이 달라지는지 남겨 둔다 -------------------
+        cond = {"목적": mode.label,
+                "출동 단위": "119안전센터" if level == "center" else "소방서",
+                "순찰 격자 수": int(n_grids),
+                "1회 순찰 시간": f"{int(budget)}분" if budget else "제한 없음",
+                "지역": ", ".join(pick) if pick else "관내 전체",
+                "거리 기준": "도로" if use_road else "직선"}
+        facts = plan_facts(plan, targets)
+        prev = st.session_state.get("patrol_prev")
+        changed = bool(prev) and prev["cond"] != cond
+        st.session_state["patrol_prev"] = {"cond": cond, "facts": facts,
+                                           "routes": plan["routes"],
+                                           "targets": targets} \
+            if changed or not prev else prev
+        if changed:
+            st.session_state["patrol_before"] = prev
+
         st.session_state["patrol_plan"] = plan
         st.session_state["patrol_targets"] = targets
 
@@ -549,33 +705,97 @@ with tabs[2]:
         if plan["summary"].empty:
             st.warning("관서 좌표를 확인하지 못해 동선을 만들지 못했습니다.")
         else:
-            st.markdown("**관서별 순찰 구역**")
-            st.dataframe(plan["summary"], hide_index=True, width='stretch')
+            summ = plan["summary"].rename(columns={
+                "관서→첫격자_km": "관서→첫 구역(km)", "순찰거리_km": "순찰 거리(km)",
+                "복귀거리_km": "복귀 거리(km)", "총_km": "총 거리(km)",
+                "총_분": "소요 시간(분)", "격자수": "구역 수"})
+            if "소요 시간(분)" in summ:
+                summ["소요 시간(분)"] = pd.to_numeric(
+                    summ["소요 시간(분)"], errors="coerce").fillna(0).astype(int)
 
-            palette = [[227, 74, 51], [43, 108, 176], [47, 158, 110], [200, 120, 20],
-                       [130, 70, 180], [20, 150, 160], [180, 60, 120], [90, 110, 40],
-                       [230, 160, 40], [70, 70, 200], [160, 40, 40], [40, 160, 90]]
-            layers, depots = [], []
-            for i, r in enumerate(plan["routes"]):
-                col = palette[i % len(palette)]
-                dep = r.attrs.get("depot", {})
-                path = ([[dep.get("lon"), dep.get("lat")]] if dep else []) \
-                    + r[["lon", "lat"]].astype(float).values.tolist() \
-                    + ([[dep.get("lon"), dep.get("lat")]] if dep else [])
-                layers.append(pdk.Layer("PathLayer", [{"path": path}], get_path="path",
-                                        get_width=45, get_color=col, width_min_pixels=3))
-                layers.append(pdk.Layer("ScatterplotLayer", r, get_position=["lon", "lat"],
-                                        get_radius=180, get_fill_color=col + [200],
-                                        pickable=True))
-                if dep:
-                    depots.append({"lon": dep["lon"], "lat": dep["lat"],
-                                   "name": dep.get("name", "")})
-            if depots:
-                layers.append(pdk.Layer("ScatterplotLayer", pd.DataFrame(depots),
-                                        get_position=["lon", "lat"], get_radius=330,
-                                        get_fill_color=[20, 20, 20, 230], pickable=True))
-            st.pydeck_chart(deck(layers, targets))
-            st.caption("검은 점 = 출동 관서 · 색깔 = 관서별 순찰 동선")
+            layers, depots = route_layers(plan["routes"])
+            # 관서가 대상 구역 밖에 있을 수 있으므로 함께 넣어 범위를 잡는다.
+            extent = pd.concat(
+                [targets[["lon", "lat"]]] +
+                ([pd.DataFrame(depots)[["lon", "lat"]]] if depots else []),
+                ignore_index=True)
+            # 동선 그림이 이 화면의 결과물이다. 표보다 위에 둔다.
+            mp, tb = st.columns([3, 2])
+            with mp:
+                st.pydeck_chart(deck(layers, extent, tooltip=TIP_PLAIN))
+                st.caption("검은 점 = 출동 관서 · 색깔 = 관서별 순찰 동선 "
+                           "· 관서에서 출발해 관서로 돌아옵니다.")
+            with tb:
+                st.markdown("**관서별 순찰 구역**")
+                # 좁은 칸에 아홉 열을 넣으면 다 잘린다. 요약만 두고 나머지는 접는다.
+                brief = [c for c in ["출동관서", "구역 수", "총 거리(km)", "소요 시간(분)"]
+                         if c in summ.columns]
+                st.dataframe(summ[brief], hide_index=True, width='stretch', height=380)
+                st.caption(f"{len(summ)}개 조가 동시에 나갑니다. "
+                           "구역이 겹치지 않도록 나눈 결과입니다.")
+                with st.expander("구간별 거리 자세히"):
+                    st.dataframe(summ, hide_index=True, width='stretch')
+
+            # ---------------- 조건을 바꾸면 계획이 어떻게 달라지는가 ----------
+            before = st.session_state.get("patrol_before")
+            if before:
+                st.divider()
+                bf, bc = before["facts"], before["cond"]
+                diff_keys = [k for k in cond if bc.get(k) != cond[k]]
+                st.markdown("#### 조건을 바꾸기 전과 후")
+                st.markdown(
+                    "<div class='callout'>바꾼 조건: <b>"
+                    + "</b>, <b>".join(
+                        f"{k} {bc.get(k)} → {cond[k]}" for k in diff_keys)
+                    + "</b></div>", unsafe_allow_html=True)
+
+                same = len(bf["grids"] & facts["grids"])
+                d1, d2, d3, d4 = st.columns(4)
+                d1.metric("순찰 격자", f"{facts['격자']}개",
+                          f"{facts['격자'] - bf['격자']:+d}개", delta_color="off")
+                d2.metric("총 이동", f"{facts['총이동']:.1f} km",
+                          f"{facts['총이동'] - bf['총이동']:+.1f} km",
+                          delta_color="inverse")
+                d3.metric("가장 먼 순찰조", f"{facts['최장']:.1f} km",
+                          f"{facts['최장'] - bf['최장']:+.1f} km",
+                          delta_color="inverse")
+                d4.metric("겹치는 구역", f"{same}개",
+                          f"이전 {bf['격자']}개 중", delta_color="off")
+
+                bl, bd = route_layers(before["routes"], width=38, radius=150)
+                bext = pd.concat(
+                    [before["targets"][["lon", "lat"]]] +
+                    ([pd.DataFrame(bd)[["lon", "lat"]]] if bd else []),
+                    ignore_index=True)
+                # 두 지도의 화면 범위가 다르면 눈으로 비교가 안 된다. 같은 틀에 놓는다.
+                both = pd.concat([bext, extent], ignore_index=True)
+
+                b1, b2 = st.columns(2)
+                with b1:
+                    st.markdown(f"**바꾸기 전: {bc['목적']}**")
+                    st.pydeck_chart(deck(bl, both, tooltip=TIP_PLAIN))
+                    st.caption(f"{bf['격자']}격자 · {bf['관서']}개 관서 · "
+                               f"총 {bf['총이동']:.1f} km")
+                with b2:
+                    st.markdown(f"**바꾼 뒤: {cond['목적']}**")
+                    st.pydeck_chart(deck(layers, both, tooltip=TIP_PLAIN))
+                    st.caption(f"{facts['격자']}격자 · {facts['관서']}개 관서 · "
+                               f"총 {facts['총이동']:.1f} km")
+                st.caption("두 지도는 같은 범위·같은 배율입니다.")
+
+                gone = sorted(bf["grids"] - facts["grids"])
+                new_g = sorted(facts["grids"] - bf["grids"])
+                cc1, cc2 = st.columns(2)
+                cc1.markdown(f"**빠진 구역 {len(gone)}개**  \n"
+                             + (", ".join(gone[:12]) + (" …" if len(gone) > 12 else "")
+                                if gone else "없음"))
+                cc2.markdown(f"**새로 들어온 구역 {len(new_g)}개**  \n"
+                             + (", ".join(new_g[:12]) + (" …" if len(new_g) > 12 else "")
+                                if new_g else "없음"))
+                if st.button("비교 지우기"):
+                    st.session_state.pop("patrol_before", None)
+                    st.rerun()
+                st.divider()
 
             with st.expander("계획서용 지도 (인쇄·첨부용)", expanded=False):
                 st.caption("화재위험 분포 위에 순찰 동선을 얹은 그림입니다. "
@@ -605,11 +825,20 @@ with tabs[2]:
             cols = [c for c in ["순번", "grid_id", "emd", "sgg", "순찰점수",
                                 "이동거리_m", "누적거리_m", "이동시간_분", "누적시간_분"]
                     if c in r.columns]
-            st.dataframe(r[cols].rename(columns={"grid_id": "격자", "emd": "읍면동",
-                                                 "sgg": "시군구"}),
-                         hide_index=True, width='stretch')
+            det = r[cols].rename(columns={
+                "grid_id": "격자", "emd": "읍면동", "sgg": "시군구",
+                "이동거리_m": "직전 지점에서(m)", "누적거리_m": "누적 거리(m)",
+                "이동시간_분": "이동(분)", "누적시간_분": "누적 시간(분)"})
+            if "순찰점수" in det:
+                det["순찰점수"] = det["순찰점수"].astype(float).round(1)
+            for c in ("직전 지점에서(m)", "누적 거리(m)", "이동(분)", "누적 시간(분)"):
+                if c in det:
+                    det[c] = pd.to_numeric(det[c], errors="coerce").fillna(0).astype(int)
+            st.dataframe(det, hide_index=True, width='stretch')
+            st.caption("순번대로 이동합니다. 관서에서 출발해 마지막 구역을 돌고 "
+                       "관서로 복귀하는 시간까지 포함한 계획입니다.")
 
-        with st.expander(f"{mode.label} — 현장 중점 확인 항목", expanded=False):
+        with st.expander(f"{mode.label} 현장 중점 확인 항목", expanded=False):
             for chk in mode.checks:
                 st.checkbox(chk, key=f"{mode.key}_{chk}")
 
@@ -636,10 +865,18 @@ with tabs[2]:
             st.bar_chart(plan_m.set_index("월")["위험계수"])
             show = [c for c in ["월", "위험계수", "등급", "예상화재_건", "humidity_mean",
                                 "eh_mean", "dry_days", "wind_mean"] if c in plan_m.columns]
-            st.dataframe(plan_m[show].rename(columns={
+            mtb = plan_m[show].rename(columns={
                 "humidity_mean": "평균습도(%)", "eh_mean": "실효습도(%)",
-                "dry_days": "건조일수", "wind_mean": "평균풍속(m/s)"}),
-                hide_index=True, width='stretch')
+                "dry_days": "건조일수", "wind_mean": "평균풍속(m/s)",
+                "예상화재_건": "예상 화재(건)"})
+            for c, nd in (("위험계수", 2), ("평균습도(%)", 1), ("실효습도(%)", 1),
+                          ("평균풍속(m/s)", 1), ("예상 화재(건)", 1)):
+                if c in mtb:
+                    mtb[c] = pd.to_numeric(mtb[c], errors="coerce").round(nd)
+            if "건조일수" in mtb:
+                mtb["건조일수"] = pd.to_numeric(
+                    mtb["건조일수"], errors="coerce").fillna(0).astype(int)
+            st.dataframe(mtb, hide_index=True, width='stretch')
             st.caption("위험계수 1.0 = 연평균 수준. 실효습도는 건조주의보 발표 기준값입니다.")
 
     st.divider()
@@ -752,7 +989,7 @@ with tabs[3]:
                     res = PLN.polish(cfg, md)
                     md = res["text"]
                     if not res.get("polished"):
-                        st.info("AI 다듬기를 적용하지 않았습니다 — 표준 서식 그대로 출력합니다.")
+                        st.info("AI 다듬기를 적용하지 않았습니다. 표준 서식 그대로 출력합니다.")
             st.session_state["last_doc"] = md
             st.session_state["last_doc_kind"] = kind
             st.session_state["last_doc_legal"] = doc.get("legal", [])
@@ -782,39 +1019,176 @@ with tabs[3]:
             st.markdown(f"<div class='docview'>{_md_to_html(md)}</div>",
                         unsafe_allow_html=True)
 
+    # ---------------- 법정 서식 채우기 --------------------------------
+    st.divider()
+    st.markdown("### 법정 서식으로 내보내기")
+    st.caption("자체 계획서와 별개로, 법에 서식이 정해진 문서는 그 서식을 써야 "
+               "결재가 됩니다. 왼쪽이 법제처 원본 서식, 오른쪽이 같은 서식을 "
+               "우리 데이터로 채운 것입니다.")
+
+    blank_form = cfg.paths.processed / "forms" / "서식11_빈양식.png"
+    if alloc.empty:
+        st.markdown("<div class='callout info'>‘예방점검 배분’ 탭에서 인력을 "
+                    "설정하면 대상 구역이 정해집니다.</div>", unsafe_allow_html=True)
+    else:
+        fl, fr = st.columns([2, 1])
+        gid_opts = {f"{r['점검순서']}순위 · {r['grid_id']} · "
+                    f"{r.get('emd') or r.get('sgg', '')}": r["grid_id"]
+                    for _, r in alloc.head(40).iterrows()}
+        pick_g = fl.selectbox("대장을 작성할 구역", list(gid_opts), key="form_grid")
+        make = fr.button("서식 채우기", type="primary", width='stretch')
+
+        if make or st.session_state.get("ledger_html"):
+            if make:
+                grow = cur[cur["grid_id"] == gid_opts[pick_g]].iloc[0]
+                st_all = pd.concat(
+                    [get_stations(city, year, "station"),
+                     get_stations(city, year, "center")], ignore_index=True)
+                drv = []
+                mdl = get_model(city)
+                if mdl is not None:
+                    try:
+                        d = X.explain_grids(mdl, cur[cur["grid_id"] == gid_opts[pick_g]])
+                        drv = list(d["drivers"].iloc[0]) if len(d) else []
+                    except Exception:                       # noqa: BLE001
+                        drv = []
+                led = FM.zone_ledger(grow, city_label=cfg.city(city)["label"],
+                                     year=int(year), stations=st_all,
+                                     drivers=drv, grid_m=int(cfg.grid_size_m))
+                st.session_state["ledger_html"] = FM.render_ledger_html(
+                    led, city_label=cfg.city(city)["label"], year=int(year))
+                st.session_state["ledger_stat"] = (led["n_filled"], led["n_fields"],
+                                                   led["grid_id"])
+
+            n_f, n_t, g_id = st.session_state.get("ledger_stat", (0, 0, ""))
+            st.markdown(
+                f"<div class='callout good'><b>{FM.FORM_NO} {FM.FORM_TITLE}</b> "
+                f"— {n_t}개 칸 중 <b>{n_f}개</b>를 공개 데이터로 채웠습니다. "
+                f"나머지는 연계 자료가 없어 비워 두고, 칸마다 사유를 적었습니다. "
+                f"빈칸을 그럴듯한 값으로 메우면 결재 문서가 아니라 추정치가 "
+                f"됩니다.</div>", unsafe_allow_html=True)
+
+            g1, g2 = st.columns(2)
+            with g1:
+                st.markdown("**법제처 원본 서식 (빈 양식)**")
+                if blank_form.exists():
+                    st.image(str(blank_form), width='stretch')
+                    st.caption(f"「{FM.FORM_LAW}」 {FM.FORM_NO} · "
+                               "`scripts/09_forms.py` 로 법제처에서 직접 내려받습니다.")
+                else:
+                    st.markdown("<div class='callout info'>`python scripts/09_forms.py` "
+                                "를 실행하면 원본 서식이 표시됩니다.</div>",
+                                unsafe_allow_html=True)
+            with g2:
+                st.markdown(f"**불씨예보가 채운 대장: {g_id}**")
+                st.markdown(
+                    f"<div style='border:1px solid #e5e5e5;padding:14px;"
+                    f"background:#fff;max-height:1180px;overflow:auto'>"
+                    f"{st.session_state['ledger_html']}</div>",
+                    unsafe_allow_html=True)
+                st.download_button(
+                    "채운 대장 내려받기 (HTML)",
+                    ("<html><head><meta charset='utf-8'><title>"
+                     f"{FM.FORM_TITLE}</title></head><body style='width:900px;"
+                     "margin:20px auto;background:#fff'>"
+                     + st.session_state["ledger_html"] + "</body></html>").encode("utf-8"),
+                    file_name=f"화재예방강화지구_관리대장_{g_id}.html",
+                    mime="text/html")
+
 
 # ================================================================== ⑤ 대응취약
 with tabs[4]:
-    st.subheader("소방용수 사각지대 및 급증 구역")
+    st.subheader("소방용수 사각지대 및 화재 급증 구역")
+    st.caption("소화전이 없는 구역은 전체의 절반에 가깝습니다. 산지에도 소화전은 "
+               "없기 때문입니다. **위험 상위 구간과 교차한 구역**만 추려야 "
+               "신설 우선순위가 됩니다.")
+
     cov = H.hydrant_coverage(cur)
     if not cov.get("available"):
-        st.info("소방용수시설 자료가 없습니다.")
+        st.markdown("<div class='callout info'>소방용수시설 자료가 없습니다.</div>",
+                    unsafe_allow_html=True)
     else:
         blind = H.blind_spots(cur, cur["pred"], cfg)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("전체 격자", f"{cov['n_grids']:,}")
-        c2.metric("소화전 미설치 격자", f"{cov['grids_without_hydrant']:,}",
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("전체 구역", f"{cov['n_grids']:,}개")
+        c2.metric("소화전 미설치", f"{cov['grids_without_hydrant']:,}개",
                   f"{cov['share_without_hydrant']:.1%}", delta_color="off")
-        c3.metric("고위험·용수 사각", f"{len(blind)}개",
-                  help=f"위험 상위 {cfg['hydrant']['high_risk_percentile']}% 중 소화전이 없거나 "
-                       f"{cfg['hydrant']['max_dist_m']}m 밖")
-        if not blind.empty:
-            st.markdown("**소화전 신설 우선순위**")
-            st.dataframe(blind, hide_index=True, width='stretch')
-            st.pydeck_chart(deck([pdk.Layer(
-                "ScatterplotLayer", blind.assign(lon=pd.to_numeric(blind["lon"]),
-                                                 lat=pd.to_numeric(blind["lat"])),
-                get_position=["lon", "lat"], get_radius=350,
-                get_fill_color=[220, 30, 30, 170], pickable=True)], blind))
-            st.download_button("사각지대 내려받기 (CSV)", blind.to_csv(index=False).encode("utf-8-sig"),
-                               file_name=f"소화전사각_{city}_{year}.csv")
+        c3.metric("고위험 · 용수 사각", f"{len(blind)}개",
+                  help=f"위험 상위 {cfg['hydrant']['high_risk_percentile']}% 중 "
+                       f"소화전이 없거나 {cfg['hydrant']['max_dist_m']}m 밖인 구역")
+        if len(blind):
+            c4.metric("사각 구역 실제 화재",
+                      f"{int(blind['fires'].sum()) if 'fires' in blind else 0}건",
+                      delta_color="off")
 
+        if not blind.empty:
+            st.markdown(
+                f"<div class='callout'><b>소화전 신설 우선순위 {len(blind)}개 구역</b><br>"
+                f"위험은 상위 {cfg['hydrant']['high_risk_percentile']}%인데 "
+                f"소화전이 없거나 {cfg['hydrant']['max_dist_m']}m 밖입니다. "
+                f"예산 요구 시 객관적 근거로 씁니다.</div>", unsafe_allow_html=True)
+
+            show = [c for c in ["우선순위", "grid_id", "station", "center", "emd",
+                                "risk", "fires", "n_hydrant", "dist_hydrant_m",
+                                "target_total", "biz_total"] if c in blind.columns]
+            tb = blind[show].rename(columns={
+                "grid_id": "구역", "station": "소방서", "center": "119안전센터",
+                "emd": "읍면동", "risk": "위험도", "fires": "실제화재",
+                "n_hydrant": "소화전", "dist_hydrant_m": "최근접 소화전",
+                "target_total": "대상물", "biz_total": "업소"})
+            # 소수점 여섯 자리는 읽는 사람에게 아무 정보도 주지 않는다.
+            if "위험도" in tb:
+                tb["위험도"] = tb["위험도"].astype(float).round(1)
+            if "최근접 소화전" in tb:
+                tb["최근접 소화전"] = tb["최근접 소화전"].apply(
+                    lambda v: "—" if pd.isna(v) else f"{float(v):,.0f}m")
+            for c in ("실제화재", "소화전", "대상물", "업소"):
+                if c in tb:
+                    tb[c] = pd.to_numeric(tb[c], errors="coerce").fillna(0).astype(int)
+            st.dataframe(tb, hide_index=True, width='stretch', height=330,
+                         column_config={"위험도": st.column_config.ProgressColumn(
+                             "위험도", format="%.1f", min_value=0.0,
+                             max_value=float(max(tb["위험도"].max(), 1)))}
+                         if "위험도" in tb else None)
+
+            m1, m2 = st.columns([2, 1])
+            with m1:
+                st.pydeck_chart(deck([pdk.Layer(
+                    "ScatterplotLayer",
+                    blind.assign(lon=pd.to_numeric(blind["lon"]),
+                                 lat=pd.to_numeric(blind["lat"])),
+                    get_position=["lon", "lat"], get_radius=380,
+                    get_fill_color=[192, 73, 47, 180], pickable=True)], blind,
+                    tooltip=TIP_PLAIN))
+            with m2:
+                if "station" in blind.columns:
+                    by = (blind.groupby("station").size()
+                          .rename("사각 구역").reset_index()
+                          .sort_values("사각 구역", ascending=False))
+                    st.markdown("**소방서별 사각 구역**")
+                    st.dataframe(by.rename(columns={"station": "소방서"}),
+                                 hide_index=True, width='stretch')
+            st.download_button("사각지대 내려받기 (CSV)",
+                               blind.to_csv(index=False).encode("utf-8-sig"),
+                               file_name=f"소방용수사각_{city}_{year}.csv")
+
+    st.divider()
     surge = H.surge_alert(panel, year)
-    st.markdown(f"**화재 급증 구역 ({year}년, 전년 대비 2배 이상)**")
+    st.markdown(f"##### 화재 급증 구역 ({year}년, 전년 대비 2배 이상)")
     if surge.empty:
-        st.caption("해당 격자가 없습니다.")
+        st.caption("해당 구역이 없습니다.")
     else:
-        st.dataframe(surge, hide_index=True, width='stretch')
+        st.caption(f"{len(surge)}개 구역. 같은 위험요인이 반복되는지 확인이 필요합니다.")
+        sg = surge.rename(columns={
+            "grid_id": "구역", "station": "소방서", "center": "119안전센터",
+            "sgg": "시군구", "emd": "읍면동",
+            "fires": f"{year}년", "fires_lag1": f"{year - 1}년"})
+        if "증가배수" in sg:
+            sg["증가배수"] = sg["증가배수"].astype(float).round(1)
+        for c in (f"{year}년", f"{year - 1}년"):
+            if c in sg:
+                sg[c] = pd.to_numeric(sg[c], errors="coerce").fillna(0).astype(int)
+        st.dataframe(sg, hide_index=True, width='stretch', height=260)
 
 
 # ================================================================== ⑥ 검증
@@ -822,95 +1196,146 @@ with tabs[5]:
     st.subheader("예측 성능 검증 결과")
     ev = get_evaluation()
     if not ev:
-        st.info("`scripts/04_train_eval.py` 를 실행하면 검증 결과가 표시됩니다.")
+        st.markdown("<div class='callout info'>`scripts/04_train_eval.py` 를 실행하면 "
+                    "검증 결과가 표시됩니다.</div>", unsafe_allow_html=True)
     else:
         t = ev.get("temporal", {})
         h = t.get("headline", {})
         key = f"top{cfg.headline_k}"
+        ci = t.get("ci", {}).get(key, {})
+        m_ci, d_ci = ci.get("model", {}), ci.get("delta", {})
+        tr = [int(y) for y in t.get("train_years", [0])]
+
+        st.markdown(
+            f"<div class='callout good'><b>{tr[0]}~{tr[-1]}년 자료로 학습해 "
+            f"{int(t.get('test_year', 0))}년 화재를 예측했습니다.</b> "
+            f"{int(t.get('test_year', 0))}년 자료는 학습에 한 건도 쓰지 않았습니다.</div>",
+            unsafe_allow_html=True)
+
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric(f"상위 {cfg.headline_k}% 포착률", f"{h.get('model_capture',0):.1%}",
-                  f"{h.get('delta_pp',0):+.1f}%p vs 베이스라인")
+        c1.metric(f"위험 상위 {cfg.headline_k}% 포착률", f"{h.get('model_capture',0):.1%}",
+                  (f"95% CI {m_ci['lo']:.1%}–{m_ci['hi']:.1%}"
+                   if m_ci and m_ci.get("lo") == m_ci.get("lo") else ""),
+                  delta_color="off",
+                  help="위험 상위 구간에 점검을 집중했을 때 그해 실제 화재의 몇 %가 "
+                       "그 안에서 발생했는가")
         c2.metric("무작위 배정 대비", f"{h.get('model_lift',0):.2f}배",
                   help="같은 면적을 아무 데나 골랐을 때보다 몇 배 더 잡는가. "
                        "학계에서는 PAI(Predictive Accuracy Index)라 부릅니다.")
         pei = t.get("model", {}).get("pei", {}).get(key)
         if pei:
             c3.metric("달성 가능 최대치 대비", f"{pei:.1%}",
-                      help="실제 화재를 다 알고 줄 세웠을 때의 성능을 100으로 봤을 때 "
-                           "우리 모델이 어디쯤인지. 학계에서는 PEI"
-                           "(Predictive Efficiency Index)라 부릅니다. "
-                           "지역이 달라도 비교할 수 있는 지표입니다.")
+                      help="실제 화재를 다 알고 줄 세웠을 때를 100으로 봤을 때 어디쯤인지. "
+                           "학계에서는 PEI 라 부르며, 지역이 달라도 비교할 수 있습니다.")
         cal = t.get("calibration", {})
         if cal:
             c4.metric("예측 건수 정확도", f"{cal.get('total_ratio',0):.2f}",
-                      f"예측 {cal.get('total_predicted',0):.0f} / 실제 {cal.get('total_actual',0):.0f}",
-                      delta_color="off",
-                      help="예측한 화재 총건수 ÷ 실제 총건수. 1.00 이면 건수까지 맞다는 뜻으로, "
-                           "'이 격자는 연 3건 예상' 같은 말을 쓸 수 있습니다.")
+                      f"예측 {cal.get('total_predicted',0):.0f} / "
+                      f"실제 {cal.get('total_actual',0):.0f}", delta_color="off",
+                      help="1.00 이면 건수까지 맞다는 뜻으로, "
+                           "'이 구역은 연 3건 예상' 같은 말을 쓸 수 있습니다.")
 
-        st.caption(f"검증 방식: {int(t.get('train_years',[0])[0])}–"
-                   f"{int(t.get('train_years',[0])[-1])}년 "
-                   f"자료로 학습 후 {t.get('test_year')}년 예측 "
-                   f"(검증 연도 자료는 학습에 미사용)")
+        if d_ci and d_ci.get("lo_pp") == d_ci.get("lo_pp"):
+            verdict = ("통계적으로 유의합니다" if d_ci["excludes_zero"]
+                       else "신뢰구간이 0을 포함해, 개선으로 단정하기 어렵습니다")
+            st.caption(f"전년 화재 순으로 갈 때({h.get('baseline_capture',0):.1%}) 대비 "
+                       f"{d_ci['point_pp']:+.1f}%p (95% CI {d_ci['lo_pp']:+.1f}~"
+                       f"{d_ci['hi_pp']:+.1f}%p) — {verdict}.")
 
-        st.markdown("**포착률 곡선**")
-        capm, capb = t.get("model", {}).get("capture", {}), t.get("baseline", {}).get("capture", {})
-        if capm:
-            curve = pd.DataFrame({"상위 %": [int(k[3:]) for k in capm],
-                                  "모델": list(capm.values()),
-                                  "베이스라인(작년화재순)": [capb.get(k) for k in capm]})
-            st.line_chart(curve.set_index("상위 %"))
+        st.divider()
+        g1, g2 = st.columns([3, 2])
+        with g1:
+            st.markdown("##### 포착률 곡선")
+            capm = t.get("model", {}).get("capture", {})
+            capb = t.get("baseline", {}).get("capture", {})
+            if capm:
+                curve = pd.DataFrame({"상위 %": [int(k[3:]) for k in capm],
+                                      "불씨예보": list(capm.values()),
+                                      "단순 기준(전년 화재 순)": [capb.get(k) for k in capm]})
+                curve["무작위 배정"] = curve["상위 %"] / 100
+                st.line_chart(curve.set_index("상위 %"), height=280)
+        with g2:
+            st.markdown("##### 위험 등급별 실제 화재")
+            dec = t.get("model", {}).get("decile", [])
+            if dec:
+                dd = pd.DataFrame(dec)
+                st.bar_chart(dd.set_index("grade")["mean_fires"],
+                             color="#c0492f", height=280)
+                st.caption(f"1등급 {dd['mean_fires'].iloc[0]:.2f}건 → "
+                           f"{len(dd)}등급 {dd['mean_fires'].iloc[-1]:.2f}건")
+
+        st.divider()
+        st.markdown("##### 타 지역·타 관할 적용 검증")
+        rows = []
+        rows.append({"확인한 것": "미래 예측", "질문": f"{int(t.get('test_year',0))}년을 맞히는가",
+                     "결과": f"{h.get('model_capture',0):.1%}",
+                     "비고": (f"단순 기준 대비 {d_ci['point_pp']:+.1f}%p"
+                            if d_ci else "")})
+        if "logo" in ev:
+            lg = ev["logo"]
+            rows.append({"확인한 것": "관할 제외", "질문": "특정 구·군만 잘 맞는 것은 아닌가",
+                         "결과": f"{lg['capture_min']:.1%} ~ {lg['capture_max']:.1%}",
+                         "비고": f"평균 {lg['capture_mean']:.1%}"})
+        if "transfer" in ev:
+            tf = ev["transfer"]
+            tci = tf.get("ci", {}).get(key, {}).get("model", {})
+            rows.append({"확인한 것": "타 지역 적용",
+                         "질문": "울산에서 만든 것이 세종에서도 되는가",
+                         "결과": f"{tf['headline']['model_capture']:.1%}",
+                         "비고": (f"표본이 작아 {tci['lo']:.0%}–{tci['hi']:.0%} 범위"
+                                if tci and tci.get("lo") == tci.get("lo") else "")})
+        if "resolution_scenarios" in ev:
+            road = next((x for x in ev["resolution_scenarios"]
+                         if "도로명" in str(x.get("시나리오", ""))), None)
+            if road:
+                rows.append({"확인한 것": "주소 정밀도",
+                             "질문": "주소가 거칠어 성능이 부풀려진 것은 아닌가",
+                             "결과": f"{road.get('모델포착@20%', 0):.1%}",
+                             "비고": "부풀림 없음"})
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width='stretch')
 
         cc = st.columns(2)
         with cc[0]:
-            if "logo" in ev:
-                st.markdown("**관할 제외 검증** — 해당 구·군을 학습에서 제외")
-                lg = pd.DataFrame(ev["logo"]["per_group"])
-                st.dataframe(lg[["group", "capture", "baseline_capture", "total_fires"]].rename(
-                    columns={"group": "제외 지역", "capture": "모델", "baseline_capture": "베이스라인",
-                             "total_fires": "화재"}), hide_index=True, width='stretch')
-            if "ranking_comparison" in ev and ev["ranking_comparison"].get("capture_by_model"):
-                st.markdown("**알고리즘 비교**")
-                rc = ev["ranking_comparison"]["capture_by_model"]
-                st.dataframe(pd.DataFrame({"모델": list(rc), "포착률": list(rc.values())}),
-                             hide_index=True, width='stretch')
-        with cc[1]:
             if "equity" in t:
-                st.markdown("**관할별 배분 형평성**")
-                st.caption("점검 배분 비중 ÷ 화재 비중. 1.0 이면 위험한 만큼 점검이 갔다는 뜻입니다.")
+                st.markdown("##### 관할별 배분 형평성")
                 eq = pd.DataFrame(t["equity"])
                 eq = eq[eq["group"].astype(str).str.strip() != ""]
                 st.dataframe(eq[["group", "share_of_fires", "share_of_inspections",
-                                 "inspection_vs_risk"]].rename(
-                    columns={"group": "관할", "share_of_fires": "화재비중",
-                             "share_of_inspections": "점검비중", "inspection_vs_risk": "비율"}),
+                                 "inspection_vs_risk"]].rename(columns={
+                    "group": "관할", "share_of_fires": "화재비중",
+                    "share_of_inspections": "점검비중", "inspection_vs_risk": "비율"}),
                     hide_index=True, width='stretch')
-                es = t.get("equity_summary", {})
-                if es.get("underserved"):
-                    st.warning(f"{', '.join(es['underserved'])}: 화재 비중 대비 "
-                               f"점검 배분이 낮습니다.")
+                st.caption("비율 1.0 = 위험한 만큼 점검이 갔다는 뜻입니다.")
+        with cc[1]:
+            if "ranking_comparison" in ev and ev["ranking_comparison"].get("capture_by_model"):
+                st.markdown("##### 알고리즘 비교")
+                rc = ev["ranking_comparison"]["capture_by_model"]
+                names = {"lambdarank": "순위학습", "poisson": "회귀(기준선)",
+                         "baseline_last_year": "단순 기준(전년 화재 순)"}
+                st.dataframe(pd.DataFrame({
+                    "방식": [names.get(k, k) for k in rc],
+                    f"상위 {cfg.headline_k}% 포착률": list(rc.values())}),
+                    hide_index=True, width='stretch')
             if "resolution_scenarios" in ev:
-                st.markdown("**주소 해상도별 성능**")
-                st.caption("PAI = 무작위 대비 배수 · PEI = 달성 가능 최대치 대비 비율")
-                st.dataframe(pd.DataFrame(ev["resolution_scenarios"]),
+                st.markdown("##### 주소 해상도별 성능")
+                st.dataframe(pd.DataFrame(ev["resolution_scenarios"])
+                             [["시나리오", "모델포착@20%", "PAI", "PEI"]],
                              hide_index=True, width='stretch')
-                st.caption("화재의 약 63%는 도로명이 없어 읍면동 중심좌표로 배정됩니다. "
-                           "도로명이 확보된 건만으로 별도 검증한 결과 성능 저하는 없었습니다.")
 
-    with st.expander("용어 설명"):
-        st.markdown("""
+        with st.expander("용어 설명"):
+            st.markdown("""
 | 화면 표기 | 뜻 | 학술 용어 |
 |---|---|---|
-| **상위 20% 화재 포착률** | 위험 상위 20% 격자에 점검을 집중했을 때, 그해 실제 화재의 몇 %가 그 안에서 났는가 | capture rate |
-| **무작위 배정 대비** | 같은 면적을 아무 데나 골랐을 때보다 몇 배 더 잡는가 | PAI (Predictive Accuracy Index) |
-| **달성 가능 최대치 대비** | 실제 화재를 다 알고 줄 세운 '정답 순위'를 100으로 봤을 때 어디쯤인가. 화재가 원래 몇 군데에 몰린 지역은 어떤 모델이든 포착률이 높게 나오므로, 이 지표라야 지역 간 비교가 됩니다 | PEI (Predictive Efficiency Index) |
+| **상위 20% 포착률** | 위험 상위 20% 구역에 점검을 집중했을 때, 그해 실제 화재의 몇 %가 그 안에서 났는가 | capture rate |
+| **무작위 배정 대비** | 같은 면적을 아무 데나 골랐을 때보다 몇 배 더 잡는가 | PAI |
+| **달성 가능 최대치 대비** | 실제 화재를 다 알고 줄 세운 ‘정답 순위’를 100으로 봤을 때 어디쯤인가. 화재가 몇 군데에 몰린 지역은 어떤 방법이든 포착률이 높게 나오므로, 이 지표라야 지역 간 비교가 됩니다 | PEI |
 | **예측 건수 정확도** | 예측 총건수 ÷ 실제 총건수. 순위뿐 아니라 값도 맞는가 | calibration |
-| **95% CI** | 같은 조사를 100번 다시 하면 95번은 이 범위 안에 들어온다는 뜻. 범위가 넓으면 표본이 작다는 신호입니다 | 신뢰구간 |
-| **단순 기준** | 전년도에 화재가 많았던 격자 순으로 줄 세운 것. 학습 없이 누구나 할 수 있는 방법이라 비교 기준으로 씁니다 | baseline |
-| **관할 제외 검증** | 구·군을 하나씩 통째로 빼고 학습해 그 지역을 맞히기. 한 지역만 외운 모델인지 가립니다 | LOGO (Leave-One-Group-Out) |
-| **위험도 상승 요인** | 이 격자의 점수를 무엇이 얼마나 끌어올렸는가 | SHAP |
-| **위험 등급** | 위험도 순으로 10등분한 것. 1등급이 가장 낮고 10등급이 가장 높습니다 | decile |
+| **95% CI** | 같은 조사를 100번 다시 하면 95번은 이 범위에 들어온다는 뜻. 넓으면 표본이 작다는 신호 | 신뢰구간 |
+| **단순 기준** | 전년도에 화재가 많았던 구역 순으로 줄 세운 것. 학습 없이 누구나 할 수 있어 비교 기준으로 씁니다 | baseline |
+| **관할 제외 검증** | 구·군을 하나씩 통째로 빼고 학습해 그 지역을 맞히기 | LOGO |
+| **위험도 상승 요인** | 이 구역의 점수를 무엇이 얼마나 끌어올렸는가 | SHAP |
 """)
+
 
 # ================================================================== ⑦ 업무 도우미
 with tabs[6]:
@@ -964,7 +1389,7 @@ with tabs[6]:
     if L.is_available(cfg):
         a3.caption("AI 답변 사용 가능 · 15~40초 소요")
     else:
-        a3.caption("AI 미연결 — 관련 자료를 찾아 그대로 보여 드립니다")
+        a3.caption("AI 미연결. 관련 자료를 찾아 그대로 보여 드립니다")
 
     if (ask or st.session_state.pop("qa_run", False)) and question.strip():
         index = get_index(city, year)
@@ -987,6 +1412,20 @@ with tabs[6]:
             st.caption(f"질문: {st.session_state.get('qa_asked','')}")
             st.markdown(f"<div class='answer'>{_md_to_html(res['answer'])}</div>",
                         unsafe_allow_html=True)
+
+            # 답변이 인용한 조문을 검색된 원문과 하나하나 대조한 결과.
+            # 지어낸 조문 번호는 실무에서 답변이 없는 것보다 나쁘다.
+            g = res.get("grounding") or {}
+            if g.get("unsupported"):
+                names = ", ".join(x.split(":", 1)[1] for x in g["unsupported"])
+                st.markdown(
+                    f"<div class='callout'><b>확인 필요</b> — 답변이 인용한 "
+                    f"<b>{names}</b> 은(는) 검색된 자료 안에서 찾지 못했습니다. "
+                    f"국가법령정보센터에서 직접 확인하십시오.</div>",
+                    unsafe_allow_html=True)
+            elif g.get("cited"):
+                st.caption(f"인용한 법령·조문 {len(g['cited'])}건이 모두 아래 "
+                           f"근거 자료 안에서 확인되었습니다.")
 
             if res["sources"]:
                 st.markdown("##### 근거 자료")

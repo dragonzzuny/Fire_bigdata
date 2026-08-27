@@ -179,20 +179,61 @@ def nearest_neighbor(dist: np.ndarray, start: int = 0) -> list[int]:
     return order
 
 
+def _randomized_greedy(dist: np.ndarray, start: int, rng: np.random.Generator,
+                       top: int = 2) -> list[int]:
+    """최근접 이웃을 흔든 것. 매번 가장 가까운 곳 대신 가까운 두 곳 중 하나로 간다.
+
+    열린 경로에서는 출발점을 바꿀 수 없으므로(관서가 정해져 있다) 다중 출발
+    대신 이 방법으로 서로 다른 초기해를 만든다.
+    """
+    n = len(dist)
+    order = [start]
+    remaining = list(set(range(n)) - {start})
+    while remaining:
+        cur = order[-1]
+        remaining.sort(key=lambda j: dist[cur, j])
+        pick = int(rng.integers(0, min(top, len(remaining))))
+        order.append(remaining.pop(pick))
+    return order
+
+
+def route_length(dist: np.ndarray, order: list[int], *, closed: bool = False) -> float:
+    """경로 길이. closed=True 면 마지막 지점에서 출발점으로 돌아오는 구간까지 더한다.
+
+    순찰은 관서에서 나가 관서로 돌아온다. 돌아오는 거리를 빼고 최적화하면
+    '가장 먼 곳에서 끝나는' 동선이 최선으로 뽑히는데, 실제로는 그만큼 되돌아와야
+    하므로 총 이동은 오히려 늘어난다. 무엇을 최적화하는지와 무엇을 보고하는지가
+    같아야 한다.
+    """
+    if len(order) < 2:
+        return 0.0
+    total = float(sum(dist[order[i - 1], order[i]] for i in range(1, len(order))))
+    if closed:
+        total += float(dist[order[-1], order[0]])
+    return total
+
+
 def solve_route(dist: np.ndarray, start: int = 0, *, restarts: int = 0,
-                or_opt: bool = True, max_rounds: int = 60) -> list[int]:
+                or_opt: bool = True, max_rounds: int = 60,
+                closed: bool = False, seed: int = 42) -> list[int]:
     """Depot 고정 TSP 를 휴리스틱으로 푼다.
 
-    구성:  최근접 이웃(여러 시작점) → 2-opt → Or-opt, 더 나아지지 않을 때까지 반복.
+    구성:  최근접 이웃(여러 초기해) → 2-opt → Or-opt, 더 나아지지 않을 때까지 반복.
 
     · **2-opt** 는 경로의 두 변을 끊고 사이를 뒤집는다. 교차(X자)를 없앤다.
-    · **Or-opt** 는 연속한 1~3개 지점을 통째로 다른 위치로 옮긴다.
-      2-opt 로는 못 고치는 '한 곳만 동떨어져 붙은' 구간을 푼다.
+      열린 경로에서는 '꼬리를 통째로 뒤집는' 수도 유효한데, 이 수를 빼면
+      최적해에서 20% 넘게 벌어지는 사례가 실제로 나온다
+      (tests_firebird/test_algorithms.py 에서 완전탐색과 대조).
+    · **Or-opt** 는 연속한 1~3개 지점을 통째로 다른 위치로 옮긴다. 방향을 뒤집어
+      넣는 경우까지 본다. 2-opt 로는 못 고치는 '한 곳만 동떨어져 붙은' 구간을 푼다.
     둘은 서로 못 고치는 것을 고쳐서, 같이 쓰면 각각보다 낫다.
 
-    최적해를 보장하지 않는다. 격자 수십 개 규모에서 정확해(TSP 는 NP-난해)를
-    구하려면 분기한정이나 전용 솔버가 필요한데, 순찰 계획에서 몇 백 미터 차이는
-    도로 사정·신호·주차에 묻힌다. 대신 **빠르고 안정적으로** 좋은 해를 낸다.
+    closed=True 면 왕복(관서 → … → 관서)을 최소화한다. 순찰 계획은 왕복이다.
+
+    최적해를 보장하지 않는다. TSP 는 NP-난해여서 격자 수십 개라도 정확해를 구하려면
+    분기한정이나 전용 솔버가 필요한데, 순찰 계획에서 몇 백 미터 차이는 도로 사정·
+    신호·주차에 묻힌다. 대신 **빠르고 안정적으로** 좋은 해를 낸다.
+    지점 9개 이하에서 완전탐색과 대조한 결과는 위 시험 파일에 있다.
 
     start(=0, 보통 관서)는 항상 경로의 첫 지점으로 고정된다.
     """
@@ -200,62 +241,70 @@ def solve_route(dist: np.ndarray, start: int = 0, *, restarts: int = 0,
     if n <= 2:
         return list(range(n))
 
-    candidates = [start]
-    if restarts:
-        # 시작점을 바꾸면 다른 지역해에 빠진다. 여러 개를 돌려 가장 좋은 것을 쓴다.
+    rng = np.random.default_rng(seed)
+    inits = [nearest_neighbor(dist, start)]
+    if closed:
+        # 순환이므로 다른 지점에서 만든 해도 회전시키면 같은 출발점을 갖는다.
         others = [i for i in range(n) if i != start]
-        step = max(1, len(others) // max(1, restarts))
-        candidates += others[::step][:restarts]
+        step = max(1, len(others) // max(1, restarts)) if restarts else 1
+        for seed_node in (others[::step][:restarts] if restarts else []):
+            o = nearest_neighbor(dist, seed_node)
+            z = o.index(start)
+            inits.append(o[z:] + o[:z])
+    for _ in range(restarts):
+        inits.append(_randomized_greedy(dist, start, rng))
 
     best, best_len = None, float("inf")
-    for seed_node in candidates:
-        order = nearest_neighbor(dist, seed_node)
-        if seed_node != start:                 # depot 을 다시 맨 앞으로 회전
-            z = order.index(start)
-            order = order[z:] + order[:z]
-        order = _improve(dist, order, or_opt=or_opt, max_rounds=max_rounds)
-        length = route_length(dist, order)
+    for order in inits:
+        order = _improve(dist, order, or_opt=or_opt, max_rounds=max_rounds, closed=closed)
+        length = route_length(dist, order, closed=closed)
         if length < best_len:
             best, best_len = order, length
     return best
 
 
 def _improve(dist: np.ndarray, order: list[int], *, or_opt: bool = True,
-             max_rounds: int = 60) -> list[int]:
+             max_rounds: int = 60, closed: bool = False) -> list[int]:
     """2-opt 와 Or-opt 를 번갈아 돌린다. 더 이상 줄지 않으면 멈춘다."""
     cur = list(order)
     for _ in range(max_rounds):
-        before = route_length(dist, cur)
-        cur = _two_opt_matrix(dist, cur, max_rounds=1)
+        before = route_length(dist, cur, closed=closed)
+        cur = _two_opt_matrix(dist, cur, max_rounds=1, closed=closed)
         if or_opt:
-            cur = _or_opt_matrix(dist, cur)
-        if route_length(dist, cur) >= before - 1e-9:
+            cur = _or_opt_matrix(dist, cur, closed=closed)
+        if route_length(dist, cur, closed=closed) >= before - 1e-9:
             break
     return cur
 
 
-def _or_opt_matrix(dist: np.ndarray, order: list[int], max_seg: int = 3) -> list[int]:
-    """연속한 최대 3개 지점을 다른 위치로 옮겨 본다 (depot 은 고정)."""
+def _or_opt_matrix(dist: np.ndarray, order: list[int], max_seg: int = 3, *,
+                   closed: bool = False) -> list[int]:
+    """연속한 최대 3개 지점을 다른 위치로 옮겨 본다 (출발점은 고정).
+
+    옮길 때 구간의 방향을 뒤집는 경우까지 본다 — 도로거리는 방향에 따라 다르고,
+    뒤집어 넣어야 짧아지는 배치가 실제로 있다.
+    """
     best = list(order)
     n = len(best)
     improved = True
     while improved:
         improved = False
+        cur_len = route_length(dist, best, closed=closed)
         for seg in range(1, max_seg + 1):
-            for i in range(1, n - seg):
+            for i in range(1, n - seg + 1):
                 block = best[i:i + seg]
                 rest = best[:i] + best[i + seg:]
-                # 원래 자리에서 뺐을 때 줄어드는 비용
-                cur_len = route_length(dist, best)
-                for j in range(1, len(rest) + 1):
-                    if j == i:
-                        continue
-                    cand = rest[:j] + block + rest[j:]
-                    if cand[0] != best[0]:      # depot 이 앞이어야 한다
-                        continue
-                    if route_length(dist, cand) < cur_len - 1e-9:
-                        best = cand
-                        improved = True
+                for piece in ((block, block[::-1]) if seg > 1 else (block,)):
+                    for j in range(1, len(rest) + 1):
+                        if j == i and piece is block:
+                            continue
+                        cand = rest[:j] + list(piece) + rest[j:]
+                        if cand[0] != best[0]:      # 출발점이 앞이어야 한다
+                            continue
+                        if route_length(dist, cand, closed=closed) < cur_len - 1e-9:
+                            best, improved = cand, True
+                            break
+                    if improved:
                         break
                 if improved:
                     break
@@ -264,23 +313,36 @@ def _or_opt_matrix(dist: np.ndarray, order: list[int], max_seg: int = 3) -> list
     return best
 
 
-def _two_opt_matrix(dist: np.ndarray, order: list[int], max_rounds: int = 60) -> list[int]:
-    """행렬 기반 2-opt. operations.two_opt 은 좌표 기반이라 도로거리를 못 쓴다."""
+def _two_opt_matrix(dist: np.ndarray, order: list[int], max_rounds: int = 60, *,
+                    closed: bool = False) -> list[int]:
+    """행렬 기반 2-opt. operations.two_opt 은 좌표 기반이라 도로거리를 못 쓴다.
+
+    구간 [i, j] 를 뒤집는다. 뒤집기 전후로 바뀌는 변은 (i-1, i) 와 (j, j+1) 둘뿐이다.
+    열린 경로에서 j 가 마지막 지점이면 (j, j+1) 변이 없으므로 첫 변만 비교한다 —
+    이 경우를 빼면 '꼬리가 통째로 뒤집혀야 하는' 배치를 영영 못 고친다.
+    """
     best = list(order)
+    n = len(best)
     improved, rounds = True, 0
     while improved and rounds < max_rounds:
         improved, rounds = False, rounds + 1
-        for i in range(1, len(best) - 2):
-            for j in range(i + 1, len(best) - 1):
-                a, b, c, d = best[i - 1], best[i], best[j], best[j + 1]
+        for i in range(1, n - 1):
+            for j in range(i + 1, n):
+                a, b, c = best[i - 1], best[i], best[j]
+                if j + 1 < n:
+                    d = best[j + 1]
+                elif closed:
+                    d = best[0]                     # 순환이면 마지막 다음은 출발점
+                else:
+                    # 열린 경로의 꼬리 뒤집기 — 끝쪽 변이 없다.
+                    if dist[a, b] > dist[a, c] + 1e-9:
+                        best[i:] = best[i:][::-1]
+                        improved = True
+                    continue
                 if dist[a, b] + dist[c, d] > dist[a, c] + dist[b, d] + 1e-9:
-                    best[i:j + 1] = reversed(best[i:j + 1])
+                    best[i:j + 1] = list(reversed(best[i:j + 1]))
                     improved = True
     return best
-
-
-def route_length(dist: np.ndarray, order: list[int]) -> float:
-    return float(sum(dist[order[i - 1], order[i]] for i in range(1, len(order))))
 
 
 def allocate_teams_to_groups(df: pd.DataFrame, n_teams: int, group_col: str = "sgg",
@@ -395,7 +457,9 @@ def plan_from_stations(grids: pd.DataFrame, stations: pd.DataFrame, *,
             idx = np.r_[0, local + 1]                   # 0 = 관서
             sub = dist[np.ix_(idx, idx)]
             subt = dur[np.ix_(idx, idx)]
-            order = solve_route(sub, start=0, restarts=restarts)   # 관서에서 출발
+            # 왕복(관서 → 격자들 → 관서)을 최소화한다. 편도만 줄이면 돌아오는
+            # 거리가 늘어 총 이동이 오히려 커진다.
+            order = solve_route(sub, start=0, restarts=restarts, closed=True)
             if order[0] != 0:
                 z = order.index(0)
                 order = order[z:] + order[:z]
@@ -496,7 +560,8 @@ def plan_patrol(grids: pd.DataFrame, n_teams: int = 1, *, use_road: bool = True,
         start = 0
         if "pred" in df.columns:
             start = int(np.argmax(df.iloc[idx]["pred"].to_numpy()))
-        order = solve_route(sub_dist, start=start)
+        # 이 계획은 관서 복귀를 포함하지 않는 '격자 간 이동'이므로 편도로 푼다.
+        order = solve_route(sub_dist, start=start, restarts=2)
 
         r = df.iloc[idx[order]].copy().reset_index(drop=True)
         r.insert(0, "순번", range(1, len(r) + 1))

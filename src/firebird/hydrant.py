@@ -42,7 +42,9 @@ def blind_spots(panel_year: pd.DataFrame, risk: pd.Series, cfg) -> pd.DataFrame:
     if "dist_hydrant_m" in top.columns:
         far = far | (top["dist_hydrant_m"] > max_dist)
 
-    cols = [c for c in ["grid_id", "sgg", "lon", "lat", "risk", "fires", "fires_cum",
+    # 관서·읍면동을 함께 실어야 '어느 센터가 챙길 구역인지'가 바로 보인다.
+    cols = [c for c in ["grid_id", "station", "center", "sgg", "emd", "lon", "lat",
+                        "risk", "fires", "fires_cum",
                         "n_hydrant", "dist_hydrant_m", "target_total", "biz_total"]
             if c in top.columns]
     out = top.loc[far, cols].sort_values("risk", ascending=False).reset_index(drop=True)
@@ -53,7 +55,9 @@ def blind_spots(panel_year: pd.DataFrame, risk: pd.Series, cfg) -> pd.DataFrame:
 def surge_alert(panel: pd.DataFrame, year: int, *, min_prev: float = 1.0,
                 ratio: float = 2.0) -> pd.DataFrame:
     """화재 급증 경보: 직전연도 대비 크게 늘어난 격자."""
-    cur = panel[panel["year"] == year][["grid_id", "sgg", "fires", "fires_lag1"]].copy()
+    keep = [c for c in ["grid_id", "station", "center", "sgg", "emd",
+                        "fires", "fires_lag1"] if c in panel.columns]
+    cur = panel[panel["year"] == year][keep].copy()
     cur = cur[(cur["fires_lag1"] >= min_prev) &
               (cur["fires"] >= cur["fires_lag1"] * ratio)]
     cur["증가배수"] = cur["fires"] / cur["fires_lag1"].replace(0, np.nan)
