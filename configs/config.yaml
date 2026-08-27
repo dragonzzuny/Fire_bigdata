@@ -1,0 +1,92 @@
+# 불씨예보(K-Firebird) 설정
+# 기획서 대비 재현 파라미터. 값을 바꾸면 전 파이프라인이 따라간다.
+
+paths:
+  raw:        data/raw
+  interim:    data/interim
+  processed:  data/processed
+  cache:      data/cache
+  outputs:    outputs
+  figures:    reports/figures
+
+grid:
+  # 공개 데이터에 건물번호·좌표가 없어 도로/격자가 현실적 최적 단위이다(기획서 6.기타).
+  size_m: 500
+  crs_metric: "EPSG:5179"    # UTM-K. 미터 단위 격자 계산용
+  crs_geographic: "EPSG:4326"
+  neighbor_ring: 1           # 공간 전파 피처: 8-이웃
+
+cities:
+  ulsan:
+    label: 울산광역시
+    raw_subdir: ulsan
+    role: primary            # 학습·검증 1차 데이터
+  sejong:
+    label: 세종특별자치시
+    raw_subdir: sejong
+    role: transfer           # 도시 이식 검증
+
+years:
+  # 화재발생현황 라벨 범위 (기획서 3.활용데이터: 2014~2021)
+  min: 2014
+  max: 2021
+  # 시간분할: train <= split_year, test = holdout_year (미래 데이터 누수 차단)
+  split_year: 2020
+  holdout_year: 2021
+
+model:
+  objective: poisson         # 격자 화재 '건수' 예측 → 카운트 회귀
+  n_estimators: 800
+  learning_rate: 0.03
+  num_leaves: 31
+  min_child_samples: 30
+  subsample: 0.9
+  subsample_freq: 1
+  colsample_bytree: 0.9
+  reg_lambda: 1.0
+  random_state: 42
+
+evaluation:
+  top_k_percents: [5, 10, 20, 30]
+  headline_k: 20             # 기획서 핵심 지표: 상위 20% 포착률
+  n_deciles: 10
+  logo_column: sgg           # 구·군 단위 Leave-One-Group-Out
+
+geocode:
+  provider: kakao
+  endpoint: "https://dapi.kakao.com/v2/local/search/address.json"
+  rate_limit_per_sec: 8
+  max_retries: 3
+  cache_file: geocode_cache.json
+
+hydrant:
+  # 대응취약: 고위험인데 소화전이 없는 격자
+  high_risk_percentile: 20   # 상위 20% 위험 격자 중
+  max_dist_m: 500            # 이 거리 안에 소화전이 없으면 '사각지대'
+
+llm:
+  # 위험판단은 모델이, 문서화만 LLM 이 맡는다(환각·책임소재 리스크 축소).
+  #
+  # 백엔드를 순서대로 시도하고, 되는 첫 번째를 쓴다.
+  # 마지막 rule_based 는 외부 의존이 없어 절대 실패하지 않는다 —
+  # 점검계획서가 안 나온다고 파이프라인 전체가 멈출 이유는 없다.
+  backends: [cli, api, ollama, rule_based]
+  timeout_s: 180
+
+  cli:
+    # 프롬프트를 마지막 인자로 붙인다. {prompt} 를 쓰면 그 자리에 치환한다.
+    # 검증된 조합: codex (약 6초). gemini CLI 는 개인 티어 지원 종료로 실패한다.
+    command: ["codex", "exec", "--skip-git-repo-check"]
+    prompt_as_stdin: false
+    # 에이전트형 CLI 가 도구를 쓰지 않도록 프롬프트 앞에 붙이는 문장
+    preamble: "도구를 사용하지 말고, 파일을 읽거나 쓰지 말고, 아래 지시에만 답하라.\n\n"
+
+  api:
+    # OpenAI 호환 Chat Completions. key_env 가 비어 있으면 이 백엔드는 건너뛴다.
+    endpoint: "https://api.openai.com/v1/chat/completions"
+    model: "gpt-4o-mini"
+    key_env: "OPENAI_API_KEY"
+
+  ollama:
+    endpoint: "http://localhost:11434/api/generate"
+    model: "qwen2.5:7b"

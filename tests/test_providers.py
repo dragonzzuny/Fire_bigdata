@@ -1,0 +1,593 @@
+import os
+import sys
+import types
+import unittest
+from unittest import mock
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+
+from dobby.providers import (ABSENT, AVAILABLE, BLOCKED, AgentTask,
+                             ProviderError, ProviderRegistry, ProviderSpec,
+                             registry, report, resolve_panel, resolve_role,
+                             run_provider, survey)
+from dobby.providers.catalog import LOCAL_ONLY_ROLES, ROLE_ROUTING
+import dobby.providers.run as run_mod
+from dobby.providers.detect import check
+from dobby.providers.fanout import _needs_isolation, run_round
+
+
+class TestSpecValidation(unittest.TestCase):
+    def test_rejects_unknown_kind(self):
+        with self.assertRaises(ProviderError):
+            ProviderSpec(id="x", kind="magic", display="X", binary="x",
+                         argv=lambda p, m, e: ["x"])
+
+    def test_rejects_unknown_cost_tier(self):
+        with self.assertRaises(ProviderError):
+            ProviderSpec(id="x", kind="cli", display="X", binary="x",
+                         argv=lambda p, m, e: ["x"], cost_tier="free")
+
+    def test_rejects_unknown_capability(self):
+        with self.assertRaises(ProviderError):
+            ProviderSpec(id="x", kind="cli", display="X", binary="x",
+                         argv=lambda p, m, e: ["x"], capabilities=("telepathy",))
+
+    def test_cli_requires_binary_and_argv(self):
+        with self.assertRaises(ProviderError):
+            ProviderSpec(id="x", kind="cli", display="X", binary=None, argv=None)
+
+    def test_duplicate_ids_rejected(self):
+        spec = ProviderSpec(id="dup", kind="cli", display="D", binary="d",
+                            argv=lambda p, m, e: ["d"])
+        with self.assertRaises(ProviderError):
+            ProviderRegistry([spec, spec])
+
+
+class TestCatalogInvocations(unittest.TestCase):
+    """The non-interactive flag is the critical fact: a wrong one HANGS."""
+
+    def test_every_cli_has_a_non_interactive_flag(self):
+        expected = {
+            "claude": "-p",
+            "codex": "exec",
+            "gemini": "-p",
+            "agy": "--print",
+            "qwen": "-p",
+        }
+        reg = registry()
+        for pid, flag in expected.items():
+            argv = reg.get(pid).build_argv("hello", None, ())
+            self.assertIn(flag, argv, f"{pid} lost its non-interactive flag")
+
+    def test_prompt_is_an_argv_element_not_shell_text(self):
+        # Prompt text can come from an untrusted source; it must never be able
+        # to become shell syntax.
+        nasty = 'x"; rm -rf / #'
+        for pid in ("claude", "codex", "gemini", "agy"):
+            argv = registry().get(pid).build_argv(nasty, None, ())
+            self.assertIn(nasty, argv)
+
+    def test_read_only_default_for_file_capable_clis(self):
+        """A scout must not silently edit the tree.
+
+        `agy` is deliberately NOT in this list any more. The flag is still sent
+        (see the test below) but the property this test is named for was measured
+        false for it, and a check that keeps passing while its own claim is untrue
+        is worse than no check — it is where the next reader stops looking.
+        """
+        plan_markers = {"claude": "plan", "gemini": "plan"}
+        for pid, marker in plan_markers.items():
+            argv = registry().get(pid).build_argv("t", None, ())
+            self.assertIn(marker, argv, f"{pid} lost its read-only default")
+
+    def test_agy_still_sends_plan_but_it_is_not_a_containment_control(self):
+        """Measured 2026-08-04, agy 1.1.8 / win32, four fresh temp directories:
+        `--mode plan` and `--mode accept-edits`, each with and without
+        `--dangerously-skip-permissions`, asked to create a file. All four
+        created it.
+
+        So the flag stays as a statement of intent and the catalog says so in
+        both `_agy` and the spec notes. What this test pins is that the intent is
+        still declared, and that nothing in the suite asserts containment from it.
+        """
+        argv = registry().get("agy").build_argv("t", None, ())
+        self.assertIn("plan", argv)
+        spec = registry().get("agy")
+        self.assertIn("NOT a containment control", spec.notes)
+
+    def test_extra_appended_last_so_caller_can_override(self):
+        argv = registry().get("claude").build_argv(
+            "t", None, ("--permission-mode", "acceptEdits"))
+        self.assertEqual(argv[-2:], ["--permission-mode", "acceptEdits"])
+
+    def test_ollama_supplies_a_model_because_grammar_requires_one(self):
+        argv = registry().get("ollama").build_argv("t", None, ())
+        self.assertEqual(argv[:2], ["ollama", "run"])
+        self.assertTrue(argv[2], "ollama run needs a model positional")
+
+    def test_model_flag_threaded(self):
+        argv = registry().get("codex").build_argv("t", "gpt-5", ())
+        self.assertIn("--model", argv)
+        self.assertIn("gpt-5", argv)
+
+    def test_api_providers_have_no_argv(self):
+        for pid in ("kimi", "dashscope"):
+            spec = registry().get(pid)
+            self.assertEqual(spec.kind, "api")
+            with self.assertRaises(ProviderError):
+                spec.build_argv("t")
+
+
+class TestDetection(unittest.TestCase):
+    def test_api_blocked_without_network_flag(self):
+        a = check(registry().get("kimi"), allow_network=False)
+        self.assertEqual(a.state, BLOCKED)
+        self.assertFalse(a.usable)
+        # The distinction that makes doctor useful: blocked, not absent.
+        self.assertIn("allow_network", a.detail)
+
+    def test_api_blocked_when_key_missing_even_with_network(self):
+        os.environ.pop("MOONSHOT_API_KEY", None)
+        a = check(registry().get("kimi"), allow_network=True)
+        self.assertEqual(a.state, BLOCKED)
+        self.assertIn("MOONSHOT_API_KEY", a.detail)
+
+    def test_absent_binary_reported_as_absent(self):
+        spec = ProviderSpec(id="ghost", kind="cli", display="G",
+                            binary="definitely-not-installed-xyz",
+                            argv=lambda p, m, e: ["x"])
+        self.assertEqual(check(spec).state, ABSENT)
+
+    def test_survey_covers_whole_catalog(self):
+        self.assertEqual(set(survey()), set(registry().ids()))
+
+    def test_report_states_multi_agent_readiness_honestly(self):
+        r = report()
+        self.assertEqual(r["multi_agent_ready"], r["usable_count"] >= 2)
+        self.assertEqual(r["max_panel_size"], r["usable_count"])
+
+
+class TestRoleResolution(unittest.TestCase):
+    def test_panel_never_repeats_a_provider(self):
+        """Repeating a provider would fake independent opinions."""
+        panel = resolve_panel("draft", 12)
+        self.assertEqual(len(panel), len(set(panel)))
+
+    def test_panel_capped_by_availability_not_request(self):
+        usable = report()["usable_count"]
+        self.assertLessEqual(len(resolve_panel("draft", 99)), usable)
+
+    def test_zero_size_returns_empty(self):
+        self.assertEqual(resolve_panel("draft", 0), [])
+
+    def test_exclude_prevents_self_review(self):
+        author = resolve_role("draft")
+        if author is None:
+            self.skipTest("no provider available on this machine")
+        critic = resolve_role("critic", exclude={author})
+        self.assertNotEqual(critic, author)
+
+    def test_returns_none_rather_than_falling_back_to_excluded(self):
+        every = set(registry().ids())
+        self.assertIsNone(resolve_role("critic", exclude=every))
+
+    def test_local_only_roles_never_use_api_providers(self):
+        """The aggregated context is the crown jewel; it must not leave."""
+        os.environ["MOONSHOT_API_KEY"] = "test-key-not-real"
+        try:
+            for role in LOCAL_ONLY_ROLES:
+                picked = resolve_panel(role, 8, allow_network=True)
+                for pid in picked:
+                    self.assertEqual(registry().get(pid).kind, "cli",
+                                     f"{role} must not route to an api provider")
+        finally:
+            os.environ.pop("MOONSHOT_API_KEY", None)
+
+    def test_every_role_has_a_preference_list(self):
+        for role in ROLE_ROUTING:
+            self.assertTrue(ROLE_ROUTING[role])
+            for pid in ROLE_ROUTING[role]:
+                self.assertIn(pid, registry(), f"{role} references unknown {pid}")
+
+
+class TestRunGuards(unittest.TestCase):
+    def test_missing_binary_is_data_not_exception(self):
+        spec = ProviderSpec(id="ghost", kind="cli", display="G",
+                            binary="definitely-not-installed-xyz",
+                            argv=lambda p, m, e: ["definitely-not-installed-xyz"])
+        res = run_provider(spec, "hello")
+        self.assertFalse(res.ok)
+        self.assertIn("not on PATH", res.error)
+
+    def test_api_provider_refused_by_run_provider(self):
+        res = run_provider(registry().get("kimi"), "hello")
+        self.assertFalse(res.ok)
+        self.assertIn("api provider", res.error)
+
+    def test_timeout_reported_with_the_interactive_hint(self):
+        """A hung tool is the common failure; the error must name the cause."""
+        spec = ProviderSpec(
+            id="sleeper", kind="cli", display="S", binary=sys.executable,
+            argv=lambda p, m, e: [sys.executable, "-c",
+                                  "import time; time.sleep(30)"],
+            timeout_s=1)
+        res = run_provider(spec, "hello", timeout_s=1)
+        self.assertFalse(res.ok)
+        self.assertIn("timeout", res.error.lower())
+        self.assertIn("interactive", res.error)
+
+    def test_exit_zero_with_no_output_is_a_failure(self):
+        spec = ProviderSpec(
+            id="silent", kind="cli", display="S", binary=sys.executable,
+            argv=lambda p, m, e: [sys.executable, "-c", "pass"])
+        res = run_provider(spec, "hello")
+        self.assertFalse(res.ok)
+        self.assertEqual(res.exit_code, 0)
+        self.assertIn("no stdout", res.error)
+
+    def test_successful_call_captures_text(self):
+        spec = ProviderSpec(
+            id="echo", kind="cli", display="E", binary=sys.executable,
+            argv=lambda p, m, e: [sys.executable, "-c", f"print({p!r})"])
+        res = run_provider(spec, "DOBBY_OK")
+        self.assertTrue(res.ok, res.error)
+        self.assertIn("DOBBY_OK", res.text)
+
+    def test_non_ascii_output_survives(self):
+        spec = ProviderSpec(
+            id="korean", kind="cli", display="K", binary=sys.executable,
+            argv=lambda p, m, e: [sys.executable, "-c",
+                                  "print('\\ud55c\\uad6d\\uc5b4 em\\u2014dash')"])
+        res = run_provider(spec, "x")
+        self.assertTrue(res.ok, res.error)
+        self.assertIn("em—dash", res.text)
+
+    def test_output_cap_marks_truncation(self):
+        spec = ProviderSpec(
+            id="loud", kind="cli", display="L", binary=sys.executable,
+            argv=lambda p, m, e: [sys.executable, "-c", "print('x'*5000)"])
+        res = run_provider(spec, "x", output_cap=500)
+        self.assertTrue(res.ok, res.error)
+        self.assertTrue(res.truncated)
+
+    def test_nonzero_exit_carries_stderr(self):
+        spec = ProviderSpec(
+            id="crash", kind="cli", display="C", binary=sys.executable,
+            argv=lambda p, m, e: [sys.executable, "-c",
+                                  "import sys; sys.stderr.write('boom'); "
+                                  "sys.exit(3)"])
+        res = run_provider(spec, "x")
+        self.assertFalse(res.ok)
+        self.assertEqual(res.exit_code, 3)
+        self.assertIn("boom", res.error)
+
+
+def _fake(pid: str, script: str, mutates: bool = False) -> ProviderSpec:
+    return ProviderSpec(
+        id=pid, kind="cli", display=pid, binary=sys.executable,
+        argv=lambda p, m, e, s=script: [sys.executable, "-c", s],
+        mutates_worktree=mutates)
+
+
+class TestFanout(unittest.TestCase):
+    def test_empty_round_is_safe(self):
+        r = run_round([])
+        self.assertEqual(r.results, [])
+
+    def test_one_failure_does_not_lose_the_others(self):
+        # Register fakes through a patched registry so run_round can resolve them.
+        import dobby.providers.fanout as fanout_mod
+        fakes = ProviderRegistry([
+            _fake("good1", "print('alpha beta gamma')"),
+            _fake("bad", "import sys; sys.exit(9)"),
+            _fake("good2", "print('delta epsilon zeta')"),
+        ])
+        original = fanout_mod.registry
+        fanout_mod.registry = lambda: fakes
+        try:
+            round_ = run_round([AgentTask(provider_id=p, prompt="x")
+                                for p in ("good1", "bad", "good2")],
+                               isolate=False)
+        finally:
+            fanout_mod.registry = original
+        self.assertEqual(len(round_.results), 3)
+        self.assertEqual(len(round_.ok_results), 2)
+        self.assertEqual(len(round_.summary()["failed"]), 1)
+
+    def test_results_are_input_ordered(self):
+        import dobby.providers.fanout as fanout_mod
+        fakes = ProviderRegistry([
+            _fake("slow", "import time; time.sleep(0.4); print('slow one')"),
+            _fake("fast", "print('fast one')"),
+        ])
+        original = fanout_mod.registry
+        fanout_mod.registry = lambda: fakes
+        try:
+            round_ = run_round([AgentTask(provider_id="slow", prompt="x"),
+                                AgentTask(provider_id="fast", prompt="x")],
+                               isolate=False)
+        finally:
+            fanout_mod.registry = original
+        self.assertEqual([r.provider for r in round_.results], ["slow", "fast"])
+
+    def test_isolation_only_when_two_or_more_mutate(self):
+        import dobby.providers.fanout as fanout_mod
+        fakes = ProviderRegistry([
+            _fake("ro", "print('x')", mutates=False),
+            _fake("rw1", "print('x')", mutates=True),
+            _fake("rw2", "print('x')", mutates=True),
+        ])
+        original = fanout_mod.registry
+        fanout_mod.registry = lambda: fakes
+        try:
+            one_writer = [AgentTask(provider_id="rw1", prompt="x"),
+                          AgentTask(provider_id="ro", prompt="x")]
+            two_writers = [AgentTask(provider_id="rw1", prompt="x"),
+                           AgentTask(provider_id="rw2", prompt="x")]
+            self.assertEqual(_needs_isolation(one_writer), 0)
+            self.assertEqual(_needs_isolation(two_writers), 2)
+        finally:
+            fanout_mod.registry = original
+
+    def test_isolation_names_the_repository_it_resolved(self):
+        """`git rev-parse` walks UP, so the repo used may not be the one meant.
+
+        On a machine whose home directory is git-tracked, every path under it
+        resolves to that repo. Before this was fixed, a fan-out in a plain
+        folder would have created detached worktrees off the user's HOME.
+        """
+        import shutil as _shutil
+        import subprocess as _sp
+        import tempfile as _tf
+        from dobby.core.platform import child_env as _env
+        from dobby.providers.fanout import WorktreeSet, _git_toplevel
+
+        if _shutil.which("git") is None:
+            self.skipTest("git not available")
+
+        repo = _tf.mkdtemp(prefix="dobby-wt-test-")
+        self.addCleanup(_shutil.rmtree, repo, True)
+        for cmd in (["git", "init", "-q", "-b", "main"],
+                    ["git", "config", "user.email", "t@example.invalid"],
+                    ["git", "config", "user.name", "t"]):
+            _sp.run(cmd, cwd=repo, capture_output=True, env=_env())
+        with open(os.path.join(repo, "f.txt"), "w", encoding="utf-8") as f:
+            f.write("base\n")
+        _sp.run(["git", "add", "-A"], cwd=repo, capture_output=True, env=_env())
+        _sp.run(["git", "commit", "-qm", "init"], cwd=repo,
+                capture_output=True, env=_env())
+
+        with WorktreeSet(repo, 2) as trees:
+            self.assertTrue(trees.available, trees.reason)
+            self.assertIsNotNone(trees.toplevel)
+            self.assertEqual(os.path.normpath(trees.toplevel),
+                             os.path.normpath(os.path.realpath(repo)))
+            # The reason must NAME the repository, so an audit shows which one.
+            self.assertIn("from repository", trees.reason)
+            self.assertEqual(len(trees.paths), 2)
+            self.assertEqual(len(set(trees.paths)), 2)
+
+            # Each agent edits the same file; the main tree must be untouched.
+            for i, path in enumerate(trees.paths):
+                with open(os.path.join(path, "f.txt"), "w",
+                          encoding="utf-8") as f:
+                    f.write(f"agent {i}\n")
+            diffs = trees.diffs()
+            self.assertEqual(len(diffs), 2)
+            self.assertTrue(all(d["diff_bytes"] > 0 for d in diffs))
+            with open(os.path.join(repo, "f.txt"), encoding="utf-8") as f:
+                self.assertEqual(f.read(), "base\n",
+                                 "the main worktree must not be modified")
+
+    def test_unborn_head_is_refused_with_one_sentence(self):
+        """A repo with no commits cannot have worktrees; say so, not git's hint."""
+        import shutil as _shutil
+        import subprocess as _sp
+        import tempfile as _tf
+        from dobby.core.platform import child_env as _env
+        from dobby.providers.fanout import WorktreeSet
+
+        if _shutil.which("git") is None:
+            self.skipTest("git not available")
+        repo = _tf.mkdtemp(prefix="dobby-wt-empty-")
+        self.addCleanup(_shutil.rmtree, repo, True)
+        _sp.run(["git", "init", "-q", "-b", "main"], cwd=repo,
+                capture_output=True, env=_env())
+
+        with WorktreeSet(repo, 2) as trees:
+            self.assertFalse(trees.available)
+            self.assertIn("no commits yet", trees.reason)
+            self.assertNotIn("hint:", trees.reason,
+                             "git's multi-line hint must not be the message")
+
+    def test_speedup_recorded(self):
+        import dobby.providers.fanout as fanout_mod
+        fakes = ProviderRegistry([
+            _fake("a", "import time; time.sleep(0.3); print('a')"),
+            _fake("b", "import time; time.sleep(0.3); print('b')"),
+        ])
+        original = fanout_mod.registry
+        fanout_mod.registry = lambda: fakes
+        try:
+            round_ = run_round([AgentTask(provider_id=p, prompt="x")
+                                for p in ("a", "b")], isolate=False)
+        finally:
+            fanout_mod.registry = original
+        # Two 0.3s calls in parallel must beat 0.6s of serial time.
+        self.assertGreater(round_.speedup(), 1.2, round_.summary())
+
+
+
+
+class TestResolvedPathIsWhatGetsLaunched(unittest.TestCase):
+    r"""The gap between the name PATH resolves and the name that gets executed.
+
+    `run_provider` looked the binary up, threw the answer away, and launched the
+    bare name with shell=False. On Windows those are not the same question:
+
+        which("codex")                        -> C:\...\npm\codex.CMD  (found)
+        subprocess.run(["codex", ...])         -> WinError 2, not found
+        subprocess.run([r"C:\...codex.CMD"])  -> rc 0, works
+
+    `which` consults PATHEXT; CreateProcess appends only .exe. npm ships its CLIs
+    as .CMD shims on Windows, so codex and gemini were reported `usable: true`
+    and could never start. Measured by the first real `fleet --probe` run of this
+    project: claude and agy answered, codex and gemini failed in 0.14s without
+    launching a process. After the fix codex answered in 31s and gemini launched
+    and returned an account-tier error - a real answer instead of a masked one.
+
+    No network here. What is asserted is that argv[0] is the resolved path.
+    """
+
+    def _capture_argv(self, spec, resolved):
+        seen = {}
+
+        def fake_run(argv, **kwargs):
+            seen["argv"] = argv
+            seen["shell"] = kwargs.get("shell")
+            return types.SimpleNamespace(returncode=0, stdout="DOBBY_OK",
+                                         stderr="")
+
+        # ProviderSpec is a frozen dataclass, so the instance rejects patching.
+        # The class attribute is not protected by frozen-ness.
+        with mock.patch.object(type(spec), "which", return_value=resolved), \
+                mock.patch.object(run_mod.subprocess, "run", fake_run):
+            result = run_provider(spec, "hello")
+        return seen, result
+
+    def _cli_spec(self):
+        reg = registry()
+        for pid in reg.ids():
+            spec = reg.get(pid)
+            if spec.kind == "cli":
+                return spec
+        self.skipTest("no cli provider in the catalog")
+
+    def test_argv_zero_is_the_resolved_path_not_the_bare_name(self):
+        spec = self._cli_spec()
+        fake = r"C:\some\where\npm\tool.CMD" if os.name == "nt" \
+            else "/usr/local/bin/tool"
+        seen, result = self._capture_argv(spec, fake)
+        self.assertEqual(seen["argv"][0], fake,
+                         "the bare name was launched; PATHEXT shims cannot start")
+        self.assertTrue(result.ok, result.error)
+
+    def test_the_rest_of_the_argv_is_untouched(self):
+        spec = self._cli_spec()
+        expected_tail = spec.build_argv("hello", None, ())[1:]
+        seen, _ = self._capture_argv(spec, "/x/tool")
+        self.assertEqual(seen["argv"][1:], expected_tail)
+
+    def test_shell_stays_false_so_a_prompt_cannot_become_shell_syntax(self):
+        spec = self._cli_spec()
+        seen, _ = self._capture_argv(spec, "/x/tool")
+        self.assertIs(seen["shell"], False)
+
+    def test_the_resolved_path_is_recorded_in_meta(self):
+        spec = self._cli_spec()
+        _, result = self._capture_argv(spec, "/x/tool")
+        self.assertEqual(result.meta.get("resolved_binary"), "/x/tool")
+
+    def test_a_launch_refusal_says_the_path_resolved(self):
+        """"cannot execute 'codex'" read like a missing install for weeks."""
+        spec = self._cli_spec()
+
+        def refuse(argv, **kwargs):
+            raise FileNotFoundError(2, "no such file")
+
+        with mock.patch.object(type(spec), "which", return_value="/x/tool.CMD"), \
+                mock.patch.object(run_mod.subprocess, "run", refuse):
+            result = run_provider(spec, "hello")
+        self.assertFalse(result.ok)
+        self.assertIn("/x/tool.CMD", result.error)
+        self.assertIn("not a missing install", result.error)
+
+    def test_absent_binary_still_reports_absent(self):
+        spec = self._cli_spec()
+        with mock.patch.object(type(spec), "which", return_value=None):
+            result = run_provider(spec, "hello")
+        self.assertFalse(result.ok)
+        self.assertIn("not on PATH", result.error)
+
+
+class TestPanelTimeoutReachesEveryTask(unittest.TestCase):
+    """`panel --timeout` must actually bind, not merely parse.
+
+    An accepted flag that changes nothing is worse than a missing one: it reads
+    as control the caller does not have. AgentTask.timeout_s already flowed
+    through to run_provider, so the whole defect was that cmd_panel never set it.
+    """
+
+    def test_the_flag_lands_on_each_task(self):
+        import dobby.providers as providers_pkg
+        from dobby.cli import cmd_panel
+
+        captured = []
+
+        def spy(tasks, **kwargs):
+            captured.extend(t.timeout_s for t in tasks)
+            raise _StopPanel()
+
+        namespace = types.SimpleNamespace(
+            repo=".", task="x", size=2, role="draft", protocol="ngt",
+            concurrency=None, timeout=45, with_context=False, dry_run=False,
+            progress=False, allow_network=False)
+        original = providers_pkg.run_round
+        providers_pkg.run_round = spy
+        try:
+            cmd_panel(namespace)
+        except _StopPanel:
+            pass
+        except SystemExit:
+            self.skipTest("no usable provider on this machine")
+        finally:
+            providers_pkg.run_round = original
+
+        if not captured:
+            self.skipTest("no usable provider on this machine")
+        self.assertTrue(all(t == 45 for t in captured), captured)
+
+    def test_omitting_it_leaves_the_catalog_default_in_place(self):
+        """None must mean 'the provider decides', not 'no timeout'."""
+        import dobby.providers as providers_pkg
+        from dobby.cli import cmd_panel
+
+        captured = []
+
+        def spy(tasks, **kwargs):
+            captured.extend(t.timeout_s for t in tasks)
+            raise _StopPanel()
+
+        namespace = types.SimpleNamespace(
+            repo=".", task="x", size=2, role="draft", protocol="ngt",
+            concurrency=None, timeout=None, with_context=False, dry_run=False,
+            progress=False, allow_network=False)
+        original = providers_pkg.run_round
+        providers_pkg.run_round = spy
+        try:
+            cmd_panel(namespace)
+        except _StopPanel:
+            pass
+        except SystemExit:
+            self.skipTest("no usable provider on this machine")
+        finally:
+            providers_pkg.run_round = original
+
+        if not captured:
+            self.skipTest("no usable provider on this machine")
+        self.assertTrue(all(t is None for t in captured), captured)
+        # And a None task timeout must not become an unbounded run.
+        for pid in registry().ids():
+            spec = registry().get(pid)
+            if spec.kind == "cli":
+                self.assertGreater(spec.timeout_s, 0,
+                                   f"{pid} has no default timeout to fall back on")
+
+
+class _StopPanel(Exception):
+    """Ends cmd_panel once the tasks have been captured."""
+
+
+if __name__ == "__main__":
+    unittest.main()

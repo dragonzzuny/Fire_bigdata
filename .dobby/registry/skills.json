@@ -1,0 +1,657 @@
+{
+ "skills": [
+  {
+   "name": "bootstrap-project",
+   "description": "First-run repository archaeology: scan the host repo, build the knowledge graph, fill protected paths, register capabilities, wire root pointers",
+   "applicable_when": [
+    "first run in a new repository",
+    "set up|install|initialize the harness",
+    "부트스트랩|초기 설정"
+   ],
+   "not_applicable_when": [
+    "already bootstrapped (.dobby/knowledge/kg.bootstrap.json exists) — refresh with init --overwrite instead"
+   ],
+   "inputs": [
+    "host repo root"
+   ],
+   "outputs": [
+    ".dobby/inventory.json",
+    ".dobby/knowledge/kg.bootstrap.json",
+    "curated kg.json additions",
+    "filled config protected_paths",
+    "host-root AGENTS.md/CLAUDE.md pointer"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli init --scan <host-root>",
+    "{python} -m unittest discover -s tests -q",
+    "{python} -m dobby.cli context \"smoke query\""
+   ],
+   "version": "1.0",
+   "path": ".claude/skills/bootstrap-project/SKILL.md",
+   "provenance": {
+    "source": "kit v2.1 factory default",
+    "method": "curated",
+    "date": "2026-07-12",
+    "confidence": "strongly_supported"
+   },
+   "state": "active",
+   "proposed_by": "kit-author",
+   "approved_by": "kit-release",
+   "eval_passes": [],
+   "created": "2026-07-12",
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-07-12"
+    }
+   ],
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "origin": {
+    "pinned_sha256": "13336a690f14c50714a6a1e9b0c6c2aea103cdbfe25676d1a93dc3d1651e94c6",
+    "path": ".claude/skills/bootstrap-project/SKILL.md",
+    "date": "2026-07-25"
+   }
+  },
+  {
+   "name": "ledgered-task",
+   "description": "Protocol for any multi-step task: requirement ledger, evidence-first execution, output validation, honest report, handoff",
+   "applicable_when": [
+    ">1 requirement",
+    ">~10 expected tool calls",
+    "resume|continue a previous session",
+    "작업 시작|이어서"
+   ],
+   "not_applicable_when": [
+    "single-question lookups a command answers directly"
+   ],
+   "inputs": [
+    "verbatim user request"
+   ],
+   "outputs": [
+    "reports/LEDGER_<slug>.md",
+    "trajectory events",
+    "handoff document",
+    "final report per P-REPORT"
+   ],
+   "validation_commands": [
+    "ledger exists before first change",
+    "every ledger row done-with-evidence or reported not-done"
+   ],
+   "version": "1.1",
+   "path": ".claude/skills/ledgered-task/SKILL.md",
+   "provenance": {
+    "source": "kit v2.1 factory default",
+    "method": "curated",
+    "date": "2026-07-12",
+    "confidence": "strongly_supported"
+   },
+   "state": "active",
+   "proposed_by": "kit-author",
+   "approved_by": "codex",
+   "eval_passes": [
+    {
+     "scenario": "LEDGER-PRODUCES-GATES",
+     "evidence": "evals/gates/RESULTS_behavioral.json",
+     "date": "2026-08-24"
+    },
+    {
+     "scenario": "LEDGER-APPROVES-BEFORE-VERIFYING",
+     "evidence": "evals/gates/RESULTS_behavioral.json",
+     "date": "2026-08-24"
+    },
+    {
+     "scenario": "LEDGER-RESUME-CONTINUES",
+     "evidence": "evals/gates/RESULTS_behavioral.json",
+     "date": "2026-08-24"
+    }
+   ],
+   "created": "2026-07-12",
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-07-12"
+    },
+    {
+     "to": "revised",
+     "by": "claude-opus-5",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "candidate",
+     "by": "claude-opus-5",
+     "note": "gates written at step 1 and verified at step 5; manual-gate rule unified with runnable-gates",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "sandboxed",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "evaluated",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "approved",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "active",
+     "by": "codex",
+     "date": "2026-08-24"
+    }
+   ],
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "origin": {
+    "pinned_sha256": "54d269145130f662866b41c3c6abbbc9c326903976e3b06937938d0afe626528",
+    "path": ".claude/skills/ledgered-task/SKILL.md",
+    "date": "2026-08-24"
+   }
+  },
+  {
+   "name": "author-evals",
+   "description": "Build this project's evaluation assets: scenarios with objective verification, retrieval gold labels (dev/val/holdout), evaluator criteria",
+   "applicable_when": [
+    "create evals|build evals|write evals|author evals",
+    "measure the harness",
+    "평가 만들|평가 작성|하네스 측정"
+   ],
+   "not_applicable_when": [
+    "running existing evals (use cli optimize / slice)"
+   ],
+   "inputs": [
+    "real task history, incidents, and risks of the host project"
+   ],
+   "outputs": [
+    "evals/scenarios.yaml",
+    "evals/retrieval_gold.yaml",
+    ".dobby/criteria/*.json"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli optimize --seeds 0 --iters 5 --pop 6 (runs without error on the new gold)"
+   ],
+   "version": "1.0",
+   "path": ".claude/skills/author-evals/SKILL.md",
+   "provenance": {
+    "source": "kit v2.1 factory default",
+    "method": "curated",
+    "date": "2026-07-12",
+    "confidence": "strongly_supported"
+   },
+   "state": "active",
+   "proposed_by": "kit-author",
+   "approved_by": "kit-release",
+   "eval_passes": [],
+   "created": "2026-07-12",
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-07-12"
+    }
+   ],
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "origin": {
+    "pinned_sha256": "4afb87dd86eb03ee0a892170fb97368584f3781f0e93ddbcd04b6ff55d014082",
+    "path": ".claude/skills/author-evals/SKILL.md",
+    "date": "2026-07-25"
+   }
+  },
+  {
+   "name": "dobby",
+   "description": "Front door for a free-text request in any language: compile the ask, let the router pick the skill and the agency level, fan out to independent providers, verify",
+   "applicable_when": [
+    "/dobby",
+    "무엇부터|어디서부터|어떻게 시작",
+    "help me with|어떻게 해야"
+   ],
+   "not_applicable_when": [
+    "a single-command question, or an ask that already names its own acceptance check"
+   ],
+   "inputs": [
+    "the user's request, verbatim"
+   ],
+   "outputs": [
+    "a compiled brief",
+    "a routing decision",
+    "a verified result"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli prompt \"<request>\"",
+    "{python} -m dobby.cli route \"<objective>\""
+   ],
+   "path": ".claude/skills/dobby/SKILL.md",
+   "version": "1.0",
+   "state": "active",
+   "created": "2026-07-28",
+   "proposed_by": "kit-author",
+   "approved_by": "kit-release",
+   "eval_passes": [],
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "provenance": {
+    "source": "kit factory default",
+    "method": "curated",
+    "date": "2026-07-28",
+    "confidence": "strongly_supported"
+   },
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-07-28"
+    }
+   ],
+   "origin": {
+    "pinned_sha256": "1852de220c915f8c3df7fcad322f31a55531955d58882cffbf2381ade6b95c4a",
+    "path": ".claude/skills/dobby/SKILL.md",
+    "date": "2026-07-28"
+   }
+  },
+  {
+   "name": "contest-submission",
+   "description": "Prepare a 공모전 / grant submission: read the 공고문, extract 심사기준 and 제외사유, check prior art BEFORE drafting, map sections to criteria, verify the form",
+   "applicable_when": [
+    "공모전|공고문|제안서|심사기준|출품",
+    "contest|call for proposals|grant application|rfp",
+    "제출 양식|접수 마감"
+   ],
+   "not_applicable_when": [
+    "internal documents with no rubric and no eligibility screen"
+   ],
+   "inputs": [
+    "the 공고문",
+    "the submission form",
+    "the idea"
+   ],
+   "outputs": [
+    "a criterion→section map",
+    "a prior-art verdict",
+    "a filled form written to a NEW file"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli hwp tables \"<공고문>\"",
+    "{python} -m dobby.cli research run \"<idea>\" --yes",
+    "{python} -m dobby.cli hwp tables \"<제안서_v2>\""
+   ],
+   "path": ".claude/skills/contest-submission/SKILL.md",
+   "version": "1.0",
+   "state": "active",
+   "created": "2026-07-28",
+   "proposed_by": "kit-author",
+   "approved_by": "kit-release",
+   "eval_passes": [],
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "provenance": {
+    "source": "kit factory default",
+    "method": "curated",
+    "date": "2026-07-28",
+    "confidence": "strongly_supported"
+   },
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-07-28"
+    }
+   ],
+   "origin": {
+    "pinned_sha256": "4341079d29bfe87525e465027a0ceaabd69193bf754ee56a621ff378c487ccec",
+    "path": ".claude/skills/contest-submission/SKILL.md",
+    "date": "2026-07-28"
+   }
+  },
+  {
+   "name": "prior-art-search",
+   "description": "Search patents, regulations and published work for prior art with a reproducible log; keeps searched-and-empty apart from unsearched",
+   "applicable_when": [
+    "특허|선행기술|선행조사|지식재산",
+    "prior art|patent search|kipris|uspto",
+    "이미 있는지|기존 연구|규제 확인"
+   ],
+   "not_applicable_when": [
+    "a question about this repository's own code, which the knowledge graph answers without a web search"
+   ],
+   "inputs": [
+    "the idea or claim to check"
+   ],
+   "outputs": [
+    "a prior-art verdict",
+    "a query log with dates and counts",
+    "the citations that were opened"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli research run \"<need>\" --yes",
+    "{python} -m dobby.cli research citations <refs.txt>"
+   ],
+   "path": ".claude/skills/prior-art-search/SKILL.md",
+   "version": "1.0",
+   "state": "active",
+   "created": "2026-07-28",
+   "proposed_by": "kit-author",
+   "approved_by": "kit-release",
+   "eval_passes": [],
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "provenance": {
+    "source": "kit factory default",
+    "method": "curated",
+    "date": "2026-07-28",
+    "confidence": "strongly_supported"
+   },
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-07-28"
+    }
+   ],
+   "origin": {
+    "pinned_sha256": "c0bba948d2b9359ba147d88df50e293293dea1ea77e581d0cf0685881f080603",
+    "path": ".claude/skills/prior-art-search/SKILL.md",
+    "date": "2026-07-28"
+   }
+  },
+  {
+   "name": "paper-draft",
+   "description": "Draft or revise an academic paper with claims priced, citations resolved, rigor gates run, and the generated-prose signature removed before submission",
+   "applicable_when": [
+    "논문|초록|원고|투고|학술",
+    "paper|manuscript|abstract|journal submission",
+    "심사 대응|리뷰어"
+   ],
+   "not_applicable_when": [
+    "a blog post or internal memo, where the rigor gates do not apply"
+   ],
+   "inputs": [
+    "the draft",
+    "the experiment record",
+    "the 서식"
+   ],
+   "outputs": [
+    "a claim/evidence table",
+    "a citation report",
+    "a style report",
+    "a filled 서식"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli research claims --file <draft.md>",
+    "{python} -m dobby.cli style --file <draft.md>",
+    "{python} -m dobby.cli ml --file <experiment.json>"
+   ],
+   "path": ".claude/skills/paper-draft/SKILL.md",
+   "version": "1.1",
+   "state": "active",
+   "created": "2026-07-28",
+   "proposed_by": "kit-author",
+   "approved_by": "maintainer",
+   "eval_passes": [],
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "provenance": {
+    "source": "kit factory default",
+    "method": "curated",
+    "date": "2026-07-28",
+    "confidence": "strongly_supported"
+   },
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-07-28"
+    },
+    {
+     "to": "active",
+     "by": "maintainer",
+     "date": "2026-08-16",
+     "note": "body re-pinned after ca624ea (review-response section; legacy .hwp no longer read-only)"
+    }
+   ],
+   "origin": {
+    "pinned_sha256": "ce0c8dd04da14e0d3a119833e236f5ddafa98223f734f3719976f0adefe7fc70",
+    "path": ".claude/skills/paper-draft/SKILL.md",
+    "date": "2026-08-16"
+   }
+  },
+  {
+   "name": "agy-delegation",
+   "description": "Delegate a task to the Antigravity CLI (agy) instead of doing it here: live web search, image generation, whole-codebase architecture passes, or 15+ tool calls of mechanical work",
+   "applicable_when": [
+    "web search|latest version|CVE|최신|검색",
+    "image generation|mockup|이미지 생성|목업",
+    "codebase architecture|아키텍처|코드베이스 분석",
+    "a task estimated at more than 15 tool calls here",
+    "agy|antigravity|위임|delegate"
+   ],
+   "not_applicable_when": [
+    "under ~5 tool calls — the round trip costs more than the edit",
+    "the current context already holds the answer",
+    "the user asked this process specifically to do it"
+   ],
+   "inputs": [
+    "the task",
+    "an estimate of tool calls if done here",
+    "the absolute paths the delegate must read"
+   ],
+   "outputs": [
+    "a delegate/self verdict with its basis",
+    "the exact prompt and argv that were sent",
+    "the delegate's answer, with a truncation flag when capped"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli agy check \"<task>\" --tool-calls <n>",
+    "{python} -m dobby.cli agy prompt \"<task>\" --template <t>",
+    "{python} -m dobby.cli agy caps"
+   ],
+   "path": ".claude/skills/agy-delegation/SKILL.md",
+   "version": "1.0",
+   "state": "active",
+   "created": "2026-08-04",
+   "proposed_by": "kit-author",
+   "approved_by": "kit-release",
+   "eval_passes": [],
+   "requires": {
+    "bins": [
+     "agy"
+    ]
+   },
+   "provenance": {
+    "source": "ported from github.com/SafeMantella/claude-code-agy-CLI-skill; flag surface re-measured from `agy --help` 1.1.8 on win32 (reports/AGY_FLAG_SURFACE.md)",
+    "method": "curated",
+    "date": "2026-08-04",
+    "confidence": "strongly_supported"
+   },
+   "history": [
+    {
+     "to": "active",
+     "by": "kit-release",
+     "date": "2026-08-04"
+    }
+   ],
+   "origin": {
+    "pinned_sha256": "85e9efe2a1f9d55f949efebd62b4d65dd4a289448e735cb41a478b398e74fbbd",
+    "path": ".claude/skills/agy-delegation/SKILL.md",
+    "date": "2026-08-04"
+   }
+  },
+  {
+   "name": "runnable-gates",
+   "description": "Write acceptance gates as runnable commands BEFORE the work, then let a script decide whether they passed: CHECK/EXPECT/EVIDENCE graded by dobby.gates, approval bound to an oracle fingerprint",
+   "applicable_when": [
+    "any producing task",
+    "about to write done|fixed|passing|verified",
+    "completion would otherwise be asserted in prose",
+    "게이트|완료 판정|검증 기준"
+   ],
+   "not_applicable_when": [
+    "read-only questions that produce no artifact",
+    "a claim no command can decide — declare it a manual gate instead"
+   ],
+   "inputs": [
+    "GATES.md written before the first change"
+   ],
+   "outputs": [
+    "GATES.md with machine-written EVIDENCE lines",
+    "approval records outside the repo",
+    "an exit code: 0 met / 1 unmet / 2 unparseable"
+   ],
+   "validation_commands": [
+    "{python} -m dobby.cli gates status --file GATES.md",
+    "{python} -m dobby.cli gates verify --file GATES.md --write-evidence",
+    "{python} -m unittest tests.test_gates"
+   ],
+   "version": "1.1",
+   "path": ".claude/skills/runnable-gates/SKILL.md",
+   "provenance": {
+    "source": "ported from Leonxlnx/unlazy (MIT)",
+    "method": "curated",
+    "date": "2026-08-24",
+    "confidence": "strongly_supported"
+   },
+   "requires": {
+    "any_bins": [
+     "python3",
+     "python",
+     "py"
+    ]
+   },
+   "state": "active",
+   "proposed_by": "claude-opus-5",
+   "eval_passes": [
+    {
+     "scenario": "GATES-CONJUNCTION",
+     "evidence": "evals/gates/RESULTS.json",
+     "date": "2026-08-24"
+    },
+    {
+     "scenario": "GATES-APPROVAL-BINDING",
+     "evidence": "evals/gates/RESULTS.json",
+     "date": "2026-08-24"
+    },
+    {
+     "scenario": "GATES-VACUOUS-EMPTY",
+     "evidence": "evals/gates/RESULTS.json",
+     "date": "2026-08-24"
+    },
+    {
+     "scenario": "GATES-VACUOUS-MANUAL",
+     "evidence": "evals/gates/RESULTS.json",
+     "date": "2026-08-24"
+    },
+    {
+     "scenario": "GATES-VACUOUS-ABANDONED",
+     "evidence": "evals/gates/RESULTS.json",
+     "date": "2026-08-24"
+    }
+   ],
+   "approved_by": "codex",
+   "created": "2026-08-24",
+   "history": [
+    {
+     "to": "candidate",
+     "by": "claude-opus-5",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "sandboxed",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "evaluated",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "approved",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "active",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "revised",
+     "by": "claude-opus-5",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "candidate",
+     "by": "claude-opus-5",
+     "note": "id syntax and the self-referential-gate trap documented after a behavioral run measured both",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "sandboxed",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "evaluated",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "approved",
+     "by": "codex",
+     "date": "2026-08-24"
+    },
+    {
+     "to": "active",
+     "by": "codex",
+     "date": "2026-08-24"
+    }
+   ],
+   "origin": {
+    "pinned_sha256": "c65753cd72e32c8ff039a14271fca5667d89a3bebeb22ac1ab944c75afc49686",
+    "path": ".claude/skills/runnable-gates/SKILL.md",
+    "date": "2026-08-24"
+   }
+  }
+ ]
+}

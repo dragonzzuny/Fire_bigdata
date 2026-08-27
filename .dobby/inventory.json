@@ -1,0 +1,31 @@
+{
+ "languages": {
+  "markdown": 5,
+  "shell": 1,
+  "json": 2
+ },
+ "build": [],
+ "ci": [],
+ "instructions": [
+  "CLAUDE.md",
+  "AGENTS.md"
+ ],
+ "tests": [],
+ "scripts": [],
+ "skills": [],
+ "rules": [],
+ "top_dirs": [
+  ".omc"
+ ],
+ "file_count": 11,
+ "generated_hint": [],
+ "excluded_as_harness": [
+  ".claude",
+  "dobby",
+  "docs",
+  "evals",
+  "mcp",
+  "reports",
+  "tests"
+ ]
+}

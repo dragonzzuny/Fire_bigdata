@@ -1,0 +1,77 @@
+{
+ "nodes": [
+  {
+   "id": "repo",
+   "type": "RepositoryArea",
+   "name": "Fire_bigdata",
+   "summary": "repository root; 11 files scanned; languages: ['markdown', 'json', 'shell']",
+   "path": null,
+   "keywords": [],
+   "authority": 0.6,
+   "provenance": {
+    "source": "bootstrap scan of Fire_bigdata",
+    "method": "scan",
+    "date": "2026-08-27",
+    "confidence": "verified"
+   }
+  },
+  {
+   "id": "area:.omc",
+   "type": "RepositoryArea",
+   "name": ".omc",
+   "summary": "top-level directory .omc/",
+   "path": null,
+   "keywords": [],
+   "authority": 0.6,
+   "provenance": {
+    "source": "bootstrap scan of Fire_bigdata",
+    "method": "scan",
+    "date": "2026-08-27",
+    "confidence": "verified"
+   }
+  },
+  {
+   "id": "doc:CLAUDE.md",
+   "type": "Convention",
+   "name": "CLAUDE.md",
+   "summary": "agent/human instruction file at repo root (CLAUDE.md)",
+   "path": "CLAUDE.md",
+   "keywords": [],
+   "authority": 0.9,
+   "provenance": {
+    "source": "bootstrap scan of Fire_bigdata",
+    "method": "scan",
+    "date": "2026-08-27",
+    "confidence": "verified"
+   }
+  },
+  {
+   "id": "doc:AGENTS.md",
+   "type": "Convention",
+   "name": "AGENTS.md",
+   "summary": "agent/human instruction file at repo root (AGENTS.md)",
+   "path": "AGENTS.md",
+   "keywords": [],
+   "authority": 0.9,
+   "provenance": {
+    "source": "bootstrap scan of Fire_bigdata",
+    "method": "scan",
+    "date": "2026-08-27",
+    "confidence": "verified"
+   }
+  }
+ ],
+ "edges": [
+  {
+   "src": "area:.omc",
+   "rel": "scoped_to",
+   "dst": "repo",
+   "provenance": {
+    "source": "bootstrap",
+    "method": "scan",
+    "date": "2026-08-27",
+    "confidence": "verified"
+   }
+  }
+ ]
+}

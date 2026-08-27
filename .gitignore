@@ -1,0 +1,38 @@
+# --- data (플랫폼 원본은 저장소에 넣지 않는다: 용량/재배포 문제) ---
+data/raw/**
+!data/raw/.gitkeep
+data/interim/**
+!data/interim/.gitkeep
+data/processed/**
+!data/processed/.gitkeep
+data/cache/**
+!data/cache/.gitkeep
+
+# --- 산출물 ---
+outputs/**
+!outputs/.gitkeep
+reports/figures/**
+*.pkl
+*.joblib
+*.parquet
+
+# --- 비밀 ---
+.env
+secrets.yaml
+*.key
+
+# --- 파이썬 ---
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+
+# --- dobby 런타임 상태 ---
+.dobby/state/
+.dobby/backups/
+.omc/
+
+# --- OS ---
+.DS_Store
