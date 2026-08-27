@@ -356,11 +356,49 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             f"화재 {manifest.get('panel', {}).get('total_fires', 0):,.0f}건",
             size=12.5, bold=True)
 
-    # ---- 5 화면① 배분 ----
+    # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
+    s_map = section(prs, "4. 서비스 화면 ①",
+                    "어디가 위험하고, 어디를 어떤 순서로 도는가",
+                    "화재위험 예측과 순찰 동선을 한 장에서 봅니다")
+    map_img = figs / "map_route.png"
+    if map_img.exists():
+        # 지도는 세로로 길다. 폭만 맞추면 장표 아래로 넘친다.
+        from PIL import Image
+        try:
+            w_px, h_px = Image.open(map_img).size
+            ratio = w_px / h_px
+        except Exception:                                # noqa: BLE001
+            ratio = 0.85
+        max_h = 4.7
+        width = min(6.5, max_h * ratio)
+        pic = picture(s_map, map_img, Inches(0.7), Inches(2.15), Inches(width))
+        if pic is not None:
+            pic.width, pic.height = Inches(width), Inches(width / ratio)
+    cards = [
+        ("색이 짙을수록 위험",
+         "500m 구역마다 화재위험을 예측합니다. 과거 화재, 주변 구역으로의 확산, "
+         "대상물 용도와 업종 구성을 함께 봅니다."),
+        ("검은 사각형이 출동 관서",
+         "119안전센터에서 출발해 관할을 돌고 복귀합니다. 선이 실제 도로 기준 동선, "
+         "번호가 방문 순서입니다."),
+        ("계획서에 그대로 첨부",
+         "이 그림이 순찰계획서에 붙습니다. 표만 있는 계획서는 어디를 도는지 "
+         "머리에 그려지지 않습니다."),
+    ]
+    y = 2.3
+    for head, body in cards:
+        band(s_map, Inches(7.6), Inches(y), Inches(5.0), Inches(1.45))
+        textbox(s_map, Inches(7.85), Inches(y + 0.14), Inches(4.5), Inches(0.38),
+                head, size=14.5, bold=True, color=RED)
+        textbox(s_map, Inches(7.85), Inches(y + 0.58), Inches(4.5), Inches(0.8),
+                body, size=12, color=MUTED, spacing=1.1)
+        y += 1.62
+
+    # ---- 6 화면② 배분 ----
     op = alloc.get("optimized", {})
     tk = alloc.get("top_k_percent", {})
     screen_slide(
-        prs, "4. 서비스 화면 ①", "오늘 어느 구역부터 점검할 것인가",
+        prs, "4. 서비스 화면 ②", "오늘 어느 구역부터 점검할 것인가",
         "점검관 인원과 기간을 넣으면, 그 인력으로 실제 갈 수 있는 곳만 배분합니다",
         figs / "shot_allocation.png",
         [("인력을 먼저 넣습니다",
@@ -376,7 +414,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 6 화면② 순찰 ----
     screen_slide(
-        prs, "4. 서비스 화면 ②", "어느 안전센터가 어디를 어떤 순서로 도는가",
+        prs, "4. 서비스 화면 ③", "순찰 조건을 바꾸면 계획이 즉시 바뀝니다",
         "119안전센터에서 출발해 관할을 돌고 복귀하는 실제 도로 기준 동선입니다",
         figs / "shot_patrol.png",
         [("출동 관서 기준",
@@ -393,9 +431,10 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 7 화면③ 계획서 ----
     screen_slide(
-        prs, "4. 서비스 화면 ③", "그대로 결재를 올릴 수 있는 계획서",
+        prs, "4. 서비스 화면 ④", "그대로 결재를 올릴 수 있는 계획서",
         "동선·중점 확인사항·법령 근거가 들어간 공문 서식 문서를 자동으로 만듭니다",
-        figs / "shot_plan_doc.png",
+        (figs / "shot_plan_result.png"
+         if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
         [("일별 · 월별 · 연간",
           "월별은 그 달의 화재위험을 반영해 순찰 횟수를 정하고, 연간은 "
           "계절별 순찰 유형과 법정 이행사항을 배치합니다."),
@@ -405,11 +444,13 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          ("법정 서식 안내",
           "조치가 필요하면 어느 별지 서식을 쓰는지 함께 알려 줍니다. "
           "(예: 화재예방강화지구 관리대장)")],
-        note="숫자·동선·법령 조문은 시스템이 확정하고, 생성형 AI는 문장만 다듬습니다.")
+        note="숫자·동선·법령 조문은 시스템이 확정하고, 생성형 AI는 문장만 다듬습니다. "
+             "인쇄용 HTML 로 내려받아 그대로 A4 출력합니다.",
+        keep=0.82)
 
     # ---- 8 화면④ 업무 도우미 ----
     screen_slide(
-        prs, "4. 서비스 화면 ④", "법령을 조문 근거와 함께 찾아 줍니다",
+        prs, "4. 서비스 화면 ⑤", "법령을 조문 근거와 함께 찾아 줍니다",
         "‘화재예방강화지구는 어떤 지역을 지정하나요?’ 같은 질문에 답합니다",
         (figs / "shot_assistant_answer.png"
          if (figs / "shot_assistant_answer.png").exists() else figs / "shot_assistant.png"),
@@ -479,6 +520,30 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             "월별 화재위험 = 계절 패턴 × 기상(습도·건조일수).\n"
             "겨울(12·1월)이 연평균의 1.1배, 9월이 0.89배입니다.\n"
             "월별 순찰 횟수를 이 값에 맞춰 정합니다.", size=13)
+
+    # ---- 미국 사례 비교 ----
+    s_us = section(prs, "5. 검증 결과 (계속)",
+                   "미국 애틀랜타 ‘Firebird’ 와 같은 축에서 비교했습니다",
+                   "NFPA 모범사례로 선정된 시스템입니다 (KDD 2016)")
+    rows = [["", "Firebird (애틀랜타, 2016)", "불씨예보 (울산, 2026)"],
+            ["분석 단위", "상업용 건물 5,000여 개소", "500m 구역 1,459개"],
+            ["자료", "8종 결합 (건물대장·화재·인구 등)", "소방안전 빅데이터 8종 + 기상 + 법령"],
+            ["예측 성능", "상업용 화재 70% 이상 예측\n(오경보율 20% 기준)",
+             f"위험 상위 20% 구역이 화재 {pct(h['model_capture'])} 포착\n"
+             f"(95% 신뢰구간 {m_ci.get('lo', 0):.0%}–{m_ci.get('hi', 0):.0%})"],
+            ["검증 방식", "시간분할 (학습 이후 화재로 검증)",
+             "시간분할 + 관할제외 + 타 지역 + 주소 정밀도"],
+            ["산출물", "위험점수 · 지도 시각화",
+             "위험지도 · 인력 제약 배분 · 관서별 동선 ·\n공문 계획서 · 법령 질의응답"],
+            ["인력 제약", "**미해결** — 논문에 “19,397개는 현 인력이\n감당할 수 있는 수준을 훨씬 넘는다”고 기술",
+             f"**해결** — 가용 인력 안에서 배분,\n동일 인력 대비 {alloc.get('gain_pp', 0):+.1f}%p 개선"]]
+    table(s_us, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.9), rows,
+          col_widths=[2.2, 4.8, 4.8], size=11.5)
+    band(s_us, Inches(0.8), Inches(6.35), Inches(11.8), Inches(0.75),
+         RGBColor(0xEC, 0xF8, 0xF2))
+    textbox(s_us, Inches(1.05), Inches(6.48), Inches(11.3), Inches(0.5),
+            "Firebird 논문도 “현 인력으로 감당할 수 없다”는 문제를 지적했으나 풀지는 않았습니다. "
+            "그 지점이 저희가 더한 부분입니다.", size=13, bold=True, color=GREEN)
 
     # ---- 11 기대효과 ----
     s11 = section(prs, "6. 기대효과 및 활용방안",

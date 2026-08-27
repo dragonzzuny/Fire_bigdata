@@ -67,6 +67,37 @@ def main() -> int:
                 page.screenshot(path=str(out / name))
             print(f"  {name}  ({tab})")
 
+        # 계획서는 생성 버튼을 눌러야 문서가 보인다.
+        # 입력 폼만 찍힌 화면은 '무엇이 나오는지'를 보여주지 못한다.
+        try:
+            page.get_by_role("tab", name="예방순찰 계획").click(timeout=20_000)
+            page.wait_for_timeout(12_000)
+            page.get_by_text("계획서용 지도").first.click(timeout=15_000)
+            page.wait_for_timeout(1_500)
+            page.get_by_role("button", name="지도 만들기").click(timeout=15_000)
+            print("  동선도 생성 중…")
+            page.wait_for_timeout(25_000)
+
+            page.get_by_role("tab", name="순찰·점검 계획서").click(timeout=20_000)
+            page.wait_for_timeout(5_000)
+            # AI 다듬기를 끄고 표준 서식으로 — 빠르고 결과가 일정하다
+            try:
+                page.get_by_text("AI로 문체 다듬기").click(timeout=8_000)
+                page.wait_for_timeout(2_000)
+            except Exception:                             # noqa: BLE001
+                pass
+            page.get_by_role("button", name="계획서 생성").click(timeout=20_000)
+            print("  계획서 생성 중…")
+            page.wait_for_timeout(20_000)
+            # 문서는 화면 아래에 나온다. 미리보기까지 내려가야 결과가 보인다.
+            page.get_by_text("미리보기").first.scroll_into_view_if_needed(timeout=15_000)
+            page.wait_for_timeout(2_500)
+            page.screenshot(path=str(out / "shot_plan_result.png"),
+                            clip={"x": 360, "y": 0, "width": 1320, "height": 1050})
+            print("  shot_plan_result.png  (생성된 계획서 본문)")
+        except Exception as exc:                          # noqa: BLE001
+            print(f"  계획서 캡처 건너뜀: {type(exc).__name__}")
+
         # 업무 도우미는 질문을 실제로 눌러야 답변이 보인다.
         # 입력창만 찍힌 화면은 '무엇을 해 주는지'를 전혀 보여주지 못한다.
         try:

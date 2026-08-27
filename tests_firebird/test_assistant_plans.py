@@ -221,10 +221,25 @@ class TestPlans(unittest.TestCase):
         self.assertEqual([PL._hangul_ordinal(i) for i in range(4)],
                          ["가", "나", "다", "라"])
 
-    def test_law_short_has_matching_brackets(self):
-        out = "「" + PL._law_short("화재의 예방 및 안전관리에 관한 법률 제7조")
-        self.assertEqual(out.count("「"), out.count("」"))
-        self.assertIn("제7조", out)
+    def test_law_citation_brackets_are_balanced(self):
+        """낫표를 호출부와 나눠 붙이면 짝이 어긋난다. 한 번에 만든다."""
+        for ref in ("화재의 예방 및 안전관리에 관한 법률 제7조",
+                    "소방기본법 제10조",
+                    "다중이용업소의 안전관리에 관한 특별법 제13조",
+                    "법령명만 있는 경우"):
+            out = PL._law_citation(ref)
+            self.assertEqual(out.count("「"), out.count("」"), out)
+            self.assertTrue(out.startswith("「"))
+
+    def test_law_citation_keeps_article_outside_brackets(self):
+        out = PL._law_citation("소방기본법 제10조")
+        self.assertEqual(out, "「소방기본법」 제10조")
+
+    def test_basis_lines_have_balanced_brackets(self):
+        """계획서 '1. 관련' 항목의 낫표가 어긋나면 문서가 어색해진다."""
+        md = PL.render(PL.daily_plan(self.ctx, date(2026, 9, 15)), self.ctx)
+        head = md[:md.index("2. 위 호와")]
+        self.assertEqual(head.count("「"), head.count("」"), head)
 
     def test_grid_definition_is_included(self):
         """계획서를 처음 받는 사람은 '격자'가 무엇인지 모른다."""

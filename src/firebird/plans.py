@@ -65,7 +65,7 @@ def _doc_header(meta: DocMeta, title: str, basis: list[str]) -> list[str]:
         "",
         f"**{meta.기관명}**" + (f" {meta.부서}" if meta.부서 else ""),
         "",
-        "| | |",
+        "| 항목 | 내용 |",
         "|---|---|",
         f"| 수신 | {meta.수신} |",
         f"| 시행일 | {d.year}. {d.month}. {d.day}. |",
@@ -134,6 +134,8 @@ class PlanContext:
     mode: PatrolMode
     targets: pd.DataFrame                 # 순찰 대상 격자 (출동관서 배정 포함)
     routes: list[pd.DataFrame] = field(default_factory=list)
+    #: 계획서에 넣을 지도 이미지 경로(순찰 동선 + 화재위험). 없으면 생략된다.
+    map_path: str = ""
     summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     distance_source: str = ""
     month_plan: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -393,7 +395,7 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
     d, mode = plan["date"], plan["mode"]
     h = plan["hours"]
     legal = plan.get("legal", [])
-    basis = [f"「{_law_short(l['ref'])}」" for l in legal[:2]] or \
+    basis = [_law_citation(l["ref"]) for l in legal[:2]] or \
             ["「화재의 예방 및 안전관리에 관한 법률」 제7조(화재안전조사)"]
     basis.append(f"{ctx.city_label} 화재위험 예측 결과({ctx.year}년 기준)")
 
@@ -421,6 +423,12 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
                f"**{tot_km:.1f} km** | |")
 
     out += ["", "**라. 순찰 동선**", ""]
+    if ctx.map_path:
+        # 표만 있는 계획서는 '어디를 도는지'가 머리에 안 그려진다.
+        # 위험 분포와 동선이 겹친 지도를 함께 넣는다.
+        out += [f"![순찰 동선도]({ctx.map_path})", "",
+                "   ※ 색이 짙을수록 화재위험이 높은 구역. 검은 사각형이 출동 관서, "
+                "선이 순찰 동선입니다.", ""]
     for t in plan["teams"]:
         out.append(f"○ {t['출동관서']} (출발 → 순찰 → 복귀, 총 {t['총_km']:.1f} km)")
         out.append("")
@@ -464,7 +472,7 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
 def render_monthly(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> str:
     meta = meta or DocMeta()
     legal = plan.get("legal", [])
-    basis = [f"「{_law_short(l['ref'])}」" for l in legal[:2]] or \
+    basis = [_law_citation(l["ref"]) for l in legal[:2]] or \
             ["「화재의 예방 및 안전관리에 관한 법률」 제7조(화재안전조사)"]
     basis.append(f"{ctx.city_label} 월별 화재위험 분석 결과")
 
@@ -551,16 +559,19 @@ def render_annual(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> 
     return "\n".join(out)
 
 
-def _law_short(ref: str) -> str:
-    """'화재의 예방 및 안전관리에 관한 법률 제7조' -> '화재의 예방 … 법률」 제7조'.
+def _law_citation(ref: str) -> str:
+    """'화재의 예방 및 안전관리에 관한 법률 제7조' -> '「화재의 … 법률」 제7조'.
 
-    공문은 법령명을 낫표(「」)로 감싸고 조문은 밖에 둔다.
-    호출부에서 앞에 「를 붙이므로 여기서는 닫는 낫표만 넣는다.
+    공문은 법령명을 낫표로 감싸고 조문은 밖에 둔다.
+    낫표를 호출부와 나눠 붙이면 짝이 어긋나므로 여기서 한 번에 만든다.
     """
-    parts = ref.rsplit(" ", 1)
+    parts = str(ref).rsplit(" ", 1)
     if len(parts) == 2 and parts[1].startswith("제"):
-        return f"{parts[0]}」 {parts[1]}"
-    return f"{ref}」"
+        return f"「{parts[0]}」 {parts[1]}"
+    return f"「{ref}」"
+
+
+_law_short = _law_citation                    # 이전 이름 호환
 
 
 RENDERERS = {"daily": render_daily, "monthly": render_monthly, "annual": render_annual}

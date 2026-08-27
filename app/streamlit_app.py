@@ -29,7 +29,7 @@ import streamlit as st  # noqa: E402
 
 from firebird import dataset as D, evaluate as E, explain as X, grid as G, \
     hydrant as H, llm as L, model as M, operations as OP, patrol as P, \
-    monthly as MO, patrol_modes as PM, plans as PLN, routing as RT, rules as R, \
+    monthly as MO, mapviz as MV, patrol_modes as PM, plans as PLN, routing as RT, rules as R, \
     assistant as AS, lawdata as LW, stations as ST  # noqa: E402
 from firebird.config import load_config  # noqa: E402
 
@@ -56,12 +56,44 @@ if _missing:
 
 st.markdown("""
 <style>
-  .big-metric {font-size: 2.1rem; font-weight: 700; line-height: 1.1;}
-  .metric-sub {color: #888; font-size: 0.82rem;}
-  .callout {border-left: 4px solid #e34a33; background: rgba(227,74,51,.07);
-            padding: .7rem 1rem; border-radius: 4px; margin: .5rem 0;}
-  .good {border-left-color:#2c8; background: rgba(34,204,136,.07);}
-  div[data-testid="stMetricValue"] {font-size: 1.6rem;}
+  :root { --ink:#22262d; --muted:#78808c; --line:#e6e9ec; --brand:#c0492f; }
+
+  /* 본문 폭을 넓혀 표가 잘리지 않게 */
+  .block-container { padding-top: 2.2rem; max-width: 1500px; }
+
+  /* 탭을 눌러야 할 것처럼 보이게 */
+  button[data-baseweb="tab"] { font-size: 0.97rem; font-weight: 600; }
+  button[data-baseweb="tab"][aria-selected="true"] { color: var(--brand); }
+
+  h1,h2,h3 { letter-spacing:-0.01em; }
+  div[data-testid="stMetricValue"] { font-size: 1.55rem; }
+  div[data-testid="stMetricLabel"] { color: var(--muted); }
+
+  .callout { border-left:4px solid var(--brand); background:rgba(192,73,47,.06);
+             padding:.75rem 1rem; border-radius:6px; margin:.5rem 0; }
+  .good    { border-left-color:#2f8f6b; background:rgba(47,143,107,.07); }
+  .info    { border-left-color:#41607f; background:rgba(65,96,127,.07); }
+
+  /* 계획서 미리보기 — 문서처럼 보이게 */
+  .docview { background:#fff; border:1px solid var(--line); border-radius:8px;
+             padding:2.2rem 2.6rem; box-shadow:0 1px 3px rgba(0,0,0,.05);
+             font-size:.94rem; line-height:1.75; }
+  .docview table { width:100%; border-collapse:collapse; margin:.6rem 0 1rem; }
+  .docview th,.docview td { border:1px solid var(--line); padding:.4rem .6rem;
+                            font-size:.88rem; }
+  .docview th { background:#f7f8f9; font-weight:600; }
+  .docview h1 { font-size:1.5rem; text-align:center; margin:.2rem 0 1.4rem; }
+  .docview img { max-width:100%; border:1px solid var(--line); border-radius:4px; }
+
+  /* 업무 도우미 답변 */
+  .answer { background:#fff; border:1px solid var(--line); border-left:4px solid var(--brand);
+            border-radius:8px; padding:1.4rem 1.7rem; line-height:1.8; }
+  .srcbox { background:#f7f8f9; border-radius:6px; padding:.7rem .9rem;
+            font-size:.86rem; color:var(--muted); margin:.3rem 0; }
+  .steps { display:flex; gap:.5rem; margin:.3rem 0 1rem; flex-wrap:wrap; }
+  .step  { background:#f2f4f6; color:var(--muted); border-radius:999px;
+           padding:.25rem .8rem; font-size:.82rem; }
+  .step.on { background:var(--brand); color:#fff; font-weight:600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -200,6 +232,93 @@ def deck(layers, df, zoom=10.2):
                     initial_view_state=pdk.ViewState(latitude=lat, longitude=lon, zoom=zoom),
                     tooltip={"text": "격자 {grid_id} · {시군구}\n"
                                      "위험점수 {위험점수} (순위 {순위})\n점검대상 {점검대상수}개소"})
+
+
+def _md_to_html(md: str) -> str:
+    """계획서 미리보기용 최소 마크다운 변환.
+
+    Streamlit 의 기본 렌더는 표 테두리가 없어 공문처럼 보이지 않는다.
+    외부 라이브러리를 더하지 않고 필요한 만큼만 직접 변환한다.
+    """
+    import html as _html
+    import re as _re
+
+    out, in_table = [], False
+    for raw in md.splitlines():
+        line = raw.rstrip()
+        if line.startswith("|") and line.endswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if all(_re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+                continue                       # 구분선
+            if not in_table:
+                out.append("<table>")
+                in_table = True
+                tag = "th"
+            else:
+                tag = "td"
+            row = "".join(f"<{tag}>{_fmt_inline(c)}</{tag}>" for c in cells)
+            out.append(f"<tr>{row}</tr>")
+            continue
+        if in_table:
+            out.append("</table>")
+            in_table = False
+        if not line.strip():
+            continue
+        m = _re.match(r"!\[[^\]]*\]\((.+?)\)", line.strip())
+        if m:
+            out.append(f'<img src="{_html.escape(m.group(1))}">')
+            continue
+        if line.startswith("### "):
+            out.append(f"<h3>{_fmt_inline(line[4:])}</h3>")
+        elif line.startswith("## "):
+            out.append(f"<h2>{_fmt_inline(line[3:])}</h2>")
+        elif line.startswith("# "):
+            out.append(f"<h1>{_fmt_inline(line[2:])}</h1>")
+        elif line.strip() == "---":
+            out.append("<hr>")
+        elif line.strip().startswith("> "):
+            out.append(f"<blockquote>{_fmt_inline(line.strip()[2:])}</blockquote>")
+        else:
+            out.append(f"<p>{_fmt_inline(line)}</p>")
+    if in_table:
+        out.append("</table>")
+    return "\n".join(out)
+
+
+def _fmt_inline(text: str) -> str:
+    import html as _html
+    import re as _re
+    t = _html.escape(str(text))
+    t = _re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    return t
+
+
+def _doc_html(md: str, map_path: str = "") -> str:
+    """인쇄용 HTML. 브라우저에서 열어 그대로 A4 로 인쇄한다."""
+    import base64
+    body = _md_to_html(md)
+    if map_path:
+        try:
+            with open(map_path, "rb") as fh:
+                b64 = base64.b64encode(fh.read()).decode()
+            body = body.replace(f'<img src="{map_path}">',
+                                f'<img src="data:image/png;base64,{b64}">')
+        except OSError:
+            pass
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>순찰계획서</title><style>
+@page {{ size: A4; margin: 18mm 16mm; }}
+body {{ font-family:'Malgun Gothic','Noto Sans KR',sans-serif; color:#1a1d23;
+        line-height:1.75; font-size:10.5pt; }}
+h1 {{ font-size:16pt; text-align:center; margin:0 0 14pt; }}
+h2 {{ font-size:12pt; margin:16pt 0 6pt; }}
+table {{ width:100%; border-collapse:collapse; margin:6pt 0 12pt; }}
+th,td {{ border:1px solid #c8ccd2; padding:4pt 6pt; font-size:9.5pt; }}
+th {{ background:#f2f4f6; }}
+img {{ max-width:100%; margin:8pt 0; }}
+blockquote {{ margin:4pt 0 8pt 12pt; color:#555; font-size:9.5pt; }}
+hr {{ border:0; border-top:1px solid #c8ccd2; margin:14pt 0; }}
+</style></head><body>{body}</body></html>"""
 
 
 # ------------------------------------------------------------------ 사이드바
@@ -458,6 +577,26 @@ with tabs[2]:
             st.pydeck_chart(deck(layers, targets))
             st.caption("검은 점 = 출동 관서 · 색깔 = 관서별 순찰 동선")
 
+            with st.expander("계획서용 지도 (인쇄·첨부용)", expanded=False):
+                st.caption("화재위험 분포 위에 순찰 동선을 얹은 그림입니다. "
+                           "계획서에 그대로 붙습니다.")
+                if st.button("지도 만들기"):
+                    with st.spinner("지도 생성 중…"):
+                        fig = MV.route_map(
+                            cur, plan["routes"], cfg,
+                            title=f"{cfg.city(city)['label']} {mode.label} — "
+                                  f"화재위험 및 순찰 동선",
+                            top_n_outline=40)
+                        path = cfg.paths.figures / f"map_{city}_{year}_{mode.key}.png"
+                        MV.save(fig, path)
+                        st.session_state["map_path"] = str(path)
+                if st.session_state.get("map_path"):
+                    st.image(st.session_state["map_path"], width='stretch')
+                    with open(st.session_state["map_path"], "rb") as fh:
+                        st.download_button("지도 내려받기 (PNG)", fh.read(),
+                                           file_name=f"순찰지도_{city}_{year}.png",
+                                           mime="image/png")
+
             names = [f"{r.attrs.get('depot', {}).get('name', '')} "
                      f"{int(r['회차'].iloc[0]) if '회차' in r else 1}회차"
                      for r in plan["routes"]]
@@ -514,40 +653,93 @@ with tabs[2]:
 
 # ================================================================== ④ 계획서
 with tabs[3]:
-    st.subheader("순찰·점검 계획서 생성")
-    st.caption("동선·중점 확인사항·법령 근거가 들어간 결재용 문서를 만듭니다. "
+    st.subheader("순찰·점검 계획서")
+    st.caption("동선·중점 확인사항·법령 근거가 들어간 결재용 공문을 만듭니다. "
                "숫자와 법령은 시스템이 확정하고, AI는 문장만 다듬습니다.")
 
     plan = st.session_state.get("patrol_plan")
     targets = st.session_state.get("patrol_targets")
-    if plan is None or targets is None:
-        st.info("먼저 **예방순찰 계획** 탭에서 순찰 조건을 설정하십시오.")
+    has_plan = plan is not None and targets is not None
+    has_map = bool(st.session_state.get("map_path"))
+    has_doc = bool(st.session_state.get("last_doc"))
+
+    st.markdown(
+        f"<div class='steps'>"
+        f"<span class='step {'on' if has_plan else ''}'>1 순찰 조건</span>"
+        f"<span class='step {'on' if has_map else ''}'>2 동선도</span>"
+        f"<span class='step {'on' if has_doc else ''}'>3 계획서</span>"
+        f"</div>", unsafe_allow_html=True)
+
+    if not has_plan:
+        st.markdown("<div class='callout info'><b>먼저 순찰 조건을 정하십시오.</b><br>"
+                    "‘예방순찰 계획’ 탭에서 순찰 목적·지역·팀을 설정하면 "
+                    "이 화면에서 계획서를 만들 수 있습니다.</div>",
+                    unsafe_allow_html=True)
     else:
-        g1, g2, g3 = st.columns([1, 1, 2])
-        kind = g1.radio("계획 종류", ["일별", "월별", "연간"], horizontal=False)
-        plan_date = g2.date_input("기준일", value=date.today())
-        polish = g3.toggle("AI로 문체 다듬기", value=L.is_available(cfg),
-                           disabled=not L.is_available(cfg),
-                           help="숫자·동선·법령 조문은 바뀌지 않습니다.")
-
-        st.markdown("**문서 정보** — 공문 머리·결재란에 들어갑니다")
-        d1, d2, d3, d4 = st.columns(4)
-        org = d1.text_input("기관명", value=f"{cfg.city(city)['label']}소방본부")
-        dept = d2.text_input("부서", value="예방과")
-        writer = d3.text_input("기안자", value="")
-        tel = d4.text_input("연락처", value="")
-        doc_meta = PLN.DocMeta(기관명=org, 부서=dept, 기안자=writer,
-                               연락처=tel, 시행일=plan_date)
-
         mode = PM.MODES[st.session_state.get("patrol_mode_key", "general")]
-        ctx = PLN.PlanContext(
-            city_label=cfg.city(city)["label"], year=int(year), mode=mode,
-            targets=targets, routes=plan["routes"], summary=plan["summary"],
-            distance_source=plan["distance_source"],
-            month_plan=st.session_state.get("month_plan", pd.DataFrame()),
-            law_index=get_index(city, year), fires=get_fires(city))
+        n_grid = sum(len(r) for r in plan["routes"])
+        n_st = len({r.attrs.get("depot", {}).get("name", "") for r in plan["routes"]})
+        i1, i2, i3, i4 = st.columns(4)
+        i1.metric("순찰 종류", mode.label)
+        i2.metric("출동 관서", f"{n_st}개")
+        i3.metric("순찰 구역", f"{n_grid}개")
+        i4.metric("총 이동", f"{plan['total_km']:.1f} km")
 
-        if st.button("계획서 생성", type="primary"):
+        st.divider()
+        left, right = st.columns([1, 1])
+
+        with left:
+            st.markdown("##### 1. 문서 정보")
+            org = st.text_input("기관명", value=f"{cfg.city(city)['label']}소방본부")
+            c1, c2 = st.columns(2)
+            dept = c1.text_input("부서", value="예방과")
+            writer = c2.text_input("기안자", value="", placeholder="예) 소방교 홍길동")
+            c3, c4 = st.columns(2)
+            tel = c3.text_input("연락처", value="", placeholder="052-000-0000")
+            docno = c4.text_input("문서번호", value="", placeholder="예방과-1234")
+
+            st.markdown("##### 2. 계획 종류")
+            kind = st.radio("계획 종류", ["일별", "월별", "연간"], horizontal=True,
+                            label_visibility="collapsed")
+            plan_date = st.date_input("기준일", value=date.today())
+            doc_meta = PLN.DocMeta(기관명=org, 부서=dept, 기안자=writer, 연락처=tel,
+                                   문서번호=docno, 시행일=plan_date)
+
+        with right:
+            st.markdown("##### 3. 동선도 첨부")
+            if has_map:
+                st.image(st.session_state["map_path"], width='stretch')
+                st.caption("‘예방순찰 계획’ 탭에서 다시 만들 수 있습니다.")
+            else:
+                st.markdown("<div class='callout info'>동선도가 없습니다. "
+                            "지금 만들면 계획서에 함께 들어갑니다.</div>",
+                            unsafe_allow_html=True)
+                if st.button("동선도 만들기"):
+                    with st.spinner("지도 생성 중…"):
+                        fig = MV.route_map(
+                            cur, plan["routes"], cfg,
+                            title=f"{cfg.city(city)['label']} {mode.label} — "
+                                  f"화재위험 및 순찰 동선", top_n_outline=40)
+                        path = cfg.paths.figures / f"map_{city}_{year}_{mode.key}.png"
+                        MV.save(fig, path)
+                        st.session_state["map_path"] = str(path)
+                    st.rerun()
+
+            st.markdown("##### 4. 생성")
+            polish = st.toggle("AI로 문체 다듬기", value=L.is_available(cfg),
+                               disabled=not L.is_available(cfg),
+                               help="숫자·동선·법령 조문은 바뀌지 않습니다. "
+                                    "30~60초 걸립니다.")
+            go = st.button("계획서 생성", type="primary", width='stretch')
+
+        if go:
+            ctx = PLN.PlanContext(
+                city_label=cfg.city(city)["label"], year=int(year), mode=mode,
+                targets=targets, routes=plan["routes"], summary=plan["summary"],
+                distance_source=plan["distance_source"],
+                month_plan=st.session_state.get("month_plan", pd.DataFrame()),
+                law_index=get_index(city, year), fires=get_fires(city),
+                map_path=st.session_state.get("map_path", ""))
             with st.spinner("계획서 작성 중…"):
                 if kind == "일별":
                     doc = PLN.daily_plan(ctx, plan_date)
@@ -557,15 +749,38 @@ with tabs[3]:
                     doc = PLN.annual_plan(ctx)
                 md = PLN.render(doc, ctx, doc_meta)
                 if polish:
-                    md = PLN.polish(cfg, md)["text"]
+                    res = PLN.polish(cfg, md)
+                    md = res["text"]
+                    if not res.get("polished"):
+                        st.info("AI 다듬기를 적용하지 않았습니다 — 표준 서식 그대로 출력합니다.")
             st.session_state["last_doc"] = md
+            st.session_state["last_doc_kind"] = kind
+            st.session_state["last_doc_legal"] = doc.get("legal", [])
 
         md = st.session_state.get("last_doc")
         if md:
-            st.download_button("계획서 내려받기 (Markdown)", md.encode("utf-8"),
-                               file_name=f"순찰계획서_{kind}_{city}_{plan_date}.md")
-            st.markdown("---")
-            st.markdown(md)
+            st.divider()
+            d1, d2, d3 = st.columns([1, 1, 3])
+            d1.download_button("Markdown 내려받기", md.encode("utf-8"),
+                               file_name=f"순찰계획서_{st.session_state.get('last_doc_kind','')}"
+                                         f"_{city}_{plan_date}.md", width='stretch')
+            html_doc = _doc_html(md, st.session_state.get("map_path", ""))
+            d2.download_button("인쇄용 HTML", html_doc.encode("utf-8"),
+                               file_name=f"순찰계획서_{city}_{plan_date}.html",
+                               mime="text/html", width='stretch')
+            d3.caption("HTML을 열어 브라우저에서 인쇄하면 A4 문서로 출력됩니다.")
+
+            legal = st.session_state.get("last_doc_legal") or []
+            if legal:
+                with st.expander(f"인용된 법령 조문 {len(legal)}건", expanded=False):
+                    for l in legal:
+                        st.markdown(f"**{l['ref']}**")
+                        st.markdown(f"<div class='srcbox'>{l['excerpt']}</div>",
+                                    unsafe_allow_html=True)
+
+            st.markdown("##### 미리보기")
+            st.markdown(f"<div class='docview'>{_md_to_html(md)}</div>",
+                        unsafe_allow_html=True)
 
 
 # ================================================================== ⑤ 대응취약
@@ -700,58 +915,95 @@ with tabs[5]:
 # ================================================================== ⑦ 업무 도우미
 with tabs[6]:
     st.subheader("화재예방 업무 도우미")
-    st.caption("소방 법령, 업종별 점검 항목, 관할 위험 현황을 근거와 함께 찾아 드립니다. "
-               "답변에는 반드시 근거 조문 또는 자료 출처가 함께 표시됩니다.")
 
     arts = get_law_articles()
+    annex = get_law_annexes()
+    n_annex = int(len(annex)) if annex is not None and not annex.empty else 0
+    c1, c2, c3 = st.columns(3)
+    c1.metric("수록 법령", f"{arts['law'].nunique() if not arts.empty else 0}종")
+    c2.metric("조문", f"{len(arts):,}개" if not arts.empty else "0개")
+    c3.metric("별표·서식", f"{n_annex}건")
+    st.caption("국가법령정보센터 법령 + 업종별 점검 규칙 + "
+               f"{cfg.city(city)['label']} 분석 결과를 함께 찾습니다. "
+               "답변에는 반드시 근거 조문 또는 출처가 표시됩니다.")
+
     if arts.empty:
-        st.warning("법령 자료를 불러오지 못했습니다. 네트워크를 확인하십시오. "
-                   "업무규칙과 분석 결과만으로 답변합니다.")
-    else:
-        st.caption(f"수록 법령 {arts['law'].nunique()}종 · 조문 {len(arts):,}개 "
-                   f"(국가법령정보센터) · 업무규칙 · {cfg.city(city)['label']} 분석 결과")
+        st.markdown("<div class='callout'>법령 자료를 불러오지 못했습니다. "
+                    "네트워크를 확인하십시오. 업무규칙과 분석 결과만으로 답변합니다.</div>",
+                    unsafe_allow_html=True)
 
-    examples = [
-        "화재예방강화지구는 어떤 지역을 지정하고, 소방관서장은 무엇을 해야 하나요?",
-        "노래연습장 점검할 때 중점적으로 봐야 할 항목은?",
-        "다중이용업소 안전시설등 설치 기준이 어떻게 되나요?",
-        "소방안전관리자를 선임해야 하는 대상물은?",
-        f"{cur['center'].mode().iloc[0] if 'center' in cur and len(cur['center'].mode()) else '삼산119안전센터'} 관할에서 위험이 높은 곳은?",
+    QUICK = [
+        ("법령", "화재예방강화지구는 어떤 지역을 지정하고, 소방관서장은 무엇을 해야 하나요?"),
+        ("법령", "소방안전관리자를 선임해야 하는 특급 대상물 범위는?"),
+        ("법령", "다중이용업소 안전시설등 정기점검은 어떻게 하나요?"),
+        ("법령", "화재안전조사를 연기하려면 어떻게 해야 하나요?"),
+        ("법령", "특수가연물에는 어떤 것들이 있나요?"),
+        ("업무", "노래연습장 순찰할 때 무엇을 중점적으로 봐야 하나요?"),
+        ("업무", "건조기 특별경계순찰은 어떤 곳을 도나요?"),
+        ("현황", f"{cur['center'].mode().iloc[0] if 'center' in cur and len(cur['center'].mode()) else '삼산119안전센터'} 관할에서 위험이 높은 구역은?"),
     ]
-    # 첫 화면에서 예시 질문이 이미 들어가 있어야 무엇을 해 주는지 바로 보인다.
-    # 빈 입력창만 있으면 처음 쓰는 사람이 무엇을 물어야 할지 모른다.
-    pick_ex = st.selectbox("예시 질문", examples + ["(직접 입력)"])
-    default_q = "" if pick_ex == "(직접 입력)" else pick_ex
-    question = st.text_area("질문", value=default_q, height=80,
-                            placeholder="예) 3급 대상물 자체점검 주기가 어떻게 되나요?")
 
-    col_a, col_b = st.columns([1, 3])
-    ask = col_a.button("질문하기", type="primary")
-    top_k = col_b.slider("참고 자료 수", 3, 10, 5)
+    st.markdown("##### 자주 찾는 질문")
+    cols = st.columns(4)
+    for i, (tag, q) in enumerate(QUICK):
+        label = q if len(q) <= 26 else q[:25] + "…"
+        if cols[i % 4].button(f"{label}", key=f"q_{i}", width='stretch',
+                              help=q):
+            st.session_state["qa_question"] = q
+            st.session_state["qa_run"] = True
 
-    if ask and question.strip():
+    question = st.text_area(
+        "질문", value=st.session_state.get("qa_question", ""), height=90,
+        placeholder="예) 3급 대상물 자체점검 주기가 어떻게 되나요?",
+        key="qa_input")
+
+    a1, a2, a3 = st.columns([1, 1, 3])
+    ask = a1.button("질문하기", type="primary", width='stretch')
+    top_k = a2.number_input("참고 자료", 3, 10, 5, label_visibility="collapsed",
+                            help="답변에 사용할 자료 수")
+    if L.is_available(cfg):
+        a3.caption("AI 답변 사용 가능 · 15~40초 소요")
+    else:
+        a3.caption("AI 미연결 — 관련 자료를 찾아 그대로 보여 드립니다")
+
+    if (ask or st.session_state.pop("qa_run", False)) and question.strip():
         index = get_index(city, year)
-        with st.spinner("자료를 찾고 답변을 작성 중…"):
+        with st.spinner("법령과 자료를 찾고 답변을 작성 중…"):
             res = AS.answer(cfg, question.strip(), index, top_k=int(top_k))
         st.session_state["qa_result"] = res
+        st.session_state["qa_asked"] = question.strip()
 
     res = st.session_state.get("qa_result")
     if res:
-        if res["source_backend"] == "search_only":
-            st.info("AI 답변 생성이 연결되지 않아 관련 자료를 그대로 보여 드립니다.")
-        elif res["source_backend"] == "no_match":
-            st.warning("관련 자료를 찾지 못했습니다.")
-        st.markdown("### 답변")
-        st.markdown(res["answer"])
+        st.divider()
+        if res["source_backend"] == "no_match":
+            st.markdown("<div class='callout'>관련 자료를 찾지 못했습니다. "
+                        "질문을 다르게 표현해 보십시오.</div>", unsafe_allow_html=True)
+        else:
+            if res["source_backend"] == "search_only":
+                st.markdown("<div class='callout info'>AI 답변 생성이 연결되지 않아 "
+                            "관련 자료를 그대로 보여 드립니다.</div>",
+                            unsafe_allow_html=True)
+            st.caption(f"질문: {st.session_state.get('qa_asked','')}")
+            st.markdown(f"<div class='answer'>{_md_to_html(res['answer'])}</div>",
+                        unsafe_allow_html=True)
 
-        if res["sources"]:
-            st.markdown("### 근거 자료")
-            for i, src in enumerate(res["sources"], 1):
-                icon = {"법령": "📘", "업무규칙": "📋", "데이터": "📊"}.get(src["source"], "📄")
-                with st.expander(f"{icon} ({i}) {src['title']}", expanded=(i <= 2)):
-                    if src["ref"]:
-                        st.caption(f"근거: {src['ref']}")
-                    st.write(src["excerpt"])
+            if res["sources"]:
+                st.markdown("##### 근거 자료")
+                icons = {"법령": "📘", "업무규칙": "📋", "데이터": "📊"}
+                for i, src in enumerate(res["sources"], 1):
+                    icon = icons.get(src["source"], "📄")
+                    with st.expander(f"{icon} ({i}) {src['title']}", expanded=(i == 1)):
+                        if src["ref"]:
+                            st.caption(f"근거: {src['ref']}")
+                        st.markdown(f"<div class='srcbox'>{src['excerpt']}</div>",
+                                    unsafe_allow_html=True)
+            st.download_button(
+                "답변 내려받기", (f"# {st.session_state.get('qa_asked','')}\n\n"
+                             + res["answer"] + "\n\n## 근거\n"
+                             + "\n".join(f"- {x['ref']}" for x in res["sources"])
+                             ).encode("utf-8"),
+                file_name="업무도우미_답변.md")
         st.caption("법령 원문은 국가법령정보센터(law.go.kr)에서 확인하십시오. "
                    "본 답변은 업무 참고용이며 법적 효력을 갖지 않습니다.")
 
