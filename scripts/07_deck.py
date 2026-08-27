@@ -139,9 +139,47 @@ def pct(v, digits=1):
     return "—" if v is None or v != v else f"{v:.{digits}%}"
 
 
+#: 활용 데이터 장표에 들어갈 데이터셋 목록. 건수는 실제 적재 결과에서 읽는다.
+DATASET_ROLES = [
+    ("fire",     "화재발생현황",       "학습 라벨 (격자·연도별 화재 건수)"),
+    ("target",   "특정소방대상물 현황", "용도·소방시설 구성 피처"),
+    ("business", "다중이용업소 현황",   "업종 구성 피처, 점검 항목 근거"),
+    ("hydrant",  "소방용수시설 운영현황", "대응취약(소화전 사각지대) 분석"),
+]
+
+
+def dataset_rows(cfg) -> list[list[str]]:
+    """실제 적재 건수를 세어 활용 데이터 표를 만든다.
+
+    장표에 데이터셋 이름만 적고 건수를 비워 두면 '정말 썼는가'를 확인할 수 없다.
+    여기서 세는 값은 파이프라인이 실제로 읽은 행 수다.
+    """
+    import logging
+    from firebird.io_utils import load_dataset
+
+    prev = logging.getLogger("firebird.io_utils").level
+    logging.getLogger("firebird.io_utils").setLevel(logging.ERROR)
+    rows: list[list[str]] = []
+    try:
+        for city in cfg["cities"]:
+            label = cfg.city(city)["label"]
+            role_suffix = ("학습·검증" if cfg.city(city).get("role") == "primary"
+                           else "타 지역 적용 검증")
+            for kind, name, role in DATASET_ROLES:
+                try:
+                    n = f"{len(load_dataset(cfg, city, kind)):,}행"
+                except (FileNotFoundError, KeyError):
+                    n = "미사용"
+                rows.append([f"{label}소방본부_{name}", role_suffix, role, n])
+    finally:
+        logging.getLogger("firebird.io_utils").setLevel(prev)
+    return rows
+
+
 # ------------------------------------------------------------------ 본문
 
-def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentation:
+def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
+          ds_rows: list[list[str]]) -> Presentation:
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
     k = cfg.headline_k
@@ -198,8 +236,30 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
             "생성 모델이 점검 항목이나 법령을 임의로 만들지 않도록 역할을 분리했습니다.",
             size=14, color=MUTED)
 
-    # ---- 4 성능 ----
-    s = section(prs, "3. 검증 결과", f"{tr[0]}~{tr[-1]}년 자료로 학습하여 {year}년 화재를 예측",
+    # ---- 4 활용 데이터 ----
+    # 공모전 필수 요건(소방안전 빅데이터 플랫폼 데이터 상품 활용)에 해당하는 장이다.
+    # 건수는 실제 적재 결과에서 읽어 채운다.
+    s = section(prs, "3. 활용 데이터", "소방안전 빅데이터 플랫폼 데이터 상품을 1차 자료로 사용",
+                "울산광역시소방본부 4종을 학습·검증에, 세종특별자치시소방본부 4종을 타 지역 적용 검증에 사용")
+    rows = [["데이터셋", "제공", "역할", "적재 건수"]]
+    for label, prov, role, cnt in ds_rows:
+        rows.append([label, prov, role, cnt])
+    table(s, Inches(0.8), Inches(2.35), Inches(11.8), Inches(3.2), rows,
+          col_widths=[4.2, 2.4, 3.4, 1.8], size=12)
+    textbox(s, Inches(0.8), Inches(5.75), Inches(7.2), Inches(1.3),
+            "· 카카오 로컬 API — 도로명·읍면동 → 좌표 (좌표 확보 "
+            + pct(manifest.get("coverage", {}).get("fire", {}).get("rate")) + ")\n"
+            "· 개인정보를 다루지 않으며, 도로·격자 집계 단위 공공데이터만 사용",
+            size=13, color=MUTED)
+    band(s, Inches(8.3), Inches(5.7), Inches(4.3), Inches(1.35), RGBColor(0xF4, 0xF6, 0xF8))
+    textbox(s, Inches(8.55), Inches(5.85), Inches(3.8), Inches(1.1),
+            f"흩어진 4종 자료를 격자 단위\n의사결정 테이블로 통합\n"
+            f"→ {manifest.get('panel', {}).get('grids', 0):,}개 격자 × "
+            f"{len(manifest.get('panel', {}).get('years', []))}개 연도",
+            size=13, bold=True)
+
+    # ---- 5 성능 ----
+    s = section(prs, "4. 차별성 및 실현가능성", f"{tr[0]}~{tr[-1]}년 자료로 학습하여 {year}년 화재를 예측",
                 f"{year}년 자료는 학습에 사용하지 않았습니다 (시간분할 검증)")
     picture(s, figs / "fig_capture_curve.png", Inches(0.8), Inches(2.25), Inches(7.3))
     x = Inches(8.5)
@@ -212,7 +272,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
         color=GREEN)
 
     # ---- 5 PEI ----
-    s = section(prs, "3. 검증 결과", "포착률의 절대 수준을 판단하기 위한 표준지표",
+    s = section(prs, "4. 차별성 및 실현가능성", "포착률의 절대 수준을 판단하기 위한 표준지표",
                 "화재가 소수 격자에 집중된 지역은 어떤 모델이든 포착률이 높게 나옵니다. "
                 "달성 가능한 최대치와 비교해야 성능을 정확히 판단할 수 있습니다.")
     picture(s, figs / "fig_pei.png", Inches(1.3), Inches(2.5), Inches(6.6))
@@ -226,7 +286,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
     picture(s, figs / "fig_decile.png", Inches(1.3), Inches(4.6), Inches(6.6))
 
     # ---- 6 운영 (핵심) ----
-    s = section(prs, "4. 차별성 ①", "위험도 상위 20% 선정은 현장 인력으로 소화하기 어렵습니다",
+    s = section(prs, "4. 차별성 ① 운영", "위험도 상위 20% 선정은 현장 인력으로 소화하기 어렵습니다",
                 "격자마다 점검 대상물 수가 다르므로, 가용 인력을 제약으로 두고 배분해야 합니다")
     picture(s, figs / "fig_allocation.png", Inches(0.8), Inches(2.4), Inches(7.6))
     if alloc:
@@ -247,7 +307,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
                 f"({alloc.get('gain_pp', 0):+.1f}%p 개선)", size=15, bold=True, color=GREEN)
 
     # ---- 7 검증 3종 ----
-    s = section(prs, "4. 차별성 ②", "네 가지 방식으로 성능을 교차 검증",
+    s = section(prs, "4. 차별성 ② 검증", "네 가지 방식으로 성능을 교차 검증",
                 "한 가지 검증만으로는 특정 지역에만 통하는 모델인지 판별할 수 없습니다")
     rows = [["검증", "묻는 것", f"상위 {k}% 포착", "판정"]]
     rows.append(["시간분할", f"미래 예측 성능 ({year}년)", pct(h["model_capture"]),
@@ -274,7 +334,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
             "순위를 직접 학습하는 방식이 목적에 부합합니다.", size=14, color=MUTED)
 
     # ---- 8 형평성 ----
-    s = section(prs, "4. 차별성 ③", "관할별 배분 형평성을 지표로 측정",
+    s = section(prs, "4. 차별성 ③ 형평성", "관할별 배분 형평성을 지표로 측정",
                 "특정 관할에 점검이 집중되면서 화재 비중과 어긋난다면, 효율이 아니라 편중입니다")
     picture(s, figs / "fig_equity.png", Inches(0.8), Inches(2.4), Inches(7.4))
     es = t.get("equity_summary", {})
@@ -292,7 +352,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
                 size=13, color=RED)
 
     # ---- 9 데이터 정직성 ----
-    s = section(prs, "4. 차별성 ④", "전처리 단계별 데이터 손실을 모두 기록",
+    s = section(prs, "4. 차별성 ④ 신뢰성", "전처리 단계별 데이터 손실을 모두 기록",
                 "자료 부족으로 산출하지 못한 것과 산출했으나 성능이 낮은 것은 다른 문제입니다")
     picture(s, figs / "fig_data_funnel.png", Inches(0.8), Inches(2.35), Inches(7.0))
     ded = manifest.get("fire_deduplication", {})
@@ -316,7 +376,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
             size=12, color=GREEN)
 
     # ---- 10 현장 산출물 ----
-    s = section(prs, "5. 현장 활용", "예측에서 끝내지 않고 현장에서 바로 쓰는 산출물까지",
+    s = section(prs, "5. 기대효과 및 활용방안", "예측에서 끝내지 않고 현장에서 바로 쓰는 산출물까지",
                 "위험점수만으로는 현장 업무로 연결되지 않습니다")
     items = [("점검 계획표", "격자별 점검 순위와 누적 인력 소요\n(CSV 배포, 즉시 활용)"),
              ("점검계획서 초안", "선정 사유와 업종별 점검 항목을\n공문 형식으로 자동 작성"),
@@ -337,7 +397,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
                 size=14, color=MUTED)
 
     # ---- 11 기대효과 ----
-    s = section(prs, "6. 기대효과 및 활용방안", "동일 인력으로 더 많은 화재를 포착하고 근거를 남깁니다",
+    s = section(prs, "5. 기대효과 및 활용방안", "동일 인력으로 더 많은 화재를 포착하고 근거를 남깁니다",
                 "")
     if alloc and "gain_pp" in alloc:
         kpi(s, Inches(0.8), Inches(2.5), Inches(3.8),
@@ -356,7 +416,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path) -> Presentat
             size=16, spacing=1.6)
 
     # ---- 12 한계 ----
-    s = section(prs, "7. 한계 및 향후 계획", "현재 한계와 대응 방안",
+    s = section(prs, "6. 기타 — 한계 및 향후 계획", "현재 한계와 대응 방안",
                 "자료상 제약을 명시하고, 각각에 대한 대응과 개선 방향을 함께 제시합니다")
     rows = [["한계", "현재 대응", "다음"]]
     rows += [
@@ -412,7 +472,7 @@ def main() -> int:
         print(f"그림이 없다: {missing}. scripts/06_figures.py 를 먼저 돌려라.")
         return 1
 
-    prs = build(cfg, ev, summary, manifest, figs)
+    prs = build(cfg, ev, summary, manifest, figs, dataset_rows(cfg))
     out = cfg.paths.outputs / f"불씨예보_발표자료_{city}_{year}.pptx"
     prs.save(out)
     print(f"발표자료 저장: {out}  ({len(prs.slides._sldIdLst)}장)")
