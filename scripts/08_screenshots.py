@@ -98,6 +98,67 @@ def main() -> int:
         except Exception as exc:                          # noqa: BLE001
             print(f"  계획서 캡처 건너뜀: {type(exc).__name__}")
 
+        # 순찰 동선 지도는 화면 아래쪽에 있다. 위에서 자른 화면에는 지도가
+        # 손톱만 하게 들어가는데, 이 화면의 결과물은 지도다. 따로 찍는다.
+        try:
+            page.get_by_role("tab", name="예방순찰 계획").click(timeout=20_000)
+            page.wait_for_timeout(12_000)
+            h = page.get_by_text("관서별 순찰 구역").first
+            h.scroll_into_view_if_needed(timeout=15_000)
+            page.wait_for_timeout(6_000)
+            box = h.bounding_box()
+            top = max((box["y"] if box else 0) - 60, 0)
+            page.screenshot(path=str(out / "shot_patrol_map.png"),
+                            clip={"x": 360, "y": top, "width": 1320,
+                                  "height": min(1050 - top, 900)})
+            print("  shot_patrol_map.png  (동선 지도 중심)")
+        except Exception as exc:                          # noqa: BLE001
+            print(f"  동선 지도 캡처 건너뜀: {type(exc).__name__}")
+
+        # 조건을 바꾸면 계획이 달라진다는 것은 전후를 나란히 놓아야 보인다.
+        try:
+            box_sel = page.locator("[data-testid='stMain']").get_by_role(
+                "combobox").first
+            box_sel.click(timeout=20_000)
+            page.wait_for_timeout(1_500)
+            opts = page.get_by_role("option")
+            label = opts.nth(1).inner_text().strip()
+            opts.nth(1).click()
+            print(f"  순찰 목적 변경 → {label}, 재계산 대기")
+            page.wait_for_timeout(35_000)
+            h = page.get_by_text("조건을 바꾸기 전과 후").first
+            h.scroll_into_view_if_needed(timeout=15_000)
+            page.wait_for_timeout(6_000)
+            box = h.bounding_box()
+            top = max((box["y"] if box else 0) - 40, 0)
+            page.screenshot(path=str(out / "shot_patrol_compare.png"),
+                            clip={"x": 360, "y": top, "width": 1320,
+                                  "height": min(1050 - top, 900)})
+            print("  shot_patrol_compare.png  (조건 변경 전후)")
+        except Exception as exc:                          # noqa: BLE001
+            print(f"  전후 비교 캡처 건너뜀: {type(exc).__name__}")
+
+        # 법정 서식은 빈 양식과 채운 문서를 나란히 놓아야 뜻이 통한다.
+        try:
+            page.get_by_role("tab", name="순찰·점검 계획서").click(timeout=20_000)
+            page.wait_for_timeout(6_000)
+            page.get_by_text("법정 서식으로 내보내기").first.scroll_into_view_if_needed()
+            page.wait_for_timeout(1_500)
+            page.get_by_role("button", name="서식 채우기").click(timeout=20_000)
+            print("  법정 서식 채우는 중…")
+            page.wait_for_timeout(20_000)
+            h = page.get_by_text("법제처 원본 서식").first
+            h.scroll_into_view_if_needed(timeout=15_000)
+            page.wait_for_timeout(5_000)
+            box = h.bounding_box()
+            top = max((box["y"] if box else 0) - 130, 0)
+            page.screenshot(path=str(out / "shot_form_compare.png"),
+                            clip={"x": 360, "y": top, "width": 1320,
+                                  "height": min(1050 - top, 940)})
+            print("  shot_form_compare.png  (빈 양식 ↔ 채운 대장)")
+        except Exception as exc:                          # noqa: BLE001
+            print(f"  법정 서식 캡처 건너뜀: {type(exc).__name__}")
+
         # 업무 도우미는 질문을 실제로 눌러야 답변이 보인다.
         # 입력창만 찍힌 화면은 '무엇을 해 주는지'를 전혀 보여주지 못한다.
         try:

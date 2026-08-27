@@ -59,6 +59,9 @@ LITERALS = {
     "0.5": "표기용",
     "30": "소방청 통계연보 — 30층 이상 고층건축물 기준",
     "100": "‘도달 가능한 최선을 100으로 볼 때’ 라는 설명 표현",
+    "11": "별지 제11호서식 (src/firebird/forms.py FORM_NO)",
+    "09": "스크립트 파일명 scripts/09_forms.py",
+    "27": "별지 제11호서식의 기입 칸 수 (src/firebird/forms.py zone_ledger)",
 }
 
 

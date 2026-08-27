@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -26,26 +27,89 @@ log = logging.getLogger(__name__)
 KEYWORD_ENDPOINT = "https://dapi.kakao.com/v2/local/search/keyword.json"
 CACHE_NAME = "station_cache.json"
 
+#: 관서 좌표가 자기 관할 격자 중심에서 이보다 멀면 잘못 찾은 것으로 본다.
+#: 관할이 넓은 군 지역(울주군)에서도 관서는 관할 안에 있다.
+MAX_OFFSET_M = 25_000.0
+
+
+#: 시설명 비교 시 떼어 낼 행정구역 접두사.
+_PREFIXES = ("울산광역시", "울산", "세종특별자치시", "세종", "부산광역시", "부산",
+             "대구광역시", "대구", "인천광역시", "인천", "광주광역시", "광주",
+             "대전광역시", "대전", "서울특별시", "서울", "경기도", "경기")
+
+
+def _norm_place(name: str) -> str:
+    t = re.sub(r"\s+", "", str(name))
+    for p in _PREFIXES:
+        if t.startswith(p):
+            t = t[len(p):]
+            break
+    return t
+
+
+def _score(query: str, place: str) -> int:
+    """검색 결과가 찾던 관서가 맞는지 점수로 매긴다.
+
+    카카오 키워드 검색은 첫 결과를 그대로 믿으면 안 된다. '울주소방서' 로
+    검색하면 '울산남울주소방서' 가 1순위로 오는데, 이 둘은 다른 관서다.
+    실제로 그 오류 때문에 울주소방서의 순찰 동선이 온산 쪽에서 출발했다.
+
+    3 = 행정구역 접두사를 뗀 이름이 같거나, 그 이름으로 **시작**한다.
+        ('울산남부소방서' ← '남부소방서', '조치원소방서 전기차충전소' ← '조치원소방서')
+        뒤에 붙은 말은 같은 부지 안의 시설이므로 좌표를 그대로 써도 된다.
+    1 = 이름이 가운데에 들어 있을 뿐이다.
+        ('울산남울주소방서' ← '울주소방서' — 앞에 '남'이 붙은 다른 관서다)
+    0 = 아니다
+
+    가운데에 들어 있는 것으로는 부족하다. 3점이 아니면 좌표를 쓰지 않고 관할
+    중심으로 물러난다. 엉뚱한 관서에서 출발하는 동선보다, 관할 중심에서
+    출발하는 대략의 동선이 낫다.
+    """
+    q, p = _norm_place(query), _norm_place(place)
+    if not q or not p:
+        return 0
+    if q == p or p.startswith(q):
+        return 3
+    if q in p:
+        return 1
+    return 0
+
 
 def _query_keyword(session: requests.Session, key: str, query: str,
-                   *, timeout: int = 10) -> dict:
+                   *, name: str = "", timeout: int = 10, size: int = 5) -> dict:
+    """관서명으로 좌표를 찾는다. 후보 여러 개를 받아 이름이 맞는 것을 고른다."""
     try:
+        params = {"query": query, "size": size}
         r = session.get(KEYWORD_ENDPOINT, headers={"Authorization": f"KakaoAK {key}"},
-                        params={"query": query, "size": 1}, timeout=timeout)
+                        params=params, timeout=timeout)
         if r.status_code == 429:
             time.sleep(2)
             r = session.get(KEYWORD_ENDPOINT, headers={"Authorization": f"KakaoAK {key}"},
-                            params={"query": query, "size": 1}, timeout=timeout)
+                            params=params, timeout=timeout)
         r.raise_for_status()
         docs = r.json().get("documents", [])
     except (requests.RequestException, ValueError, KeyError) as exc:
         return {"lon": None, "lat": None, "matched": False, "reason": str(exc)[:80]}
     if not docs:
         return {"lon": None, "lat": None, "matched": False, "reason": "no_result"}
-    d = docs[0]
-    return {"lon": float(d["x"]), "lat": float(d["y"]), "matched": True,
-            "place_name": d.get("place_name", ""),
-            "address": d.get("road_address_name") or d.get("address_name", "")}
+
+    want = name or query
+    best, best_s = None, -1
+    for d in docs:
+        sc = _score(want, d.get("place_name", ""))
+        if sc > best_s:
+            best, best_s = d, sc
+    # 이름이 그저 '들어 있는' 수준이면 다른 관서일 수 있다. 좌표를 쓰지 않는다.
+    if best is None or best_s < 3:
+        return {"lon": None, "lat": None, "matched": False,
+                "reason": f"name_mismatch(best={best.get('place_name','') if best else ''})",
+                "place_name": best.get("place_name", "") if best else "",
+                "address": (best.get("road_address_name")
+                            or best.get("address_name", "")) if best else ""}
+    return {"lon": float(best["x"]), "lat": float(best["y"]), "matched": True,
+            "match_score": best_s,
+            "place_name": best.get("place_name", ""),
+            "address": best.get("road_address_name") or best.get("address_name", "")}
 
 
 def locate_stations(names: list[str], cfg, *, city_label: str = "",
@@ -63,6 +127,24 @@ def locate_stations(names: list[str], cfg, *, city_label: str = "",
             log.warning("관서 캐시 손상 — 새로 시작")
 
     names = [str(n).strip() for n in dict.fromkeys(names) if str(n).strip()]
+
+    # 예전 기준으로 받아 둔 캐시에는 이름이 다른 관서가 섞여 있다.
+    # (예: '울주소방서' 로 검색해 '울산남울주소방서' 를 받아 둔 것)
+    # 읽을 때 다시 채점해, 기준에 못 미치면 버리고 새로 찾는다.
+    def _stale(n: str, v: dict) -> bool:
+        sc = _score(n, v.get("place_name", ""))
+        if v.get("matched"):
+            return sc < 3                      # 예전 기준으로 받아들인 잘못된 결과
+        # 기준이 느슨해져 이제는 받아들일 수 있는 결과. 좌표가 없으니 다시 찾는다.
+        return str(v.get("reason", "")).startswith("name_mismatch") and sc >= 3
+
+    # 이번에 찾는 관서만 손댄다. 캐시 전체를 훑어 지우면, 지금 다시 찾지도 않을
+    # 다른 도시의 관서까지 지워져 매번 API 를 부르게 된다.
+    stale = [n for n in names if n in cache and _stale(n, cache[n])]
+    for n in stale:
+        log.info("관서 좌표 재확인: %s -> %r", n, cache[n].get("place_name", ""))
+        cache.pop(n, None)
+
     todo = [n for n in names if n not in cache]
 
     if todo and allow_network:
@@ -73,7 +155,8 @@ def locate_stations(names: list[str], cfg, *, city_label: str = "",
             session = requests.Session()
             for n in todo:
                 # 시도명을 앞에 붙여야 동명 관서를 구분한다(전국에 '중부소방서'가 여럿 있다).
-                cache[n] = _query_keyword(session, api_key, f"{city_label} {n}".strip())
+                cache[n] = _query_keyword(session, api_key,
+                                          f"{city_label} {n}".strip(), name=n)
                 time.sleep(0.12)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=0),
@@ -114,7 +197,28 @@ def station_table(panel_year: pd.DataFrame, cfg, *, level: str = "center",
     loc = locate_stations(agg["name"].tolist(), cfg, city_label=city_label,
                           allow_network=allow_network)
     out = agg.merge(loc[["name", "lon", "lat", "matched", "address"]], on="name", how="left")
-    out["coord_source"] = np.where(out["matched"].fillna(False), "관서 위치", "관할 중심")
+    out["matched"] = out["matched"].fillna(False)
+
+    # 이름이 맞아도 좌표가 자기 관할과 멀면 다른 곳을 찾은 것이다.
+    # 관할 격자 중심에서 지나치게 먼 좌표는 쓰지 않는다.
+    far = pd.Series(False, index=out.index)
+    m = out["matched"] & out["lon"].notna()
+    if m.any():
+        lat0 = float(np.nanmean(out.loc[m, "lat"].astype(float)))
+        dx = ((out.loc[m, "lon"].astype(float) - out.loc[m, "중심경도"])
+              * 88800.0 * np.cos(np.radians(lat0)))
+        dy = (out.loc[m, "lat"].astype(float) - out.loc[m, "중심위도"]) * 111000.0
+        far.loc[m] = np.sqrt(dx ** 2 + dy ** 2) > MAX_OFFSET_M
+        for name in out.loc[far, "name"]:
+            log.warning("관서 좌표가 관할 중심에서 %.0fkm 넘게 떨어져 있어 "
+                        "관할 중심을 쓴다: %s", MAX_OFFSET_M / 1000, name)
+
+    bad = ~out["matched"] | far
+    out.loc[bad, ["lon", "lat", "address"]] = [np.nan, np.nan, ""]
+    out["matched"] = ~bad
+    out["coord_source"] = np.where(
+        out["matched"], "관서 위치",
+        np.where(far, "관할 중심(좌표 이상)", "관할 중심(검색 실패)"))
     out["lon"] = out["lon"].fillna(out["중심경도"])
     out["lat"] = out["lat"].fillna(out["중심위도"])
     return out.drop(columns=["중심경도", "중심위도"]).sort_values(

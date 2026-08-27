@@ -94,10 +94,35 @@ def section(prs, kicker, title, lead=""):
     return s
 
 
-def picture(slide, path: Path, x, y, w):
+#: 그림이 장표 아래로 넘치지 않도록 남겨 두는 여백.
+BOTTOM_MARGIN = Inches(0.35)
+
+
+def picture(slide, path: Path, x, y, w, *, max_h=None):
+    """그림을 넣되, 장표 아래로 넘치면 폭을 줄여 맞춘다.
+
+    폭만 지정하면 높이는 비율대로 정해진다. 가로로 긴 그림을 아래쪽에 넣으면
+    조용히 장표 밖으로 밀려나 x축 눈금이 잘린다 — 화면에서는 멀쩡해 보이고
+    인쇄물에서만 드러나므로 여기서 막는다.
+    """
     if not Path(path).exists():
         return None
-    return slide.shapes.add_picture(str(path), x, y, width=w)
+    from PIL import Image
+    try:
+        iw, ih = Image.open(path).size
+        ratio = iw / ih
+    except Exception:                                    # noqa: BLE001
+        ratio = None
+
+    limit = H - y - BOTTOM_MARGIN
+    if max_h is not None:
+        limit = min(limit, max_h)
+    if ratio and w / ratio > limit:
+        w = int(limit * ratio)
+    pic = slide.shapes.add_picture(str(path), x, y, width=w)
+    if ratio:
+        pic.height = int(w / ratio)
+    return pic
 
 
 def kpi(slide, x, y, w, value, label, sub="", color=RED):
@@ -231,13 +256,16 @@ def screen_slide(prs, kicker: str, title: str, lead: str, shot: Path,
     x = Inches(0.7 + width + 0.3)
     box_w = 13.333 - 0.7 - width - 0.3 - 0.7
     y = 2.2
-    box_h = min(1.45, (height - (len(bullets) - 1) * 0.18) / max(len(bullets), 1))
+    # 상자 높이를 그림 높이에 맞추면, 가로로 긴 화면일수록 상자가 납작해져
+    # 설명이 잘린다. 그림과 무관하게 장표에서 쓸 수 있는 세로 공간을 나눠 쓴다.
+    avail = min(4.9, 7.5 - 2.2 - 0.85)
+    box_h = max(0.95, (avail - (len(bullets) - 1) * 0.18) / max(len(bullets), 1))
     for head, body in bullets:
         band(s, x, Inches(y), Inches(box_w), Inches(box_h))
         textbox(s, x + Inches(0.2), Inches(y + 0.11), Inches(box_w - 0.4),
-                Inches(0.34), head, size=13, bold=True, color=RED)
-        textbox(s, x + Inches(0.2), Inches(y + 0.49), Inches(box_w - 0.4),
-                Inches(box_h - 0.58), body, size=10.5, color=MUTED, spacing=1.05)
+                Inches(0.32), head, size=13, bold=True, color=RED)
+        textbox(s, x + Inches(0.2), Inches(y + 0.46), Inches(box_w - 0.4),
+                Inches(box_h - 0.54), body, size=10.5, color=MUTED, spacing=1.05)
         y += box_h + 0.18
     if note:
         textbox(s, Inches(0.7), Inches(2.2 + height + 0.25), Inches(11.9),
@@ -295,7 +323,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     textbox(s1, Inches(8.1), Inches(4.45), Inches(4.0), Inches(0.4),
             "발표자", size=14, bold=True, color=RED)
     textbox(s1, Inches(8.1), Inches(4.92), Inches(4.0), Inches(1.2),
-            "박 용 준\n아주대학교 산업공학과 석사과정", size=16, bold=True)
+            "박용준\n아주대학교 산업공학과 석사과정", size=16, bold=True)
     textbox(s1, Inches(0.9), Inches(6.55), Inches(11.5), Inches(0.5),
             "제6회 소방안전 빅데이터 활용 및 아이디어 경진대회 · 서비스 개발 부문",
             size=13, color=MUTED)
@@ -429,18 +457,37 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     screen_slide(
         prs, "4. 서비스 화면 ③", "목적별 순찰 동선 자동 생성",
         "119안전센터에서 출발해 관할을 돌고 복귀하는 도로 기준 왕복 동선입니다",
-        figs / "shot_patrol.png",
+        (figs / "shot_patrol_map.png"
+         if (figs / "shot_patrol_map.png").exists() else figs / "shot_patrol.png"),
         [("출동 관서 기준",
           f"소방서 {extra.get('n_station', 6)}개 · 119안전센터 "
           f"{extra.get('n_center', 28)}개 · 읍면동 {extra.get('n_emd', 83)}개 단위로 "
           "선택합니다."),
          ("목적별 순찰 6종",
           "일반예방 · 다중이용업소 야간 · 화재예방강화지구 · 피난약자시설 · "
-          "소방용수 점검 · 건조기 특별경계. 가는 곳과 시간대가 다릅니다."),
+          "소방용수 점검 · 건조기 특별경계"),
          ("근무시간 안에 들어오게",
           "1회 순찰 시간을 넘으면 회차를 나눕니다. 실제 도로 주행거리와 "
           "소요시간을 함께 제시합니다.")],
-        note="지도의 검은 점이 출동 관서, 색깔이 관서별 순찰 동선입니다.")
+        note="지도의 검은 점이 출동 관서, 색깔이 관서별 순찰 동선입니다.",
+        keep=1.0)
+
+    # ---- 6-2 조건을 바꾸면 계획이 달라진다 ----
+    screen_slide(
+        prs, "4. 서비스 화면 ③-1", "조건을 바꾸면 계획이 다시 짜입니다",
+        "바뀐 조건과 그 결과를 같은 범위·같은 배율의 지도 두 장으로 보여 줍니다",
+        figs / "shot_patrol_compare.png",
+        [("무엇을 바꿨는지 남깁니다",
+          "목적 · 격자 수 · 1회 순찰 시간 · 지역 · 거리 기준 가운데 "
+          "무엇을 바꿨는지 문장으로 적힙니다."),
+         ("결과가 어떻게 달라졌는지",
+          "총 이동거리, 가장 먼 순찰조, 겹치는 구역 수를 전후로 비교합니다."),
+         ("빠진 구역·새 구역",
+          "구역 번호를 그대로 보여 주므로, 담당자가 ‘왜 여기가 빠졌는지’를 "
+          "바로 확인할 수 있습니다.")],
+        note="목적이 달라지면 가야 할 곳도 시간대도 달라집니다. "
+             "같은 화면에서 근거를 남기고 비교합니다.",
+        keep=1.0)
 
     # ---- 7 화면③ 계획서 ----
     screen_slide(
@@ -462,6 +509,26 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         keep=0.82)
 
     # ---- 8 화면④ 업무 도우미 ----
+    if (figs / "fig_form_compare.png").exists() or \
+            (figs / "shot_form_compare.png").exists():
+        screen_slide(
+            prs, "4. 서비스 화면 ④-1", "법정 서식을 데이터로 채웁니다",
+            "왼쪽이 법제처 원본 서식, 오른쪽이 같은 서식을 우리 데이터로 채운 것입니다",
+            (figs / "fig_form_compare.png"
+             if (figs / "fig_form_compare.png").exists()
+             else figs / "shot_form_compare.png"),
+            [("법에 정해진 서식 그대로",
+              "시행규칙 별지 제11호서식 화재예방강화지구 관리대장"),
+             ("채울 수 있는 칸만 채웁니다",
+              f"{extra.get('ledger_fields', 0)}개 칸 중 건물동수·점포수·"
+              "소방시설·관서거리·취약요소가 자동으로 들어갑니다."),
+             ("빈칸에는 이유를 적습니다",
+              "건축물대장 미연계 등 사유를 칸마다 남깁니다. 그럴듯한 값으로 "
+              "메우면 결재 문서가 아닙니다.")],
+            note="법제처에서 서식 원본을 직접 내려받아 대조합니다 "
+                 "(scripts/09_forms.py).",
+            keep=1.0)
+
     screen_slide(
         prs, "4. 서비스 화면 ⑤", "소방 법령 검색 및 근거 제시",
         f"법령 {extra.get('n_article', 0)}개 조문과 별표·서식 "
@@ -654,6 +721,24 @@ def collect_extra(cfg, city: str) -> dict:
         out["n_form"] = int((fm["kind"] == "서식").sum())
         out["n_annex"] = int(len(fm) - out["n_form"])
         out["n_annex_all"] = int(len(fm))          # 색인에는 별표·서식을 모두 넣는다
+
+    # 법정 서식을 몇 칸 채우는지. 장표에 손으로 적지 않기 위해 실제로 채워 본다.
+    try:
+        from firebird import dataset as D2, forms as FM, stations as ST2
+        panel2 = D2.load_panel(cfg, city)
+        cur2 = panel2[panel2["year"] == cfg.holdout_year]
+        if len(cur2):
+            row = cur2.nlargest(1, "fires_cum").iloc[0]
+            sta = pd.concat([ST2.station_table(cur2, cfg, level=lv,
+                                               city_label=cfg.city(city)["label"])
+                             for lv in ("station", "center")], ignore_index=True)
+            led = FM.zone_ledger(row, city_label=cfg.city(city)["label"],
+                                 year=int(cfg.holdout_year), stations=sta,
+                                 grid_m=int(cfg.grid_size_m))
+            out["ledger_fields"] = int(led["n_fields"])
+            out["ledger_filled"] = int(led["n_filled"])
+    except Exception:                                    # noqa: BLE001
+        pass
 
     try:
         from firebird import monthly as MO

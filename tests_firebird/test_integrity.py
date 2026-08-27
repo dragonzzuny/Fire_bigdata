@@ -135,3 +135,74 @@ class TestLawTextCleaning(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestStationMatching(unittest.TestCase):
+    """관서명 검색 결과가 정말 그 관서인지 가려내는 규칙.
+
+    카카오 키워드 검색은 첫 결과를 그대로 믿으면 안 된다. '울주소방서' 로
+    검색하면 '울산남울주소방서' 가 1순위로 오는데 이 둘은 다른 관서이며,
+    실제로 그 오류 때문에 울주소방서 순찰 동선이 온산에서 출발했다.
+    """
+
+    def test_행정구역_접두사만_다르면_같은_관서(self):
+        from firebird.stations import _score
+        self.assertEqual(_score("남부소방서", "울산남부소방서"), 3)
+        self.assertEqual(_score("삼산119안전센터", "울산 삼산119안전센터"), 3)
+
+    def test_같은_부지_안의_시설도_받아들인다(self):
+        from firebird.stations import _score
+        self.assertEqual(_score("조치원소방서", "조치원소방서 전기차충전소"), 3)
+
+    def test_앞에_글자가_붙으면_다른_관서다(self):
+        from firebird.stations import _score
+        self.assertLess(_score("울주소방서", "울산남울주소방서"), 3)
+        self.assertLess(_score("세종소방서", "세종남부소방서"), 3)
+
+    def test_전혀_다른_이름은_0점(self):
+        from firebird.stations import _score
+        self.assertEqual(_score("온산소방서", "울산남울주소방서"), 0)
+
+    def test_관할에서_멀면_관할_중심으로_물러난다(self):
+        """이름이 맞아도 좌표가 자기 관할 밖이면 다른 곳을 찾은 것이다."""
+        import numpy as np
+        import pandas as pd
+        from firebird import stations as ST
+
+        rng = np.random.default_rng(0)
+        n = 60
+        panel = pd.DataFrame({
+            "grid_id": [f"g{i}" for i in range(n)],
+            "center": ["가안전센터"] * (n // 2) + ["나안전센터"] * (n - n // 2),
+            "lon": np.r_[129.30 + rng.normal(0, .01, n // 2),
+                         129.40 + rng.normal(0, .01, n - n // 2)],
+            "lat": np.r_[35.54 + rng.normal(0, .01, n // 2),
+                         35.60 + rng.normal(0, .01, n - n // 2)],
+            "pred": rng.gamma(1, 1, n),
+            "target_total": rng.integers(0, 20, n),
+            "fires": rng.poisson(.4, n),
+        })
+
+        class _Cfg:
+            class paths:
+                cache = Path("/nonexistent")
+
+        # 관할에서 400km 떨어진 좌표를 받은 것으로 꾸민다
+        real = ST.locate_stations
+        ST.locate_stations = lambda names, cfg, **kw: pd.DataFrame({
+            "name": ["가안전센터", "나안전센터"],
+            "lon": [129.30, 126.98], "lat": [35.54, 37.57],
+            "matched": [True, True], "address": ["울산 남구", "서울 중구"]})
+        try:
+            t = ST.station_table(panel, _Cfg(), level="center",
+                                 city_label="울산광역시", allow_network=False)
+        finally:
+            ST.locate_stations = real
+
+        row = t[t["name"] == "나안전센터"].iloc[0]
+        self.assertFalse(bool(row["matched"]))
+        self.assertIn("좌표 이상", str(row["coord_source"]))
+        self.assertLess(abs(float(row["lat"]) - 35.60), 0.05,
+                        "관할 중심으로 돌아와야 한다")
+        ok = t[t["name"] == "가안전센터"].iloc[0]
+        self.assertTrue(bool(ok["matched"]))
