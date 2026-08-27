@@ -1416,16 +1416,29 @@ with tabs[6]:
             # 답변이 인용한 조문을 검색된 원문과 하나하나 대조한 결과.
             # 지어낸 조문 번호는 실무에서 답변이 없는 것보다 나쁘다.
             g = res.get("grounding") or {}
+            warn = []
             if g.get("unsupported"):
-                names = ", ".join(x.split(":", 1)[1] for x in g["unsupported"])
+                warn.append("자료에서 찾지 못한 인용: <b>"
+                            + ", ".join(x.split(":", 1)[1] for x in g["unsupported"])
+                            + "</b>")
+            if g.get("unpaired"):
+                warn.append("법령과 조문이 같은 자료 안에서 확인되지 않음: <b>"
+                            + ", ".join(g["unpaired"]) + "</b>")
+            if warn:
                 st.markdown(
-                    f"<div class='callout'><b>확인 필요</b> — 답변이 인용한 "
-                    f"<b>{names}</b> 은(는) 검색된 자료 안에서 찾지 못했습니다. "
-                    f"국가법령정보센터에서 직접 확인하십시오.</div>",
+                    "<div class='callout'><b>확인 필요</b><br>"
+                    + "<br>".join(warn)
+                    + "<br>국가법령정보센터(law.go.kr)에서 직접 확인하십시오.</div>",
                     unsafe_allow_html=True)
             elif g.get("cited"):
-                st.caption(f"인용한 법령·조문 {len(g['cited'])}건이 모두 아래 "
-                           f"근거 자료 안에서 확인되었습니다.")
+                msg = (f"인용한 법령·조문 {len(g['cited'])}건이 모두 아래 "
+                       f"근거 자료 안에서 확인되었습니다.")
+                if g.get("unverified"):
+                    msg += (" 다만 " + ", ".join(
+                        x.split(":", 1)[1] for x in g["unverified"])
+                        + " 은 원문이 항 번호를 '①' 형태로 적어 항까지는 대조하지 "
+                          "못했습니다.")
+                st.caption(msg)
 
             if res["sources"]:
                 st.markdown("##### 근거 자료")

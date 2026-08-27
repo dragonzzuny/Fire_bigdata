@@ -7,12 +7,20 @@ data/interim/**
 !data/interim/.gitkeep
 data/processed/**
 !data/processed/.gitkeep
+# 적재 건수·좌표 확보율 등 '무엇이 얼마나 깎였는지'의 기록.
+!data/processed/manifest_*.json
 data/cache/**
 !data/cache/.gitkeep
 
 # --- 산출물 ---
 outputs/**
 !outputs/.gitkeep
+# 검증 결과와 발표자료는 저장소에 둔다. 이것이 없으면 클론한 사람은
+# README 에 적힌 수치를 확인할 방법이 없다 — 원본 데이터는 플랫폼 로그인이
+# 있어야 받을 수 있고, 그 전까지는 파이프라인을 돌려 볼 수도 없다.
+!outputs/evaluation.json
+!outputs/artifacts_summary_*.json
+!outputs/*.pdf
 reports/figures/**
 *.pkl
 *.joblib

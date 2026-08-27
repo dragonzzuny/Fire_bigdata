@@ -664,9 +664,22 @@ def strip_meta(text: str) -> str:
 # ---------------------------------------------------------------- 사실성 검사
 
 #: 문서에서 절대 바뀌면 안 되는 것들. 문체는 바뀌어도 이 값들은 그대로여야 한다.
-_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
-_LEGAL_RE = re.compile(r"제\s*\d+\s*조(?:\s*의\s*\d+)?|제\s*\d+\s*항|제\s*\d+\s*호|별표\s*\d+")
+#:
+#: 부호를 포함해 읽는다. '전년 대비 -3.5%p' 가 '3.5%p' 가 되면 뜻이 뒤집히는데,
+#: 부호를 빼고 세면 두 문서가 같아 보인다.
+#:
+#: 앞을 막는 조건은 숫자와 소수점뿐이다. 밑줄까지 막으면 격자 번호 `2331_3456`
+#: 의 뒷자리가 검사에서 통째로 빠져, 구역이 바뀌어도 통과한다.
+_NUM_RE = re.compile(r"(?<![\d.])[+-]?\d+(?:\.\d+)?")
+_LEGAL_RE = re.compile(
+    r"제\s*\d+\s*조(?:\s*의\s*\d+)?|제\s*\d+\s*항|제\s*\d+\s*호|별표\s*\d+")
 _LAWNAME_RE = re.compile(r"「([^」]{2,60})」")
+
+#: 낫표 없이 본문·표에 적히는 법령명. 이 꼬리로 끝나는 말을 법령명으로 본다.
+#: 낫표만 보면 표 안의 '소방기본법' 이 '소방시설법' 으로 바뀌어도 지나친다.
+_LAWTAIL_RE = re.compile(
+    r"[가-힣][가-힣0-9·ㆍ ]{1,40}?(?:법률 시행규칙|법률 시행령|법 시행규칙|법 시행령"
+    r"|에 관한 법률|특별법|기본법|[가-힣]{2}법)")
 
 
 def _numbers(text: str) -> Counter:
@@ -679,6 +692,7 @@ def _legal_tokens(text: str) -> Counter:
     t = str(text)
     items = [re.sub(r"\s+", "", x) for x in _LEGAL_RE.findall(t)]
     items += [re.sub(r"\s+", "", x) for x in _LAWNAME_RE.findall(t)]
+    items += [re.sub(r"\s+", "", x) for x in _LAWTAIL_RE.findall(t)]
     return Counter(items)
 
 
@@ -688,7 +702,16 @@ def check_fidelity(original: str, candidate: str) -> dict:
     LLM 은 문체를 고치라고 하면 숫자도 '보기 좋게' 바꾼다. 68.5% 가 70% 가 되고
     제7조가 제17조가 되는 일이 실제로 일어난다. 결재 문서에서는 그 한 글자가
     문서 전체를 무효로 만든다. 그래서 프롬프트로 금지하는 데서 그치지 않고,
-    나온 결과를 원문과 대조해 **새로 생긴 수·조문이 하나라도 있으면 버린다.**
+    나온 결과를 원문과 대조해 **하나라도 어긋나면 버린다.**
+
+    **사라진 값은 무조건 막는다.** 68.5% 가 70% 가 되면 68.5 가 사라지고,
+    표 한 줄이 빠져도 그 줄의 수가 사라진다. 값이 바뀌는 모든 사고가 여기서 걸린다.
+
+    **새로 생긴 값은 무게를 따진다.** 문체를 공문투로 고치면 '한 격자'가
+    '1개 격자'가 되어 없던 1 이 생긴다. 이건 사실이 바뀐 것이 아니다.
+    그래서 소수점이 있거나, 부호가 붙었거나, 10 이상인 수만 위반으로 센다.
+    작은 정수 하나가 새로 생기는 것으로 문서의 사실이 바뀌지는 않으며,
+    조문·별표 번호는 아래 법령 대조가 따로 잡는다.
 
     반환: {ok, added_numbers, dropped_numbers, added_legal, dropped_legal}
     """
@@ -698,14 +721,21 @@ def check_fidelity(original: str, candidate: str) -> dict:
     dropped_n = sorted((on - cn).elements())
     added_l = sorted((cl - ol).elements())
     dropped_l = sorted((ol - cl).elements())
-    # 새로 생긴 값은 무조건 차단. 사라진 수는 표 한 줄이 통째로 빠진 신호일 수
-    # 있으므로, 몇 개 안 되는 표기 차이는 넘기고 덩어리로 빠지면 차단한다.
-    total_n = max(sum(on.values()), 1)
-    lost_badly = len(dropped_n) > 2 and len(dropped_n) / total_n > 0.05
+
+    def _weighty(tok: str) -> bool:
+        """문서의 사실을 바꿀 수 있는 수인가."""
+        if "." in tok or tok[0] in "+-":
+            return True
+        try:
+            return abs(int(tok)) >= 10
+        except ValueError:
+            return True
+
+    hard_added = [t for t in added_n if _weighty(t)]
     return {
-        "ok": not (added_n or added_l or dropped_l or lost_badly),
-        "dropped_too_many": bool(lost_badly),
+        "ok": not (hard_added or dropped_n or added_l or dropped_l),
         "added_numbers": added_n,
+        "added_numbers_weighty": hard_added,
         "dropped_numbers": dropped_n,
         "added_legal": added_l,
         "dropped_legal": dropped_l,
@@ -732,12 +762,11 @@ def polish(cfg, markdown: str, *, use_llm: bool = True) -> dict:
 
     fid = check_fidelity(markdown, cleaned)
     if not fid["ok"]:
-        log.warning("다듬은 문서가 원문에 없는 값을 담아 원문을 유지한다 "
-                    "(새로 생긴 수 %s · 새로 생긴 조문 %s · 사라진 조문 %s)",
-                    fid["added_numbers"][:5], fid["added_legal"][:5],
-                    fid["dropped_legal"][:5])
+        log.warning("다듬은 문서가 원문과 달라 원문을 유지한다 "
+                    "(새로 생긴 수 %s · 사라진 수 %s · 새로 생긴 조문 %s · "
+                    "사라진 조문 %s)",
+                    fid["added_numbers_weighty"][:5], fid["dropped_numbers"][:5],
+                    fid["added_legal"][:5], fid["dropped_legal"][:5])
         return {"text": markdown, "polished": False, "reason": "사실 불일치",
                 "fidelity": fid}
-    if fid["dropped_numbers"]:
-        log.info("다듬는 과정에서 빠진 수: %s", fid["dropped_numbers"][:8])
     return {"text": cleaned, "polished": True, "backend": backend, "fidelity": fid}

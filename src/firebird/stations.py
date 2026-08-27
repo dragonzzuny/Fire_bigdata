@@ -106,7 +106,14 @@ def _query_keyword(session: requests.Session, key: str, query: str,
                 "place_name": best.get("place_name", "") if best else "",
                 "address": (best.get("road_address_name")
                             or best.get("address_name", "")) if best else ""}
-    return {"lon": float(best["x"]), "lat": float(best["y"]), "matched": True,
+    try:
+        lon, lat = float(best["x"]), float(best["y"])
+    except (KeyError, TypeError, ValueError):
+        # 좌표가 없거나 숫자가 아닌 응답 한 건 때문에 관서 조회 전체가 멈추면 안 된다.
+        return {"lon": None, "lat": None, "matched": False, "reason": "bad_coord",
+                "place_name": best.get("place_name", ""),
+                "address": best.get("road_address_name") or best.get("address_name", "")}
+    return {"lon": lon, "lat": lat, "matched": True,
             "match_score": best_s,
             "place_name": best.get("place_name", ""),
             "address": best.get("road_address_name") or best.get("address_name", "")}

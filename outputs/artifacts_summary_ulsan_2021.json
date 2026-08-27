@@ -1,0 +1,109 @@
+{
+  "city": "ulsan",
+  "year": 2021,
+  "n_grids": 1459,
+  "allocation": {
+    "capacity": "점검관 4명 × 1일 8건 × 20일 = 총 640건",
+    "budget_visits": 640,
+    "optimized": {
+      "n_grids": 155,
+      "cost_used": 613.6,
+      "expected_fires": 368.88825523068084,
+      "actual_fires_captured": 246.0,
+      "actual_capture_rate": 0.1781317885590152
+    },
+    "top_k_percent": {
+      "k": 20,
+      "n_grids_selected": 292,
+      "n_grids_affordable": 0,
+      "cost_if_all": 28817.700000000004,
+      "cost_used": 0.0,
+      "expected_fires": 0.0,
+      "actual_fires_captured": 0.0,
+      "actual_capture_rate": 0.0
+    },
+    "gain_pp": 17.81317885590152,
+    "equity": {
+      "equity_constrained": true,
+      "min_share": 1.0,
+      "budget": 640.0,
+      "spent": 640.0,
+      "by_group": {
+        "남구": {
+          "risk_share": 0.2613729176640594,
+          "budget_share": 0.26078125,
+          "floor": 167.278667304998,
+          "allocated": 166.9
+        },
+        "동구": {
+          "risk_share": 0.0951692202703453,
+          "budget_share": 0.09453125,
+          "floor": 60.90830097302099,
+          "allocated": 60.5
+        },
+        "북구": {
+          "risk_share": 0.1541516411894989,
+          "budget_share": 0.15296875000000001,
+          "floor": 98.65705036127929,
+          "allocated": 97.9
+        },
+        "중구": {
+          "risk_share": 0.125390591504335,
+          "budget_share": 0.12515625,
+          "floor": 80.24997856277439,
+          "allocated": 80.1
+        },
+        "울주군": {
+          "risk_share": 0.36391562937176136,
+          "budget_share": 0.3665625,
+          "floor": 232.90600279792727,
+          "allocated": 234.6
+        }
+      },
+      "ratio_min": 0.9923264444,
+      "ratio_max": 1.0072733084666026
+    }
+  },
+  "hydrant_coverage": {
+    "available": true,
+    "n_grids": 1459,
+    "grids_without_hydrant": 647,
+    "share_without_hydrant": 0.4434544208361892,
+    "median_hydrants": 1.0
+  },
+  "n_blind_spots": 90,
+  "n_surge_alerts": 71,
+  "patrol": {
+    "peak_windows": [
+      {
+        "start_hour": 13,
+        "end_hour": 16,
+        "fires": 5161.0,
+        "share": 0.18438069379443392
+      },
+      {
+        "start_hour": 16,
+        "end_hour": 19,
+        "fires": 5048.0,
+        "share": 0.18034368189775285
+      },
+      {
+        "start_hour": 19,
+        "end_hour": 22,
+        "fires": 4130.0,
+        "share": 0.14754742595834375
+      }
+    ],
+    "top_weekday": [
+      {
+        "요일": "일",
+        "n": 4374
+      },
+      {
+        "요일": "토",
+        "n": 4364
+      }
+    ]
+  },
+  "plan_source": "cli:claude"
+}

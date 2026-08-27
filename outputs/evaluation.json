@@ -1,0 +1,1836 @@
+{
+  "city": "ulsan",
+  "n_features": 74,
+  "features": [
+    "fires_lag1",
+    "fires_lag2",
+    "fires_cum",
+    "fires_mean_prev",
+    "neigh_fires_lag1",
+    "neigh_fires_cum",
+    "usage_n_공동주택",
+    "usage_n_공장",
+    "usage_n_교육",
+    "usage_n_근린생활",
+    "usage_n_기타",
+    "usage_n_노유자",
+    "usage_n_동식물",
+    "usage_n_문화집회",
+    "usage_n_복합건축물",
+    "usage_n_숙박",
+    "usage_n_업무",
+    "usage_n_위험물",
+    "usage_n_의료",
+    "usage_n_창고",
+    "usage_n_판매영업",
+    "usage_share_공동주택",
+    "usage_share_공장",
+    "usage_share_교육",
+    "usage_share_근린생활",
+    "usage_share_기타",
+    "usage_share_노유자",
+    "usage_share_동식물",
+    "usage_share_문화집회",
+    "usage_share_복합건축물",
+    "usage_share_숙박",
+    "usage_share_업무",
+    "usage_share_위험물",
+    "usage_share_의료",
+    "usage_share_창고",
+    "usage_share_판매영업",
+    "usage_total",
+    "fac_n_고층",
+    "fac_n_기타",
+    "fac_n_대형연면적",
+    "fac_n_스프링클러",
+    "fac_n_옥내소화전",
+    "fac_n_일반대상물",
+    "fac_n_자동화재탐지",
+    "fac_share_고층",
+    "fac_share_기타",
+    "fac_share_대형연면적",
+    "fac_share_스프링클러",
+    "fac_share_옥내소화전",
+    "fac_share_일반대상물",
+    "fac_share_자동화재탐지",
+    "fac_total",
+    "target_total",
+    "biz_n_PC방",
+    "biz_n_기타",
+    "biz_n_노래연습장",
+    "biz_n_숙박업",
+    "biz_n_실내체육시설",
+    "biz_n_영화관",
+    "biz_n_유흥주점",
+    "biz_n_일반음식점",
+    "biz_n_학원",
+    "biz_share_PC방",
+    "biz_share_기타",
+    "biz_share_노래연습장",
+    "biz_share_숙박업",
+    "biz_share_실내체육시설",
+    "biz_share_영화관",
+    "biz_share_유흥주점",
+    "biz_share_일반음식점",
+    "biz_share_학원",
+    "biz_total",
+    "n_hydrant",
+    "dist_hydrant_m"
+  ],
+  "grid_size_m": 500,
+  "temporal": {
+    "model": {
+      "n_grids": 1459,
+      "total_fires": 1381.0,
+      "capture": {
+        "top5": 0.3280231716147719,
+        "top10": 0.4728457639391745,
+        "top20": 0.6850108616944244,
+        "top30": 0.7914554670528603
+      },
+      "lift": {
+        "top5": 6.560463432295438,
+        "top10": 4.728457639391745,
+        "top20": 3.425054308472122,
+        "top30": 2.638184890176201
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 145,
+          "mean_fires": 0.013793103448275862,
+          "total_fires": 2.0,
+          "mean_score": 0.017752370137900916,
+          "share_of_fires": 0.001448225923244026
+        },
+        {
+          "grade": 2,
+          "n_grids": 146,
+          "mean_fires": 0.06164383561643835,
+          "total_fires": 9.0,
+          "mean_score": 0.03217126490873727,
+          "share_of_fires": 0.0065170166545981175
+        },
+        {
+          "grade": 3,
+          "n_grids": 146,
+          "mean_fires": 0.0821917808219178,
+          "total_fires": 12.0,
+          "mean_score": 0.06688208363140953,
+          "share_of_fires": 0.008689355539464157
+        },
+        {
+          "grade": 4,
+          "n_grids": 146,
+          "mean_fires": 0.1780821917808219,
+          "total_fires": 26.0,
+          "mean_score": 0.10783600800481913,
+          "share_of_fires": 0.01882693700217234
+        },
+        {
+          "grade": 5,
+          "n_grids": 146,
+          "mean_fires": 0.2328767123287671,
+          "total_fires": 34.0,
+          "mean_score": 0.16297897240126477,
+          "share_of_fires": 0.024619840695148443
+        },
+        {
+          "grade": 6,
+          "n_grids": 146,
+          "mean_fires": 0.5136986301369864,
+          "total_fires": 75.0,
+          "mean_score": 0.27763122295203957,
+          "share_of_fires": 0.05430847212165098
+        },
+        {
+          "grade": 7,
+          "n_grids": 146,
+          "mean_fires": 0.8904109589041096,
+          "total_fires": 130.0,
+          "mean_score": 0.5705828966222996,
+          "share_of_fires": 0.0941346850108617
+        },
+        {
+          "grade": 8,
+          "n_grids": 146,
+          "mean_fires": 1.0068493150684932,
+          "total_fires": 147.0,
+          "mean_score": 1.007305219164495,
+          "share_of_fires": 0.10644460535843592
+        },
+        {
+          "grade": 9,
+          "n_grids": 146,
+          "mean_fires": 2.006849315068493,
+          "total_fires": 293.0,
+          "mean_score": 1.9315826010347088,
+          "share_of_fires": 0.21216509775524983
+        },
+        {
+          "grade": 10,
+          "n_grids": 146,
+          "mean_fires": 4.472602739726027,
+          "total_fires": 653.0,
+          "mean_score": 5.249795100835618,
+          "share_of_fires": 0.4728457639391745
+        }
+      ],
+      "decile_monotonic": true,
+      "pai": {
+        "top5": 6.560463432295438,
+        "top10": 4.728457639391745,
+        "top20": 3.425054308472122,
+        "top30": 2.638184890176201
+      },
+      "pai_max": {
+        "top5": 9.225199131064446,
+        "top10": 6.488052136133236,
+        "top20": 4.315713251267197,
+        "top30": 3.2295438088341784
+      },
+      "pei": {
+        "top5": 0.7111459968602826,
+        "top10": 0.7287946428571429,
+        "top20": 0.7936241610738257,
+        "top30": 0.8168908819133035
+      }
+    },
+    "baseline": {
+      "n_grids": 1459,
+      "total_fires": 1381.0,
+      "capture": {
+        "top5": 0.29254163649529324,
+        "top10": 0.44822592324402605,
+        "top20": 0.6350470673425054,
+        "top30": 0.7566980448950036
+      },
+      "lift": {
+        "top5": 5.850832729905864,
+        "top10": 4.48225923244026,
+        "top20": 3.1752353367125266,
+        "top30": 2.5223268163166788
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 145,
+          "mean_fires": 0.4896551724137931,
+          "total_fires": 71.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.05141202027516292
+        },
+        {
+          "grade": 2,
+          "n_grids": 146,
+          "mean_fires": 0.363013698630137,
+          "total_fires": 53.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.03837798696596669
+        },
+        {
+          "grade": 3,
+          "n_grids": 146,
+          "mean_fires": 0.3013698630136986,
+          "total_fires": 44.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.03186097031136857
+        },
+        {
+          "grade": 4,
+          "n_grids": 146,
+          "mean_fires": 0.273972602739726,
+          "total_fires": 40.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.02896451846488052
+        },
+        {
+          "grade": 5,
+          "n_grids": 146,
+          "mean_fires": 0.1780821917808219,
+          "total_fires": 26.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.01882693700217234
+        },
+        {
+          "grade": 6,
+          "n_grids": 146,
+          "mean_fires": 0.273972602739726,
+          "total_fires": 40.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.02896451846488052
+        },
+        {
+          "grade": 7,
+          "n_grids": 146,
+          "mean_fires": 0.4246575342465753,
+          "total_fires": 62.0,
+          "mean_score": 0.2876712328767123,
+          "share_of_fires": 0.04489500362056481
+        },
+        {
+          "grade": 8,
+          "n_grids": 146,
+          "mean_fires": 1.1506849315068493,
+          "total_fires": 168.0,
+          "mean_score": 1.0,
+          "share_of_fires": 0.1216509775524982
+        },
+        {
+          "grade": 9,
+          "n_grids": 146,
+          "mean_fires": 1.7671232876712328,
+          "total_fires": 258.0,
+          "mean_score": 2.2945205479452055,
+          "share_of_fires": 0.18682114409847936
+        },
+        {
+          "grade": 10,
+          "n_grids": 146,
+          "mean_fires": 4.239726027397261,
+          "total_fires": 619.0,
+          "mean_score": 5.972602739726027,
+          "share_of_fires": 0.44822592324402605
+        }
+      ],
+      "decile_monotonic": false,
+      "pai": {
+        "top5": 5.850832729905864,
+        "top10": 4.48225923244026,
+        "top20": 3.1752353367125266,
+        "top30": 2.5223268163166788
+      },
+      "pai_max": {
+        "top5": 9.225199131064446,
+        "top10": 6.488052136133236,
+        "top20": 4.315713251267197,
+        "top30": 3.2295438088341784
+      },
+      "pei": {
+        "top5": 0.6342229199372055,
+        "top10": 0.6908482142857143,
+        "top20": 0.735738255033557,
+        "top30": 0.78101644245142
+      }
+    },
+    "headline_k": 20,
+    "headline": {
+      "model_capture": 0.6850108616944244,
+      "baseline_capture": 0.6350470673425054,
+      "delta_pp": 4.9963794351918995,
+      "model_lift": 3.425054308472122
+    },
+    "protocol": "temporal_holdout",
+    "train_years": [
+      2014.0,
+      2015.0,
+      2016.0,
+      2017.0,
+      2018.0,
+      2019.0,
+      2020.0
+    ],
+    "test_year": 2021,
+    "ci": {
+      "top5": {
+        "model": {
+          "point": 0.3280231716147719,
+          "lo": 0.27501065930135804,
+          "hi": 0.39682965854791247,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.29254163649529324,
+          "lo": 0.23699842147409247,
+          "hi": 0.36685646489678414,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 3.5481535119478655,
+          "lo_pp": 0.509551058986601,
+          "hi_pp": 6.724636914460644,
+          "excludes_zero": true,
+          "n_boot": 1000
+        }
+      },
+      "top10": {
+        "model": {
+          "point": 0.4728457639391745,
+          "lo": 0.4144574530460933,
+          "hi": 0.5387080905284992,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.44822592324402605,
+          "lo": 0.3870647617750892,
+          "hi": 0.5120408154707624,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 2.4619840695148443,
+          "lo_pp": -1.1792309001432422,
+          "hi_pp": 6.640736360524105,
+          "excludes_zero": false,
+          "n_boot": 1000
+        }
+      },
+      "top20": {
+        "model": {
+          "point": 0.6850108616944244,
+          "lo": 0.6345479848081175,
+          "hi": 0.7291827141143702,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.6350470673425054,
+          "lo": 0.5826960499796197,
+          "hi": 0.6887306571296381,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 4.9963794351918995,
+          "lo_pp": 1.5661985944683585,
+          "hi_pp": 8.026663517242556,
+          "excludes_zero": true,
+          "n_boot": 1000
+        }
+      },
+      "top30": {
+        "model": {
+          "point": 0.7914554670528603,
+          "lo": 0.745198574091139,
+          "hi": 0.8294535450984665,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.7566980448950036,
+          "lo": 0.7059068872906046,
+          "hi": 0.7945461184096355,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 3.475742215785671,
+          "lo_pp": 1.3494078751048506,
+          "hi_pp": 6.700684292157708,
+          "excludes_zero": true,
+          "n_boot": 1000
+        }
+      }
+    },
+    "calibration": {
+      "total_actual": 1381.0,
+      "total_predicted": 1375.9618376250828,
+      "total_ratio": 0.9963518013215661,
+      "mean_poisson_deviance": 1.3939140085485462,
+      "mae": 0.7871423417289315
+    },
+    "equity": [
+      {
+        "group": "울주군",
+        "n_grids": 745,
+        "fires": 419.0,
+        "selected": 115,
+        "share_of_grids": 0.5106237148732008,
+        "share_of_fires": 0.30340333091962346,
+        "share_of_inspections": 0.3938356164383562,
+        "inspection_vs_risk": 1.2980596331774938,
+        "coverage_within_group": 0.15436241610738255
+      },
+      {
+        "group": "남구",
+        "n_grids": 152,
+        "fires": 339.0,
+        "selected": 67,
+        "share_of_grids": 0.1041809458533242,
+        "share_of_fires": 0.24547429398986242,
+        "share_of_inspections": 0.22945205479452055,
+        "inspection_vs_risk": 0.9347294621570291,
+        "coverage_within_group": 0.4407894736842105
+      },
+      {
+        "group": "북구",
+        "n_grids": 191,
+        "fires": 285.0,
+        "selected": 41,
+        "share_of_grids": 0.13091158327621658,
+        "share_of_fires": 0.20637219406227372,
+        "share_of_inspections": 0.1404109589041096,
+        "inspection_vs_risk": 0.6803773131458783,
+        "coverage_within_group": 0.21465968586387435
+      },
+      {
+        "group": "중구",
+        "n_grids": 88,
+        "fires": 227.0,
+        "selected": 44,
+        "share_of_grids": 0.06031528444139822,
+        "share_of_fires": 0.16437364228819695,
+        "share_of_inspections": 0.1506849315068493,
+        "inspection_vs_risk": 0.9167219841892462,
+        "coverage_within_group": 0.5
+      },
+      {
+        "group": "동구",
+        "n_grids": 55,
+        "fires": 111.0,
+        "selected": 25,
+        "share_of_grids": 0.03769705277587389,
+        "share_of_fires": 0.08037653874004344,
+        "share_of_inspections": 0.08561643835616438,
+        "inspection_vs_risk": 1.0651919042330003,
+        "coverage_within_group": 0.45454545454545453
+      },
+      {
+        "group": "",
+        "n_grids": 228,
+        "fires": 0.0,
+        "selected": 0,
+        "share_of_grids": 0.1562714187799863,
+        "share_of_fires": 0.0,
+        "share_of_inspections": 0.0,
+        "inspection_vs_risk": NaN,
+        "coverage_within_group": 0.0
+      }
+    ],
+    "equity_summary": {
+      "n_groups": 6,
+      "inspection_vs_risk_min": 0.6803773131458783,
+      "inspection_vs_risk_max": 1.2980596331774938,
+      "gini_of_inspections": 0.4018264840182648,
+      "gini_of_fires": 0.3423847453536084,
+      "underserved": [
+        "북구"
+      ]
+    },
+    "recapture": {
+      "grids_with_prev_fire": 480,
+      "share_of_grids": 0.3289924605894448,
+      "repeat_rate": 0.6583333333333333,
+      "share_of_curr_fires_in_prev_grids": 0.7834902244750181
+    }
+  },
+  "temporal_history_only": {
+    "model": {
+      "n_grids": 1459,
+      "total_fires": 1381.0,
+      "capture": {
+        "top5": 0.3236784938450398,
+        "top10": 0.4677769732078204,
+        "top20": 0.6806661839246922,
+        "top30": 0.7856625633598842
+      },
+      "lift": {
+        "top5": 6.473569876900796,
+        "top10": 4.677769732078204,
+        "top20": 3.403330919623461,
+        "top30": 2.618875211199614
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 145,
+          "mean_fires": 0.08275862068965517,
+          "total_fires": 12.0,
+          "mean_score": 0.03938609244148995,
+          "share_of_fires": 0.008689355539464157
+        },
+        {
+          "grade": 2,
+          "n_grids": 146,
+          "mean_fires": 0.11643835616438356,
+          "total_fires": 17.0,
+          "mean_score": 0.0766373955154911,
+          "share_of_fires": 0.012309920347574221
+        },
+        {
+          "grade": 3,
+          "n_grids": 146,
+          "mean_fires": 0.136986301369863,
+          "total_fires": 20.0,
+          "mean_score": 0.1097916900673047,
+          "share_of_fires": 0.01448225923244026
+        },
+        {
+          "grade": 4,
+          "n_grids": 146,
+          "mean_fires": 0.23972602739726026,
+          "total_fires": 35.0,
+          "mean_score": 0.1606532347301141,
+          "share_of_fires": 0.025343953656770456
+        },
+        {
+          "grade": 5,
+          "n_grids": 146,
+          "mean_fires": 0.1917808219178082,
+          "total_fires": 28.0,
+          "mean_score": 0.23126800138986645,
+          "share_of_fires": 0.020275162925416364
+        },
+        {
+          "grade": 6,
+          "n_grids": 146,
+          "mean_fires": 0.821917808219178,
+          "total_fires": 120.0,
+          "mean_score": 0.3999066243103125,
+          "share_of_fires": 0.08689355539464157
+        },
+        {
+          "grade": 7,
+          "n_grids": 146,
+          "mean_fires": 0.4383561643835616,
+          "total_fires": 64.0,
+          "mean_score": 0.689196888457657,
+          "share_of_fires": 0.04634322954380883
+        },
+        {
+          "grade": 8,
+          "n_grids": 146,
+          "mean_fires": 0.9931506849315068,
+          "total_fires": 145.0,
+          "mean_score": 1.0524187089749437,
+          "share_of_fires": 0.10499637943519188
+        },
+        {
+          "grade": 9,
+          "n_grids": 146,
+          "mean_fires": 2.0136986301369864,
+          "total_fires": 294.0,
+          "mean_score": 1.9180011135473565,
+          "share_of_fires": 0.21288921071687184
+        },
+        {
+          "grade": 10,
+          "n_grids": 146,
+          "mean_fires": 4.424657534246576,
+          "total_fires": 646.0,
+          "mean_score": 5.21888220723976,
+          "share_of_fires": 0.4677769732078204
+        }
+      ],
+      "decile_monotonic": false,
+      "pai": {
+        "top5": 6.473569876900796,
+        "top10": 4.677769732078204,
+        "top20": 3.403330919623461,
+        "top30": 2.618875211199614
+      },
+      "pai_max": {
+        "top5": 9.225199131064446,
+        "top10": 6.488052136133236,
+        "top20": 4.315713251267197,
+        "top30": 3.2295438088341784
+      },
+      "pei": {
+        "top5": 0.7017268445839874,
+        "top10": 0.7209821428571429,
+        "top20": 0.7885906040268457,
+        "top30": 0.8109118086696562
+      }
+    },
+    "baseline": {
+      "n_grids": 1459,
+      "total_fires": 1381.0,
+      "capture": {
+        "top5": 0.29254163649529324,
+        "top10": 0.44822592324402605,
+        "top20": 0.6350470673425054,
+        "top30": 0.7566980448950036
+      },
+      "lift": {
+        "top5": 5.850832729905864,
+        "top10": 4.48225923244026,
+        "top20": 3.1752353367125266,
+        "top30": 2.5223268163166788
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 145,
+          "mean_fires": 0.4896551724137931,
+          "total_fires": 71.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.05141202027516292
+        },
+        {
+          "grade": 2,
+          "n_grids": 146,
+          "mean_fires": 0.363013698630137,
+          "total_fires": 53.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.03837798696596669
+        },
+        {
+          "grade": 3,
+          "n_grids": 146,
+          "mean_fires": 0.3013698630136986,
+          "total_fires": 44.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.03186097031136857
+        },
+        {
+          "grade": 4,
+          "n_grids": 146,
+          "mean_fires": 0.273972602739726,
+          "total_fires": 40.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.02896451846488052
+        },
+        {
+          "grade": 5,
+          "n_grids": 146,
+          "mean_fires": 0.1780821917808219,
+          "total_fires": 26.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.01882693700217234
+        },
+        {
+          "grade": 6,
+          "n_grids": 146,
+          "mean_fires": 0.273972602739726,
+          "total_fires": 40.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.02896451846488052
+        },
+        {
+          "grade": 7,
+          "n_grids": 146,
+          "mean_fires": 0.4246575342465753,
+          "total_fires": 62.0,
+          "mean_score": 0.2876712328767123,
+          "share_of_fires": 0.04489500362056481
+        },
+        {
+          "grade": 8,
+          "n_grids": 146,
+          "mean_fires": 1.1506849315068493,
+          "total_fires": 168.0,
+          "mean_score": 1.0,
+          "share_of_fires": 0.1216509775524982
+        },
+        {
+          "grade": 9,
+          "n_grids": 146,
+          "mean_fires": 1.7671232876712328,
+          "total_fires": 258.0,
+          "mean_score": 2.2945205479452055,
+          "share_of_fires": 0.18682114409847936
+        },
+        {
+          "grade": 10,
+          "n_grids": 146,
+          "mean_fires": 4.239726027397261,
+          "total_fires": 619.0,
+          "mean_score": 5.972602739726027,
+          "share_of_fires": 0.44822592324402605
+        }
+      ],
+      "decile_monotonic": false,
+      "pai": {
+        "top5": 5.850832729905864,
+        "top10": 4.48225923244026,
+        "top20": 3.1752353367125266,
+        "top30": 2.5223268163166788
+      },
+      "pai_max": {
+        "top5": 9.225199131064446,
+        "top10": 6.488052136133236,
+        "top20": 4.315713251267197,
+        "top30": 3.2295438088341784
+      },
+      "pei": {
+        "top5": 0.6342229199372055,
+        "top10": 0.6908482142857143,
+        "top20": 0.735738255033557,
+        "top30": 0.78101644245142
+      }
+    },
+    "headline_k": 20,
+    "headline": {
+      "model_capture": 0.6806661839246922,
+      "baseline_capture": 0.6350470673425054,
+      "delta_pp": 4.561911658218687,
+      "model_lift": 3.403330919623461
+    },
+    "protocol": "temporal_holdout",
+    "train_years": [
+      2014.0,
+      2015.0,
+      2016.0,
+      2017.0,
+      2018.0,
+      2019.0,
+      2020.0
+    ],
+    "test_year": 2021,
+    "ci": {
+      "top5": {
+        "model": {
+          "point": 0.3236784938450398,
+          "lo": 0.2580396997200008,
+          "hi": 0.3874376576051792,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.29254163649529324,
+          "lo": 0.23699842147409247,
+          "hi": 0.36685646489678414,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 3.1136857349746583,
+          "lo_pp": -1.0088285239853954,
+          "hi_pp": 5.2561369881625835,
+          "excludes_zero": false,
+          "n_boot": 1000
+        }
+      },
+      "top10": {
+        "model": {
+          "point": 0.4677769732078204,
+          "lo": 0.41438463256645075,
+          "hi": 0.5332961057315677,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.44822592324402605,
+          "lo": 0.3870647617750892,
+          "hi": 0.5120408154707624,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 1.9551049963794365,
+          "lo_pp": -1.524784358826914,
+          "hi_pp": 6.192621325112768,
+          "excludes_zero": false,
+          "n_boot": 1000
+        }
+      },
+      "top20": {
+        "model": {
+          "point": 0.6806661839246922,
+          "lo": 0.6323390897815094,
+          "hi": 0.7286046344246985,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.6350470673425054,
+          "lo": 0.5826960499796197,
+          "hi": 0.6887306571296381,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 4.561911658218687,
+          "lo_pp": 1.4203527922797017,
+          "hi_pp": 7.626674662278378,
+          "excludes_zero": true,
+          "n_boot": 1000
+        }
+      },
+      "top30": {
+        "model": {
+          "point": 0.7856625633598842,
+          "lo": 0.7361581160467241,
+          "hi": 0.8240412066202167,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.7566980448950036,
+          "lo": 0.7059068872906046,
+          "hi": 0.7945461184096355,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 2.8964518464880573,
+          "lo_pp": 0.5618338865113651,
+          "hi_pp": 5.948422863964623,
+          "excludes_zero": true,
+          "n_boot": 1000
+        }
+      }
+    },
+    "calibration": {
+      "total_actual": 1381.0,
+      "total_predicted": 1444.7973395820059,
+      "total_ratio": 1.0461964805083315,
+      "mean_poisson_deviance": 1.529657562693012,
+      "mae": 0.8430880691037741
+    },
+    "equity": [
+      {
+        "group": "울주군",
+        "n_grids": 745,
+        "fires": 419.0,
+        "selected": 114,
+        "share_of_grids": 0.5106237148732008,
+        "share_of_fires": 0.30340333091962346,
+        "share_of_inspections": 0.3904109589041096,
+        "inspection_vs_risk": 1.2867721581063851,
+        "coverage_within_group": 0.15302013422818792
+      },
+      {
+        "group": "남구",
+        "n_grids": 152,
+        "fires": 339.0,
+        "selected": 69,
+        "share_of_grids": 0.1041809458533242,
+        "share_of_fires": 0.24547429398986242,
+        "share_of_inspections": 0.2363013698630137,
+        "inspection_vs_risk": 0.9626318341617166,
+        "coverage_within_group": 0.45394736842105265
+      },
+      {
+        "group": "북구",
+        "n_grids": 191,
+        "fires": 285.0,
+        "selected": 42,
+        "share_of_grids": 0.13091158327621658,
+        "share_of_fires": 0.20637219406227372,
+        "share_of_inspections": 0.14383561643835616,
+        "inspection_vs_risk": 0.6969718817591924,
+        "coverage_within_group": 0.2198952879581152
+      },
+      {
+        "group": "중구",
+        "n_grids": 88,
+        "fires": 227.0,
+        "selected": 42,
+        "share_of_grids": 0.06031528444139822,
+        "share_of_fires": 0.16437364228819695,
+        "share_of_inspections": 0.14383561643835616,
+        "inspection_vs_risk": 0.8750528030897351,
+        "coverage_within_group": 0.4772727272727273
+      },
+      {
+        "group": "동구",
+        "n_grids": 55,
+        "fires": 111.0,
+        "selected": 25,
+        "share_of_grids": 0.03769705277587389,
+        "share_of_fires": 0.08037653874004344,
+        "share_of_inspections": 0.08561643835616438,
+        "inspection_vs_risk": 1.0651919042330003,
+        "coverage_within_group": 0.45454545454545453
+      },
+      {
+        "group": "",
+        "n_grids": 228,
+        "fires": 0.0,
+        "selected": 0,
+        "share_of_grids": 0.1562714187799863,
+        "share_of_fires": 0.0,
+        "share_of_inspections": 0.0,
+        "inspection_vs_risk": NaN,
+        "coverage_within_group": 0.0
+      }
+    ],
+    "equity_summary": {
+      "n_groups": 6,
+      "inspection_vs_risk_min": 0.6969718817591924,
+      "inspection_vs_risk_max": 1.2867721581063851,
+      "gini_of_inspections": 0.40068493150684903,
+      "gini_of_fires": 0.3423847453536084,
+      "underserved": [
+        "북구"
+      ]
+    },
+    "recapture": {
+      "grids_with_prev_fire": 480,
+      "share_of_grids": 0.3289924605894448,
+      "repeat_rate": 0.6583333333333333,
+      "share_of_curr_fires_in_prev_grids": 0.7834902244750181
+    }
+  },
+  "snapshot_contribution_pp": 0.43446777697321304,
+  "single_feature_probe": [
+    {
+      "feature": "fires_cum",
+      "capture_top20": 0.6835626357711803
+    },
+    {
+      "feature": "fires_lag1",
+      "capture_top20": 0.6350470673425054
+    },
+    {
+      "feature": "target_total",
+      "capture_top20": 0.6176683562635771
+    },
+    {
+      "feature": "biz_total",
+      "capture_top20": 0.5619116582186822
+    },
+    {
+      "feature": "n_hydrant",
+      "capture_top20": 0.498189717595945
+    },
+    {
+      "feature": "neigh_fires_lag1",
+      "capture_top20": 0.4359160028964518
+    }
+  ],
+  "logo": {
+    "protocol": "leave_one_group_out",
+    "group_col": "sgg",
+    "headline_k": 20,
+    "per_group": [
+      {
+        "group": "남구",
+        "n_grid_years": 1216,
+        "total_fires": 3132.0,
+        "capture": 0.6002554278416348,
+        "baseline_capture": 0.5498084291187739
+      },
+      {
+        "group": "동구",
+        "n_grid_years": 440,
+        "total_fires": 1156.0,
+        "capture": 0.5086505190311419,
+        "baseline_capture": 0.5008650519031141
+      },
+      {
+        "group": "북구",
+        "n_grid_years": 1528,
+        "total_fires": 1846.0,
+        "capture": 0.6126760563380281,
+        "baseline_capture": 0.5736728060671723
+      },
+      {
+        "group": "울주군",
+        "n_grid_years": 5960,
+        "total_fires": 3980.0,
+        "capture": 0.5896984924623115,
+        "baseline_capture": 0.5469849246231155
+      },
+      {
+        "group": "중구",
+        "n_grid_years": 704,
+        "total_fires": 1749.0,
+        "capture": 0.52715837621498,
+        "baseline_capture": 0.49056603773584906
+      }
+    ],
+    "capture_min": 0.5086505190311419,
+    "capture_max": 0.6126760563380281,
+    "capture_mean": 0.5676877743776193
+  },
+  "resolution_concentration": {
+    "n_fires": 29302,
+    "n_grids": 1022,
+    "top1_share": 0.03300116033035288,
+    "top10_share": 0.182956794758037,
+    "gini": 0.7483376768361758,
+    "by_level": {
+      "emd": 18564,
+      "road": 10738
+    },
+    "share_from_emd_centroid": 0.6335403726708074,
+    "emd_centroid_grids": 197,
+    "max_fires_in_one_centroid_grid": 967,
+    "median_fires_in_centroid_grid": 54.0
+  },
+  "resolution_scenarios": [
+    {
+      "시나리오": "원본(동 중심점 포함)",
+      "격자수": 1459,
+      "화재수": 1381.0,
+      "모델포착@20%": 0.6850108616944244,
+      "베이스라인@20%": 0.6350470673425054,
+      "차이(%p)": 4.9963794351918995,
+      "PAI": 3.425054308472122,
+      "PEI": 0.7936241610738257,
+      "원본대비(%p)": 0.0
+    },
+    {
+      "시나리오": "도로명 좌표만",
+      "격자수": 1459,
+      "화재수": 1043.0,
+      "모델포착@20%": 0.7075743048897412,
+      "베이스라인@20%": 0.6558005752636625,
+      "차이(%p)": 5.177372962607862,
+      "PAI": 3.537871524448706,
+      "PEI": 0.76875,
+      "원본대비(%p)": 2.256344319531678
+    },
+    {
+      "시나리오": "동 내 분산 배정(진단용)",
+      "격자수": 1459,
+      "화재수": 1381.0,
+      "모델포착@20%": 0.7335264301230991,
+      "베이스라인@20%": 0.66545981173063,
+      "차이(%p)": 6.806661839246919,
+      "PAI": 3.6676321506154954,
+      "PEI": 0.8441666666666666,
+      "원본대비(%p)": 4.851556842867478
+    }
+  ],
+  "spread_warning": "분산 배정 수치를 성능 근거로 쓰지 마라. 대상물 밀도를 근거로 화재를 흩뿌린 뒤 그 대상물 밀도를 피처로 쓰는 모델을 평가한 것이라, 라벨이 피처에서 만들어진 셈이다. 여기서 읽을 수 있는 것은 하나뿐이다 — 뭉침을 풀어도 성능이 떨어지지 않으므로, 원본 수치가 뭉침 덕분에 부풀려진 것은 아니다. 해상도에 대한 신뢰할 만한 검증은 '도로명 좌표만' 시나리오다.",
+  "ranking_comparison": {
+    "protocol": "temporal_holdout",
+    "test_year": 2021,
+    "poisson": {
+      "n_grids": 1459,
+      "total_fires": 1381.0,
+      "capture": {
+        "top5": 0.3280231716147719,
+        "top10": 0.4728457639391745,
+        "top20": 0.6850108616944244,
+        "top30": 0.7914554670528603
+      },
+      "lift": {
+        "top5": 6.560463432295438,
+        "top10": 4.728457639391745,
+        "top20": 3.425054308472122,
+        "top30": 2.638184890176201
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 145,
+          "mean_fires": 0.013793103448275862,
+          "total_fires": 2.0,
+          "mean_score": 0.017752370137900916,
+          "share_of_fires": 0.001448225923244026
+        },
+        {
+          "grade": 2,
+          "n_grids": 146,
+          "mean_fires": 0.06164383561643835,
+          "total_fires": 9.0,
+          "mean_score": 0.03217126490873727,
+          "share_of_fires": 0.0065170166545981175
+        },
+        {
+          "grade": 3,
+          "n_grids": 146,
+          "mean_fires": 0.0821917808219178,
+          "total_fires": 12.0,
+          "mean_score": 0.06688208363140953,
+          "share_of_fires": 0.008689355539464157
+        },
+        {
+          "grade": 4,
+          "n_grids": 146,
+          "mean_fires": 0.1780821917808219,
+          "total_fires": 26.0,
+          "mean_score": 0.10783600800481913,
+          "share_of_fires": 0.01882693700217234
+        },
+        {
+          "grade": 5,
+          "n_grids": 146,
+          "mean_fires": 0.2328767123287671,
+          "total_fires": 34.0,
+          "mean_score": 0.16297897240126477,
+          "share_of_fires": 0.024619840695148443
+        },
+        {
+          "grade": 6,
+          "n_grids": 146,
+          "mean_fires": 0.5136986301369864,
+          "total_fires": 75.0,
+          "mean_score": 0.27763122295203957,
+          "share_of_fires": 0.05430847212165098
+        },
+        {
+          "grade": 7,
+          "n_grids": 146,
+          "mean_fires": 0.8904109589041096,
+          "total_fires": 130.0,
+          "mean_score": 0.5705828966222996,
+          "share_of_fires": 0.0941346850108617
+        },
+        {
+          "grade": 8,
+          "n_grids": 146,
+          "mean_fires": 1.0068493150684932,
+          "total_fires": 147.0,
+          "mean_score": 1.007305219164495,
+          "share_of_fires": 0.10644460535843592
+        },
+        {
+          "grade": 9,
+          "n_grids": 146,
+          "mean_fires": 2.006849315068493,
+          "total_fires": 293.0,
+          "mean_score": 1.9315826010347088,
+          "share_of_fires": 0.21216509775524983
+        },
+        {
+          "grade": 10,
+          "n_grids": 146,
+          "mean_fires": 4.472602739726027,
+          "total_fires": 653.0,
+          "mean_score": 5.249795100835618,
+          "share_of_fires": 0.4728457639391745
+        }
+      ],
+      "decile_monotonic": true,
+      "pai": {
+        "top5": 6.560463432295438,
+        "top10": 4.728457639391745,
+        "top20": 3.425054308472122,
+        "top30": 2.638184890176201
+      },
+      "pai_max": {
+        "top5": 9.225199131064446,
+        "top10": 6.488052136133236,
+        "top20": 4.315713251267197,
+        "top30": 3.2295438088341784
+      },
+      "pei": {
+        "top5": 0.7111459968602826,
+        "top10": 0.7287946428571429,
+        "top20": 0.7936241610738257,
+        "top30": 0.8168908819133035
+      }
+    },
+    "lambdarank": {
+      "n_grids": 1459,
+      "total_fires": 1381.0,
+      "capture": {
+        "top5": 0.31933381607530775,
+        "top10": 0.4952932657494569,
+        "top20": 0.6929761042722665,
+        "top30": 0.8008689355539464
+      },
+      "lift": {
+        "top5": 6.386676321506155,
+        "top10": 4.952932657494569,
+        "top20": 3.4648805213613323,
+        "top30": 2.669563118513155
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 145,
+          "mean_fires": 0.08275862068965517,
+          "total_fires": 12.0,
+          "mean_score": -6.674263885069342,
+          "share_of_fires": 0.008689355539464157
+        },
+        {
+          "grade": 2,
+          "n_grids": 146,
+          "mean_fires": 0.04794520547945205,
+          "total_fires": 7.0,
+          "mean_score": -6.674263885069342,
+          "share_of_fires": 0.005068790731354091
+        },
+        {
+          "grade": 3,
+          "n_grids": 146,
+          "mean_fires": 0.04794520547945205,
+          "total_fires": 7.0,
+          "mean_score": -6.674263885069342,
+          "share_of_fires": 0.005068790731354091
+        },
+        {
+          "grade": 4,
+          "n_grids": 146,
+          "mean_fires": 0.15753424657534246,
+          "total_fires": 23.0,
+          "mean_score": -6.649343087996341,
+          "share_of_fires": 0.0166545981173063
+        },
+        {
+          "grade": 5,
+          "n_grids": 146,
+          "mean_fires": 0.3082191780821918,
+          "total_fires": 45.0,
+          "mean_score": -6.621284939383081,
+          "share_of_fires": 0.03258508327299059
+        },
+        {
+          "grade": 6,
+          "n_grids": 146,
+          "mean_fires": 0.541095890410959,
+          "total_fires": 79.0,
+          "mean_score": -6.536027038634968,
+          "share_of_fires": 0.05720492396813903
+        },
+        {
+          "grade": 7,
+          "n_grids": 146,
+          "mean_fires": 0.6986301369863014,
+          "total_fires": 102.0,
+          "mean_score": -6.223816767897925,
+          "share_of_fires": 0.07385952208544533
+        },
+        {
+          "grade": 8,
+          "n_grids": 146,
+          "mean_fires": 1.0205479452054795,
+          "total_fires": 149.0,
+          "mean_score": -5.849558960889233,
+          "share_of_fires": 0.10789283128167994
+        },
+        {
+          "grade": 9,
+          "n_grids": 146,
+          "mean_fires": 1.86986301369863,
+          "total_fires": 273.0,
+          "mean_score": -5.049116774119687,
+          "share_of_fires": 0.19768283852280955
+        },
+        {
+          "grade": 10,
+          "n_grids": 146,
+          "mean_fires": 4.684931506849315,
+          "total_fires": 684.0,
+          "mean_score": -0.6618684838957446,
+          "share_of_fires": 0.4952932657494569
+        }
+      ],
+      "decile_monotonic": false,
+      "pai": {
+        "top5": 6.386676321506155,
+        "top10": 4.952932657494569,
+        "top20": 3.4648805213613323,
+        "top30": 2.669563118513155
+      },
+      "pai_max": {
+        "top5": 9.225199131064446,
+        "top10": 6.488052136133236,
+        "top20": 4.315713251267197,
+        "top30": 3.2295438088341784
+      },
+      "pei": {
+        "top5": 0.6923076923076923,
+        "top10": 0.7633928571428572,
+        "top20": 0.8028523489932887,
+        "top30": 0.8266068759342302
+      }
+    },
+    "baseline_last_year": {
+      "n_grids": 1459,
+      "total_fires": 1381.0,
+      "capture": {
+        "top5": 0.29254163649529324,
+        "top10": 0.44822592324402605,
+        "top20": 0.6350470673425054,
+        "top30": 0.7566980448950036
+      },
+      "lift": {
+        "top5": 5.850832729905864,
+        "top10": 4.48225923244026,
+        "top20": 3.1752353367125266,
+        "top30": 2.5223268163166788
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 145,
+          "mean_fires": 0.4896551724137931,
+          "total_fires": 71.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.05141202027516292
+        },
+        {
+          "grade": 2,
+          "n_grids": 146,
+          "mean_fires": 0.363013698630137,
+          "total_fires": 53.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.03837798696596669
+        },
+        {
+          "grade": 3,
+          "n_grids": 146,
+          "mean_fires": 0.3013698630136986,
+          "total_fires": 44.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.03186097031136857
+        },
+        {
+          "grade": 4,
+          "n_grids": 146,
+          "mean_fires": 0.273972602739726,
+          "total_fires": 40.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.02896451846488052
+        },
+        {
+          "grade": 5,
+          "n_grids": 146,
+          "mean_fires": 0.1780821917808219,
+          "total_fires": 26.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.01882693700217234
+        },
+        {
+          "grade": 6,
+          "n_grids": 146,
+          "mean_fires": 0.273972602739726,
+          "total_fires": 40.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.02896451846488052
+        },
+        {
+          "grade": 7,
+          "n_grids": 146,
+          "mean_fires": 0.4246575342465753,
+          "total_fires": 62.0,
+          "mean_score": 0.2876712328767123,
+          "share_of_fires": 0.04489500362056481
+        },
+        {
+          "grade": 8,
+          "n_grids": 146,
+          "mean_fires": 1.1506849315068493,
+          "total_fires": 168.0,
+          "mean_score": 1.0,
+          "share_of_fires": 0.1216509775524982
+        },
+        {
+          "grade": 9,
+          "n_grids": 146,
+          "mean_fires": 1.7671232876712328,
+          "total_fires": 258.0,
+          "mean_score": 2.2945205479452055,
+          "share_of_fires": 0.18682114409847936
+        },
+        {
+          "grade": 10,
+          "n_grids": 146,
+          "mean_fires": 4.239726027397261,
+          "total_fires": 619.0,
+          "mean_score": 5.972602739726027,
+          "share_of_fires": 0.44822592324402605
+        }
+      ],
+      "decile_monotonic": false,
+      "pai": {
+        "top5": 5.850832729905864,
+        "top10": 4.48225923244026,
+        "top20": 3.1752353367125266,
+        "top30": 2.5223268163166788
+      },
+      "pai_max": {
+        "top5": 9.225199131064446,
+        "top10": 6.488052136133236,
+        "top20": 4.315713251267197,
+        "top30": 3.2295438088341784
+      },
+      "pei": {
+        "top5": 0.6342229199372055,
+        "top10": 0.6908482142857143,
+        "top20": 0.735738255033557,
+        "top30": 0.78101644245142
+      }
+    },
+    "winner": "lambdarank",
+    "capture_by_model": {
+      "poisson": 0.6850108616944244,
+      "lambdarank": 0.6929761042722665,
+      "baseline_last_year": 0.6350470673425054
+    }
+  },
+  "transfer": {
+    "model": {
+      "n_grids": 616,
+      "total_fires": 104.0,
+      "capture": {
+        "top5": 0.3269230769230769,
+        "top10": 0.5288461538461539,
+        "top20": 0.7403846153846154,
+        "top30": 0.8173076923076923
+      },
+      "lift": {
+        "top5": 6.538461538461538,
+        "top10": 5.288461538461538,
+        "top20": 3.701923076923077,
+        "top30": 2.7243589743589745
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 61,
+          "mean_fires": 0.03278688524590164,
+          "total_fires": 2.0,
+          "mean_score": 0.05143018472093591,
+          "share_of_fires": 0.019230769230769232
+        },
+        {
+          "grade": 2,
+          "n_grids": 62,
+          "mean_fires": 0.03225806451612903,
+          "total_fires": 2.0,
+          "mean_score": 0.08633134841758876,
+          "share_of_fires": 0.019230769230769232
+        },
+        {
+          "grade": 3,
+          "n_grids": 61,
+          "mean_fires": 0.0,
+          "total_fires": 0.0,
+          "mean_score": 0.11633274948059548,
+          "share_of_fires": 0.0
+        },
+        {
+          "grade": 4,
+          "n_grids": 62,
+          "mean_fires": 0.08064516129032258,
+          "total_fires": 5.0,
+          "mean_score": 0.15375285833459285,
+          "share_of_fires": 0.04807692307692308
+        },
+        {
+          "grade": 5,
+          "n_grids": 62,
+          "mean_fires": 0.06451612903225806,
+          "total_fires": 4.0,
+          "mean_score": 0.21261871401147933,
+          "share_of_fires": 0.038461538461538464
+        },
+        {
+          "grade": 6,
+          "n_grids": 61,
+          "mean_fires": 0.03278688524590164,
+          "total_fires": 2.0,
+          "mean_score": 0.29737330682186136,
+          "share_of_fires": 0.019230769230769232
+        },
+        {
+          "grade": 7,
+          "n_grids": 62,
+          "mean_fires": 0.06451612903225806,
+          "total_fires": 4.0,
+          "mean_score": 0.42470318566271337,
+          "share_of_fires": 0.038461538461538464
+        },
+        {
+          "grade": 8,
+          "n_grids": 61,
+          "mean_fires": 0.13114754098360656,
+          "total_fires": 8.0,
+          "mean_score": 0.632752393049755,
+          "share_of_fires": 0.07692307692307693
+        },
+        {
+          "grade": 9,
+          "n_grids": 62,
+          "mean_fires": 0.3548387096774194,
+          "total_fires": 22.0,
+          "mean_score": 1.0562320423855094,
+          "share_of_fires": 0.21153846153846154
+        },
+        {
+          "grade": 10,
+          "n_grids": 62,
+          "mean_fires": 0.8870967741935484,
+          "total_fires": 55.0,
+          "mean_score": 2.428984236035122,
+          "share_of_fires": 0.5288461538461539
+        }
+      ],
+      "decile_monotonic": false
+    },
+    "baseline": {
+      "n_grids": 616,
+      "total_fires": 104.0,
+      "capture": {
+        "top5": 0.33653846153846156,
+        "top10": 0.47115384615384615,
+        "top20": 0.7211538461538461,
+        "top30": 0.75
+      },
+      "lift": {
+        "top5": 6.730769230769231,
+        "top10": 4.711538461538461,
+        "top20": 3.6057692307692304,
+        "top30": 2.5
+      },
+      "decile": [
+        {
+          "grade": 1,
+          "n_grids": 61,
+          "mean_fires": 0.08196721311475409,
+          "total_fires": 5.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.04807692307692308
+        },
+        {
+          "grade": 2,
+          "n_grids": 62,
+          "mean_fires": 0.04838709677419355,
+          "total_fires": 3.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.028846153846153848
+        },
+        {
+          "grade": 3,
+          "n_grids": 61,
+          "mean_fires": 0.04918032786885246,
+          "total_fires": 3.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.028846153846153848
+        },
+        {
+          "grade": 4,
+          "n_grids": 62,
+          "mean_fires": 0.04838709677419355,
+          "total_fires": 3.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.028846153846153848
+        },
+        {
+          "grade": 5,
+          "n_grids": 62,
+          "mean_fires": 0.04838709677419355,
+          "total_fires": 3.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.028846153846153848
+        },
+        {
+          "grade": 6,
+          "n_grids": 61,
+          "mean_fires": 0.11475409836065574,
+          "total_fires": 7.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.0673076923076923
+        },
+        {
+          "grade": 7,
+          "n_grids": 62,
+          "mean_fires": 0.03225806451612903,
+          "total_fires": 2.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.019230769230769232
+        },
+        {
+          "grade": 8,
+          "n_grids": 61,
+          "mean_fires": 0.04918032786885246,
+          "total_fires": 3.0,
+          "mean_score": 0.0,
+          "share_of_fires": 0.028846153846153848
+        },
+        {
+          "grade": 9,
+          "n_grids": 62,
+          "mean_fires": 0.41935483870967744,
+          "total_fires": 26.0,
+          "mean_score": 0.9516129032258065,
+          "share_of_fires": 0.25
+        },
+        {
+          "grade": 10,
+          "n_grids": 62,
+          "mean_fires": 0.7903225806451613,
+          "total_fires": 49.0,
+          "mean_score": 2.5161290322580645,
+          "share_of_fires": 0.47115384615384615
+        }
+      ],
+      "decile_monotonic": false
+    },
+    "headline_k": 20,
+    "headline": {
+      "model_capture": 0.7403846153846154,
+      "baseline_capture": 0.7211538461538461,
+      "delta_pp": 1.9230769230769273,
+      "model_lift": 3.701923076923077
+    },
+    "ci": {
+      "top5": {
+        "model": {
+          "point": 0.3269230769230769,
+          "lo": 0.2156512605042017,
+          "hi": 0.429767758133696,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.33653846153846156,
+          "lo": 0.21567873303167423,
+          "hi": 0.41414141414141414,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": -0.9615384615384637,
+          "lo_pp": -10.527580971659917,
+          "hi_pp": 12.037315930388223,
+          "excludes_zero": false,
+          "n_boot": 1000
+        }
+      },
+      "top10": {
+        "model": {
+          "point": 0.5288461538461539,
+          "lo": 0.41343427835051544,
+          "hi": 0.6321996228448276,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.47115384615384615,
+          "lo": 0.39251420194245923,
+          "hi": 0.6213592233009708,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 5.769230769230771,
+          "lo_pp": -9.090909090909088,
+          "hi_pp": 13.28776041666666,
+          "excludes_zero": false,
+          "n_boot": 1000
+        }
+      },
+      "top20": {
+        "model": {
+          "point": 0.7403846153846154,
+          "lo": 0.638051948051948,
+          "hi": 0.8182034632034633,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.7211538461538461,
+          "lo": 0.6224234693877552,
+          "hi": 0.8055622977346278,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 1.9230769230769273,
+          "lo_pp": -8.493355650233312,
+          "hi_pp": 10.789431157078218,
+          "excludes_zero": false,
+          "n_boot": 1000
+        }
+      },
+      "top30": {
+        "model": {
+          "point": 0.8173076923076923,
+          "lo": 0.7311724565756824,
+          "hi": 0.8854403409090909,
+          "n_boot": 1000
+        },
+        "baseline": {
+          "point": 0.75,
+          "lo": 0.6697327044025156,
+          "hi": 0.8384821428571428,
+          "n_boot": 1000
+        },
+        "delta": {
+          "point_pp": 6.730769230769229,
+          "lo_pp": -3.093588917525773,
+          "hi_pp": 15.17954192546584,
+          "excludes_zero": false,
+          "n_boot": 1000
+        }
+      }
+    },
+    "protocol": "cross_city_transfer",
+    "source_train_years": [
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021
+    ],
+    "target_years": [
+      2021
+    ]
+  },
+  "shap_importance": [
+    {
+      "feature": "fires_mean_prev",
+      "label": "과거 연평균 화재",
+      "mean_abs_shap": 0.6191534546823364
+    },
+    {
+      "feature": "usage_total",
+      "label": "특정소방대상물 수",
+      "mean_abs_shap": 0.35936528279911023
+    },
+    {
+      "feature": "neigh_fires_cum",
+      "label": "주변 격자 누적 화재(전파)",
+      "mean_abs_shap": 0.2252686963983939
+    },
+    {
+      "feature": "dist_hydrant_m",
+      "label": "최근접 소화전 거리",
+      "mean_abs_shap": 0.1347707026066506
+    },
+    {
+      "feature": "fires_cum",
+      "label": "누적 화재 건수",
+      "mean_abs_shap": 0.10857036216622198
+    },
+    {
+      "feature": "usage_share_창고",
+      "label": "대상물 용도비율 창고",
+      "mean_abs_shap": 0.06958211631778295
+    },
+    {
+      "feature": "usage_share_동식물",
+      "label": "대상물 용도비율 동식물",
+      "mean_abs_shap": 0.062406088282953444
+    },
+    {
+      "feature": "n_hydrant",
+      "label": "소화전 수",
+      "mean_abs_shap": 0.050842032526997136
+    },
+    {
+      "feature": "fac_share_일반대상물",
+      "label": "소방시설 비율 일반대상물",
+      "mean_abs_shap": 0.04975634215424635
+    },
+    {
+      "feature": "fac_n_일반대상물",
+      "label": "소방시설 일반대상물",
+      "mean_abs_shap": 0.04840487601260104
+    },
+    {
+      "feature": "fac_total",
+      "label": "소방시설 설치대상 수",
+      "mean_abs_shap": 0.03782206989713225
+    },
+    {
+      "feature": "fires_lag2",
+      "label": "재작년 화재 건수",
+      "mean_abs_shap": 0.033823381348671036
+    },
+    {
+      "feature": "neigh_fires_lag1",
+      "label": "주변 격자 작년 화재(전파)",
+      "mean_abs_shap": 0.03378438937455297
+    },
+    {
+      "feature": "fires_lag1",
+      "label": "작년 화재 건수",
+      "mean_abs_shap": 0.0320641427408249
+    },
+    {
+      "feature": "fac_share_옥내소화전",
+      "label": "소방시설 비율 옥내소화전",
+      "mean_abs_shap": 0.03198022000121206
+    },
+    {
+      "feature": "usage_share_근린생활",
+      "label": "대상물 용도비율 근린생활",
+      "mean_abs_shap": 0.02749968631950077
+    },
+    {
+      "feature": "usage_n_근린생활",
+      "label": "대상물 용도 근린생활",
+      "mean_abs_shap": 0.027219761245391657
+    },
+    {
+      "feature": "fac_share_기타",
+      "label": "소방시설 비율 기타",
+      "mean_abs_shap": 0.026682701410438932
+    },
+    {
+      "feature": "usage_share_기타",
+      "label": "대상물 용도비율 기타",
+      "mean_abs_shap": 0.026261883755352062
+    },
+    {
+      "feature": "usage_share_공동주택",
+      "label": "대상물 용도비율 공동주택",
+      "mean_abs_shap": 0.025979287069943454
+    }
+  ]
+}

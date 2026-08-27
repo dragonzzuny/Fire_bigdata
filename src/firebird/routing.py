@@ -138,6 +138,11 @@ def partition_teams(df: pd.DataFrame, n_teams: int, *, weight_col: str | None = 
     ])
     w = (df[weight_col].astype(float).to_numpy()
          if weight_col and weight_col in df.columns else np.ones(n))
+    # 결측 가중치는 KMeans(sample_weight=) 에서 그대로 터진다. 평균으로 메운다.
+    w = np.asarray(w, dtype=float)
+    if not np.isfinite(w).all():
+        fill = float(np.nanmean(w[np.isfinite(w)])) if np.isfinite(w).any() else 1.0
+        w = np.where(np.isfinite(w), w, fill)
     w = np.clip(w, 1e-9, None)
 
     km = KMeans(n_clusters=k, n_init=10, random_state=seed, max_iter=max_iter)
@@ -239,7 +244,8 @@ def solve_route(dist: np.ndarray, start: int = 0, *, restarts: int = 0,
     """
     n = len(dist)
     if n <= 2:
-        return list(range(n))
+        # 지점이 둘뿐이어도 출발점 고정 계약은 지킨다.
+        return [start] + [i for i in range(n) if i != start]
 
     rng = np.random.default_rng(seed)
     inits = [nearest_neighbor(dist, start)]
@@ -267,14 +273,19 @@ def _improve(dist: np.ndarray, order: list[int], *, or_opt: bool = True,
              max_rounds: int = 60, closed: bool = False) -> list[int]:
     """2-opt 와 Or-opt 를 번갈아 돌린다. 더 이상 줄지 않으면 멈춘다."""
     cur = list(order)
+    best, best_len = list(cur), route_length(dist, cur, closed=closed)
     for _ in range(max_rounds):
         before = route_length(dist, cur, closed=closed)
         cur = _two_opt_matrix(dist, cur, max_rounds=1, closed=closed)
         if or_opt:
             cur = _or_opt_matrix(dist, cur, closed=closed)
-        if route_length(dist, cur, closed=closed) >= before - 1e-9:
+        now = route_length(dist, cur, closed=closed)
+        if now < best_len - 1e-9:
+            best, best_len = list(cur), now
+        if now >= before - 1e-9:
             break
-    return cur
+    # 개선 단계는 절대 나빠진 결과를 돌려주지 않는다.
+    return best
 
 
 def _or_opt_matrix(dist: np.ndarray, order: list[int], max_seg: int = 3, *,
@@ -313,21 +324,53 @@ def _or_opt_matrix(dist: np.ndarray, order: list[int], max_seg: int = 3, *,
     return best
 
 
+def is_symmetric(dist: np.ndarray, tol: float = 1e-6) -> bool:
+    """A→B 와 B→A 가 같은 행렬인가.
+
+    직선거리는 대칭이지만 도로거리는 아니다. 일방통행·중앙분리대 때문에
+    방향에 따라 값이 다르다. 2-opt 의 이득 계산이 이 둘에서 달라진다.
+    """
+    d = np.asarray(dist, dtype=float)
+    return bool(d.shape[0] == d.shape[1] and np.allclose(d, d.T, atol=tol, rtol=0))
+
+
 def _two_opt_matrix(dist: np.ndarray, order: list[int], max_rounds: int = 60, *,
                     closed: bool = False) -> list[int]:
     """행렬 기반 2-opt. operations.two_opt 은 좌표 기반이라 도로거리를 못 쓴다.
 
-    구간 [i, j] 를 뒤집는다. 뒤집기 전후로 바뀌는 변은 (i-1, i) 와 (j, j+1) 둘뿐이다.
-    열린 경로에서 j 가 마지막 지점이면 (j, j+1) 변이 없으므로 첫 변만 비교한다 —
-    이 경우를 빼면 '꼬리가 통째로 뒤집혀야 하는' 배치를 영영 못 고친다.
+    구간 [i, j] 를 뒤집는다.
+
+    **대칭 행렬**(직선거리)에서는 바뀌는 변이 (i-1, i) 와 (j, j+1) 둘뿐이다.
+    뒤집힌 구간 안의 변들은 방향만 바뀌고 값이 같기 때문이다. 그래서 네 칸만
+    비교하면 된다.
+
+    **비대칭 행렬**(도로거리)에서는 그렇지 않다. 구간 안의 모든 변이 반대 방향이
+    되면서 값이 달라진다. 두 변만 보고 판단하면 실제로는 길어지는 이동을 개선으로
+    받아들인다 — 무작위 비대칭 행렬 400회에서 93회가 길어졌고 최악은 +72%였다.
+    그래서 비대칭이면 후보 경로의 길이를 그대로 계산해 비교한다. 한 번에 O(n)이
+    더 들지만, 팀당 지점이 수십 개라 문제가 되지 않는다.
+
+    열린 경로에서 j 가 마지막 지점이면 (j, j+1) 변이 없다. 이 경우를 빼면
+    '꼬리가 통째로 뒤집혀야 하는' 배치를 영영 못 고친다.
     """
     best = list(order)
     n = len(best)
+    if n < 3:
+        return best
+    sym = is_symmetric(dist)
+    cur_len = route_length(dist, best, closed=closed)
+
     improved, rounds = True, 0
     while improved and rounds < max_rounds:
         improved, rounds = False, rounds + 1
         for i in range(1, n - 1):
             for j in range(i + 1, n):
+                if not sym:
+                    cand = best[:i] + best[i:j + 1][::-1] + best[j + 1:]
+                    cand_len = route_length(dist, cand, closed=closed)
+                    if cand_len < cur_len - 1e-9:
+                        best, cur_len, improved = cand, cand_len, True
+                    continue
                 a, b, c = best[i - 1], best[i], best[j]
                 if j + 1 < n:
                     d = best[j + 1]

@@ -1,0 +1,113 @@
+{
+  "city": "ulsan",
+  "label": "울산광역시",
+  "grid_size_m": 500,
+  "geocode": {
+    "unique_keys": 3828,
+    "matched_keys": 3658,
+    "key_match_rate": 0.9555903866248694
+  },
+  "coverage": {
+    "fire": {
+      "rows": 31034,
+      "with_coords": 30963,
+      "rate": 0.9977121866340143,
+      "by_level": {
+        "emd": 18840,
+        "road": 12123,
+        "none": 71
+      }
+    },
+    "target": {
+      "rows": 34858,
+      "with_coords": 34856,
+      "rate": 0.999942624361696,
+      "by_level": {
+        "road": 32489,
+        "emd": 2367,
+        "none": 2
+      }
+    },
+    "business": {
+      "rows": 5564,
+      "with_coords": 5564,
+      "rate": 1.0,
+      "by_level": {
+        "road": 5525,
+        "emd": 39
+      }
+    },
+    "hydrant": {
+      "rows": 3359,
+      "with_coords": 3336,
+      "rate": 0.9931527240250074,
+      "by_level": {
+        "source_xy": 3162,
+        "road": 156,
+        "none": 23,
+        "emd": 18
+      }
+    }
+  },
+  "source_coords": {
+    "hydrant": {
+      "present": 3359,
+      "within_bbox": 3162
+    }
+  },
+  "fire_deduplication": {
+    "keys": [
+      "occurred_at",
+      "sgg",
+      "emd",
+      "fire_type",
+      "center"
+    ],
+    "rows_before": 31034,
+    "rows_after": 29373,
+    "removed": 1661,
+    "removed_share": 0.053521943674679384,
+    "removed_by_file": {
+      "울산광역시소방본부_화재발생현황 데이터셋__화재발생_0000.csv": 4,
+      "울산광역시소방본부_화재발생현황 데이터셋__화재발생_2021.csv": 1657
+    }
+  },
+  "fires": {
+    "rows": 29373,
+    "with_year": 29373,
+    "in_year_range": 11869,
+    "with_grid": 29302,
+    "usable": 11863,
+    "year_range": [
+      2014,
+      2021
+    ],
+    "with_real_time": 27991,
+    "time_note": "플랫폼 _2021 파일은 시각이 000000 이라 시간대 분석에서 제외된다",
+    "by_year": {
+      "2014": 1697,
+      "2015": 1468,
+      "2016": 1538,
+      "2017": 1559,
+      "2018": 1491,
+      "2019": 1334,
+      "2020": 1395,
+      "2021": 1381
+    }
+  },
+  "panel": {
+    "rows": 11672,
+    "grids": 1459,
+    "years": [
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021
+    ],
+    "total_fires": 11863.0
+  }
+}

@@ -255,20 +255,68 @@ def build_prompt(question: str, hits: list[tuple[Doc, float]]) -> str:
     return "\n".join(lines)
 
 
-#: 답변에 나온 법령 인용을 골라내는 규칙. 「법령명」 제N조(의N) 제N항 제N호, 별표 N.
-_CITE_RE = re.compile(r"「([^」]{2,60})」|제\s*(\d+)\s*조(?:\s*의\s*(\d+))?|별표\s*(\d+)")
+#: 답변에서 법령 인용을 골라내는 규칙.
+#: 「법령명」 / 제N조(의N)(제N항)(제N호) / 별표 N.
+#: 조·항·호를 하나로 묶어야 '제50조제9항' 처럼 항만 틀린 인용을 잡을 수 있다.
+_ART_RE = re.compile(
+    r"제\s*(\d+)\s*조(?:\s*의\s*(\d+))?"
+    r"(?:\s*제?\s*(\d+)\s*항)?(?:\s*제?\s*(\d+)\s*호)?")
+_LAW_RE = re.compile(r"「([^」]{2,60})」")
+_ANNEX_RE = re.compile(r"별표\s*(\d+)")
+
+#: 법제처 공식 약칭. 모델은 약칭을 쓰는데 원문은 정식 명칭만 담고 있다.
+#: 약칭을 위반으로 세면 경고가 쏟아져 진짜 위반이 묻힌다.
+LAW_ALIASES = {
+    "소방시설법": "소방시설 설치 및 관리에 관한 법률",
+    "화재예방법": "화재의 예방 및 안전관리에 관한 법률",
+    "다중이용업소법": "다중이용업소의 안전관리에 관한 특별법",
+    "소방시설공사업법": "소방시설공사업법",
+}
+
+#: 항 번호는 조문 본문에서 ①②③ 으로 적힌다. 제1항 = ①.
+_CIRCLED = {i: chr(0x2460 + i - 1) for i in range(1, 21)}
+
+#: 낫표 없이 본문에 적히는 법령명. 이 꼬리로 끝나는 말을 법령명 후보로 본다.
+_LAW_TAIL = re.compile(
+    r"[가-힣][가-힣0-9·ㆍ ]{2,40}?(?:법률 시행규칙|법률 시행령|법 시행규칙|법 시행령"
+    r"|에 관한 법률|특별법|기본법|관리법|[가-힣]법)")
+
+
+def _art_key(m: re.Match) -> str:
+    """조문 인용 하나를 표준 표기로. 항·호까지 포함한다."""
+    art, sub, para, item = m.groups()
+    k = f"제{art}조" + (f"의{sub}" if sub else "")
+    if para:
+        k += f"제{para}항"
+    if item:
+        k += f"제{item}호"
+    return k
 
 
 def _citations(text: str) -> set[str]:
-    """인용된 법령명과 조문 번호를 표준 표기로 모은다."""
-    out: set[str] = set()
-    for law, art, sub, annex in _CITE_RE.findall(str(text)):
-        if law:
-            out.add("법:" + re.sub(r"\s+", "", law))
-        elif art:
-            out.add(f"조:{art}의{sub}" if sub else f"조:{art}")
-        elif annex:
-            out.add(f"별표:{annex}")
+    """인용된 법령명·조문·별표를 표준 표기로 모은다."""
+    t = str(text)
+    out = {"법:" + re.sub(r"\s+", "", m) for m in _LAW_RE.findall(t)}
+    out |= {"별표:" + m for m in _ANNEX_RE.findall(t)}
+    out |= {"조:" + _art_key(m) for m in _ART_RE.finditer(t)}
+    return out
+
+
+def _pairs(text: str) -> set[tuple[str, str]]:
+    """(법령명, 조문) 짝. 답변에서 법령명 뒤 40자 안에 나온 조문을 그 법의 것으로 본다.
+
+    법령명과 조문을 따로 확인하면, 자료에 「법A」와 (다른 법의) 제7조가 각각
+    있을 때 실제로는 없는 「법A」 제7조가 통과한다. 실무에서 이런 인용은
+    조문이 아예 없는 것보다 나쁘다 — 그럴듯해서 확인 없이 쓰이기 때문이다.
+    """
+    t = str(text)
+    out: set[tuple[str, str]] = set()
+    for lm in list(_LAW_RE.finditer(t)) + list(_LAW_TAIL.finditer(t)):
+        law = re.sub(r"\s+", "", lm.group(1) if lm.re is _LAW_RE else lm.group(0))
+        tail = t[lm.end():lm.end() + 40]
+        am = _ART_RE.search(tail)
+        if am and tail[:am.start()].strip(" 」,·") == "":
+            out.add((law, _art_key(am)))
     return out
 
 
@@ -276,34 +324,95 @@ def check_grounding(answer_text: str, hits: list[tuple["Doc", float]]) -> dict:
     """답변이 인용한 조문이 실제로 검색된 자료 안에 있는지 대조한다.
 
     RAG 라도 모델은 '있을 법한' 조문을 만들어 낸다. 소방 실무에서 조문 번호가
-    한 자리 틀리면 그 답변은 쓸모가 없는 정도가 아니라 위험하다. 그래서 답변에
-    등장한 법령명·조문 번호를 전부 뽑아, 검색해 온 원문에 그 표기가 없으면
-    **근거 없는 인용**으로 표시한다. 지우지는 않는다 — 사람이 보고 판단해야 한다.
+    한 자리 틀리면 그 답변은 쓸모가 없는 정도가 아니라 위험하다. 두 가지를 본다.
+
+    1. 낱개 대조 — 답변에 나온 법령명·조문·별표가 검색 원문에 있는가.
+    2. 짝 대조 — 「법A」 제N조 처럼 붙여 쓴 것이 **같은 문서 안에서** 확인되는가.
+       법령명과 조문이 서로 다른 문서에 흩어져 있으면 그 조합은 근거가 없다.
 
     대조는 공백을 지운 원문에 대한 포함 검사로 한다. 원문은 법령명을 「」 없이
     적고 답변은 「」로 감싸는 등 표기가 다를 뿐인데, 그 차이를 위반으로 세면
     경고가 쏟아져 정작 진짜 위반이 묻힌다.
-    """
-    corpus = " ".join(f"{d.title} {d.ref or ''} {d.text}" for d, _ in hits)
-    flat = re.sub(r"\s+", "", corpus)
-    used = _citations(answer_text)
 
+    지우지는 않는다 — 사람이 보고 판단해야 한다.
+    """
+    flats = [re.sub(r"\s+", "", f"{d.title} {d.ref or ''} {d.text}") for d, _ in hits]
+    # 문서가 '무엇에 관한 문서인가'. 조문 하나가 곧 문서 하나이므로,
+    # 여기에는 그 문서가 실제로 담고 있는 법령명과 조문 번호만 들어 있다.
+    idents = [re.sub(r"\s+", "", f"{d.title} {d.ref or ''}") for d, _ in hits]
+    flat = " ".join(flats)
     unsupported = []
-    for tok in sorted(used):
+
+    unverified = []
+    for tok in sorted(_citations(answer_text)):
         kind, _, val = tok.partition(":")
         if kind == "법":
-            ok = val in flat
-        elif kind == "조":
-            base, _, sub = val.partition("의")
-            ok = (f"제{base}조의{sub}" in flat) if sub else (f"제{base}조" in flat)
-        else:                                   # 별표
-            ok = f"별표{val}" in flat
-        if not ok:
+            full = re.sub(r"\s+", "", LAW_ALIASES.get(val, val))
+            if val not in flat and full not in flat:
+                unsupported.append(tok)
+            continue
+        if kind == "별표":
+            if f"별표{val}" not in flat:
+                unsupported.append(tok)
+            continue
+
+        # 조문 — 먼저 조 번호가 있는지 본다.
+        base = re.match(r"제\d+조(?:의\d+)?", val).group()
+        if base not in flat:
             unsupported.append(tok)
+            continue
+        if val == base or val in flat:
+            continue
+
+        # 항까지 붙은 인용. 조문 본문은 항을 ①②③ 으로 적으므로,
+        # 그 조문을 담은 문서에 해당 동그라미 숫자가 있는지로 확인한다.
+        pm = re.search(r"제(\d+)항", val)
+        if not pm:
+            unverified.append(tok)
+            continue
+        mark = _CIRCLED.get(int(pm.group(1)))
+        body = [f for f in flats if base in f]
+        if not mark or not body:
+            unverified.append(tok)
+        elif any(mark in f for f in body):
+            continue                              # ① 로 적힌 항을 찾았다
+        elif any(re.search(r"[\u2460-\u2473]", f) for f in body):
+            # 그 조문이 항을 동그라미로 적고 있는데 해당 항이 없다 = 없는 항이다
+            unsupported.append(tok)
+        else:
+            unverified.append(tok)
+
+    unpaired = []
+    for law, art in sorted(_pairs(answer_text)):
+        base = re.match(r"제\d+조(?:의\d+)?", art).group()
+        names = {law, re.sub(r"\s+", "", LAW_ALIASES.get(law, law))}
+
+        # ① 그 조문을 담은 문서가 실제로 그 법의 것인가.
+        ok = any(any(nm in ident for nm in names) and base in ident
+                 for ident in idents)
+        # ② 아니면 어느 문서 본문이 '「법명」 제N조' 형태로 붙여 인용하고 있는가.
+        #    본문 어딘가에 법령명이 있고 다른 데 조문이 있다고 해서 짝이 되지는
+        #    않는다. 그런 식이면 자료에 흩어진 조각으로 없는 조합이 만들어진다.
+        if not ok:
+            for f in flats:
+                for nm in names:
+                    if any(f[m.end():m.end() + 30].startswith(base)
+                           for m in re.finditer(re.escape(nm), f)):
+                        ok = True
+                        break
+                if ok:
+                    break
+        if not ok:
+            unpaired.append(f"{law} {base}")
+
     return {
-        "ok": not unsupported,
-        "cited": sorted(used),
+        "ok": not unsupported and not unpaired,
+        "cited": sorted(_citations(answer_text)),
         "unsupported": unsupported,
+        "unpaired": unpaired,
+        # 원문이 '①' 로만 적는 조문이라 항·호 표기로는 대조할 수 없는 것.
+        # 위반은 아니지만, 담당자가 원문을 열어 확인할 대상이다.
+        "unverified": unverified,
         "n_sources": len(hits),
     }
 

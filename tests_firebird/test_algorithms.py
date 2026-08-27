@@ -171,6 +171,56 @@ class TestRoute(unittest.TestCase):
                 improved += 1
         self.assertGreater(improved, 0, "Or-opt 가 한 번도 기여하지 않으면 뺄 이유가 있다")
 
+    def test_비대칭_행렬에서_2opt가_경로를_늘리지_않는다(self):
+        """도로거리는 방향에 따라 값이 다르다.
+
+        구간을 뒤집으면 그 안의 모든 변이 반대 방향이 되어 값이 바뀐다.
+        양 끝 변 네 칸만 비교하면 실제로는 길어지는 이동을 개선으로 받아들인다 —
+        수정 전에는 400회 중 93회가 길어졌고 최악이 +72%였다.
+        """
+        worse = 0
+        for s in range(200):
+            rng = np.random.default_rng(s)
+            n = int(rng.integers(6, 13))
+            d = rng.uniform(300, 6000, (n, n))
+            np.fill_diagonal(d, 0.0)
+            for closed in (False, True):
+                o = RT.nearest_neighbor(d, 0)
+                before = RT.route_length(d, o, closed=closed)
+                after = RT.route_length(
+                    d, RT._two_opt_matrix(d, list(o), closed=closed), closed=closed)
+                if after > before + 1e-6:
+                    worse += 1
+        self.assertEqual(worse, 0, f"{worse}번 길어졌다")
+
+    def test_개선_단계는_입력보다_나쁜_해를_돌려주지_않는다(self):
+        for s in range(120):
+            rng = np.random.default_rng(2000 + s)
+            n = int(rng.integers(5, 13))
+            d = rng.uniform(300, 6000, (n, n))
+            np.fill_diagonal(d, 0.0)
+            o = RT.nearest_neighbor(d, 0)
+            for closed in (False, True):
+                got = RT._improve(d, o, closed=closed)
+                self.assertLessEqual(RT.route_length(d, got, closed=closed),
+                                     RT.route_length(d, o, closed=closed) + 1e-6)
+                self.assertEqual(got[0], 0)
+                self.assertEqual(sorted(got), list(range(n)))
+
+    def test_지점이_둘이어도_출발점을_지킨다(self):
+        d = np.array([[0.0, 5.0], [5.0, 0.0]])
+        self.assertEqual(RT.solve_route(d, start=1), [1, 0])
+        self.assertEqual(RT.solve_route(d, start=0), [0, 1])
+
+    def test_결측_가중치로_분할이_멈추지_않는다(self):
+        """순찰점수에 결측이 있으면 KMeans(sample_weight=) 가 그대로 터진다."""
+        df = pd.DataFrame({"lon": [129.30, 129.31, 129.32, 129.33, 129.34],
+                           "lat": [35.50, 35.51, 35.52, 35.53, 35.54],
+                           "w": [1.0, np.nan, 2.0, np.nan, 3.0]})
+        lab = RT.partition_teams(df, 2, weight_col="w")
+        self.assertEqual(len(lab), 5)
+        self.assertTrue((lab >= 0).all())
+
     def test_비대칭_거리행렬도_다룬다(self):
         """도로거리는 일방통행 때문에 A→B 와 B→A 가 다르다."""
         worst = 0.0

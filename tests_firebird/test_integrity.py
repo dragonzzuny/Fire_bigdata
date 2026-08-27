@@ -70,7 +70,39 @@ class TestPlanFidelity(unittest.TestCase):
         cand = DOC.replace("| 성남119안전센터 | 2329_3460 | 6.0 km |\n", "")
         r = PLN.check_fidelity(DOC, cand)
         self.assertFalse(r["ok"])
-        self.assertTrue(r["dropped_too_many"])
+        self.assertTrue(r["dropped_numbers"])
+
+    def test_숫자_하나만_빠져도_막는다(self):
+        """표의 한 칸이 조용히 사라진 계획서는 틀린 계획서다."""
+        r = PLN.check_fidelity(DOC, DOC.replace("4.4 km", ""))
+        self.assertFalse(r["ok"])
+        self.assertIn("4.4", r["dropped_numbers"])
+
+    def test_음수_부호가_사라지면_막는다(self):
+        a = "전년 대비 -3.5%p 감소"
+        self.assertFalse(PLN.check_fidelity(a, "전년 대비 3.5%p 감소")["ok"])
+
+    def test_낫표_없는_법령명_변조도_막는다(self):
+        a = "근거: 소방기본법 시행규칙 제6조"
+        self.assertFalse(PLN.check_fidelity(a, "근거: 소방시설법 시행규칙 제6조")["ok"])
+
+    def test_한을_1개로_고치는_문체_교정은_통과한다(self):
+        """공문투로 고치면 '한 격자'가 '1개 격자'가 된다. 사실은 바뀌지 않았다.
+
+        이걸 위반으로 세면 다듬기가 한 번도 채택되지 않아 기능이 죽는다.
+        실제로 그렇게 되어 있었고, 실측으로 확인해 규칙을 고쳤다.
+        """
+        a = "한 격자는 도보 5~7분 거리의 한 블록 범위입니다."
+        b = "1개 격자는 도보 5~7분 거리의 1개 블록 범위임."
+        r = PLN.check_fidelity(a, b)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["added_numbers_weighty"], [])
+
+    def test_반올림은_막는다(self):
+        a = "총 이동 41.4 km"
+        r = PLN.check_fidelity(a, "총 이동 41 km")
+        self.assertFalse(r["ok"])
+        self.assertIn("41.4", r["dropped_numbers"])
 
     def test_자릿점_표기_차이는_넘긴다(self):
         a = "총 1,234 m 이동"
@@ -102,7 +134,7 @@ class TestAnswerGrounding(unittest.TestCase):
     def test_없는_조문을_인용하면_잡아낸다(self):
         g = A.check_grounding("제31조의2 에 따릅니다.", self._hits())
         self.assertFalse(g["ok"])
-        self.assertIn("조:31의2", g["unsupported"])
+        self.assertIn("조:제31조의2", g["unsupported"])
 
     def test_없는_법령을_인용하면_잡아낸다(self):
         g = A.check_grounding("「소방시설 설치 및 관리에 관한 법률」 제7조입니다.",
@@ -112,6 +144,83 @@ class TestAnswerGrounding(unittest.TestCase):
     def test_없는_별표를_인용하면_잡아낸다(self):
         g = A.check_grounding("별표 9 를 보십시오.", self._hits())
         self.assertFalse(g["ok"])
+
+    def test_조문_본문이_없으면_항까지는_확인하지_못했다고_말한다(self):
+        """자료에 그 조문의 본문이 없고 다른 문서의 인용만 있으면,
+        그 항이 실재하는지 알 수 없다. 모르는 것을 위반으로 세면
+        '확인했다'는 말의 값이 떨어진다. 모른다고 말하고 넘긴다."""
+        g = A.check_grounding("같은 법 제50조제9항에 따릅니다.", self._hits())
+        self.assertTrue(g["ok"])
+        self.assertIn("조:제50조제9항", g["unverified"])
+
+    def test_원문에_있는_항은_그대로_통과한다(self):
+        g = A.check_grounding("같은 법 제50조제1항에 따릅니다.", self._hits())
+        self.assertTrue(g["ok"])
+        self.assertEqual(g["unverified"], [])
+
+    def test_법령과_조문을_짝지어_본다(self):
+        """자료에 「법A」와 (다른 법의) 제7조가 각각 있다고 해서
+        「법A」 제7조가 근거가 되지는 않는다."""
+        hits = [
+            (A.Doc(doc_id="1", source="법령", title="소방기본법 제10조",
+                   ref="소방기본법 제10조", text="소방용수시설의 설치 기준"), 9.0),
+            (A.Doc(doc_id="2", source="법령",
+                   title="화재의 예방 및 안전관리에 관한 법률 제7조",
+                   ref="화재의 예방 및 안전관리에 관한 법률 제7조",
+                   text="소방관서장은 화재안전조사를 실시할 수 있다"), 8.0)]
+        self.assertTrue(A.check_grounding("「소방기본법」 제10조에 따릅니다.", hits)["ok"])
+        bad = A.check_grounding("「소방기본법」 제7조에 따릅니다.", hits)
+        self.assertFalse(bad["ok"])
+        self.assertTrue(bad["unpaired"])
+
+    def test_자료에_흩어진_조각으로_짝을_만들지_않는다(self):
+        """어느 문서 본문이 다른 법을 언급하고, 그 문서가 제7조라고 해서
+        '그 다른 법 제7조'가 근거가 되지는 않는다. 짝은 문서의 정체(제목·근거)
+        또는 본문의 붙여 쓴 인용으로만 인정한다."""
+        hits = [(A.Doc(
+            doc_id="1", source="법령",
+            title="화재의 예방 및 안전관리에 관한 법률 제7조(화재안전조사)",
+            ref="화재의 예방 및 안전관리에 관한 법률 제7조",
+            text="소방관서장은 「소방기본법」에 따른 소방활동과 별도로 "
+                 "화재안전조사를 실시할 수 있다."), 9.0)]
+        self.assertTrue(A.check_grounding(
+            "「화재의 예방 및 안전관리에 관한 법률」 제7조입니다.", hits)["ok"])
+        bad = A.check_grounding("「소방기본법」 제7조입니다.", hits)
+        self.assertFalse(bad["ok"])
+        self.assertTrue(bad["unpaired"])
+
+    def test_공식_약칭은_위반이_아니다(self):
+        """모델은 '화재예방법' 이라 쓰고 원문은 정식 명칭만 담고 있다.
+        약칭을 위반으로 세면 경고가 쏟아져 진짜 위반이 묻힌다."""
+        hits = [(A.Doc(
+            doc_id="1", source="법령",
+            title="화재의 예방 및 안전관리에 관한 법률 제7조",
+            ref="화재의 예방 및 안전관리에 관한 법률 제7조",
+            text="화재안전조사를 실시할 수 있다."), 9.0)]
+        self.assertTrue(A.check_grounding("「화재예방법」 제7조입니다.", hits)["ok"])
+
+    def test_항은_조문_본문의_동그라미_숫자로_대조한다(self):
+        """조문 본문은 항을 ①②③ 으로 적는다. 없는 항은 걸러야 하고,
+        있는 항을 위반으로 세면 안 된다."""
+        hits = [(A.Doc(
+            doc_id="1", source="법령", title="화재의 예방 및 안전관리에 관한 법률 제7조",
+            ref="화재의 예방 및 안전관리에 관한 법률 제7조",
+            text="① 소방관서장은 화재안전조사를 할 수 있다. "
+                 "② 조사 항목은 대통령령으로 정한다."), 9.0)]
+        self.assertTrue(A.check_grounding("제7조제2항에 따릅니다.", hits)["ok"])
+        bad = A.check_grounding("제7조제9항에 따릅니다.", hits)
+        self.assertFalse(bad["ok"])
+        self.assertIn("조:제7조제9항", bad["unsupported"])
+
+    def test_낫표_없이_적어도_짝을_본다(self):
+        hits = [
+            (A.Doc(doc_id="1", source="법령", title="소방기본법 제10조",
+                   ref="소방기본법 제10조", text="소방용수시설"), 9.0),
+            (A.Doc(doc_id="2", source="법령",
+                   title="화재의 예방 및 안전관리에 관한 법률 제7조",
+                   ref="화재의 예방 및 안전관리에 관한 법률 제7조",
+                   text="화재안전조사"), 8.0)]
+        self.assertFalse(A.check_grounding("소방기본법 제7조에 따릅니다.", hits)["ok"])
 
     def test_모른다고_답하면_통과한다(self):
         g = A.check_grounding("제공된 자료에서 확인되지 않습니다.", self._hits())

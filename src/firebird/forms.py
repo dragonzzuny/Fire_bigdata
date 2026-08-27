@@ -63,7 +63,9 @@ def _station_distances(row: pd.Series, stations: pd.DataFrame) -> dict:
     계산할 수 있다. 도로거리가 아니라 직선거리임을 표기와 함께 넘긴다.
     """
     out = {}
-    if stations is None or stations.empty or "lon" not in stations.columns:
+    need = {"name", "lon", "lat"}
+    if (stations is None or stations.empty
+            or not need.issubset(set(stations.columns))):
         return out
     lon0, lat0 = float(row.get("lon", np.nan)), float(row.get("lat", np.nan))
     if not (np.isfinite(lon0) and np.isfinite(lat0)):
