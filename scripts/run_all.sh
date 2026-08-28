@@ -80,5 +80,6 @@ step "10/10 발표자료 검증 (수치 출처 · 장표 배치 · 문서 수치
 step "완료"
 echo "결과:   outputs/  (evaluation.json, allocation_*.csv, inspection_plans/, *.pptx)"
 echo "화면 캡처: $PY scripts/08_screenshots.py  (대시보드를 먼저 띄워 둘 것)"
+echo "시연 녹화: $PY scripts/18_demo_video.py      (리허설·백업용 mp4)"
 echo "그림:   reports/figures/"
 echo "대시보드: $PY -m streamlit run app/streamlit_app.py"
