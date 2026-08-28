@@ -48,7 +48,7 @@ class Recorder:
 
     def tab(self, name: str, settle: float, label: str) -> None:
         self.page.get_by_role("tab", name=name).click(timeout=25_000)
-        self.beat(settle, label)
+        self.settle(settle, label)
 
     def scroll(self, ratio: float, seconds: float = 1.5) -> None:
         """화면을 천천히 내린다. 뚝 끊기면 무엇을 보는지 알 수 없다."""
@@ -58,50 +58,71 @@ class Recorder:
             self.page.wait_for_timeout(int(seconds * self.pace * 1000 / steps))
         self.elapsed += seconds * self.pace
 
+    def to(self, text: str, seconds: float, label: str = "") -> bool:
+        """특정 문구가 보이는 곳으로 올린다/내린다.
+
+        휠을 몇 번 굴릴지로 정하면 화면 길이가 조금만 달라져도 엉뚱한 곳을
+        비춘다. 실제로 계획서를 만들기도 전에 지나가 버린 적이 있다.
+        """
+        try:
+            self.page.get_by_text(text).first.scroll_into_view_if_needed(
+                timeout=20_000)
+        except Exception:                                 # noqa: BLE001
+            print(f"  '{text}' 를 찾지 못해 그 장면은 건너뛴다")
+            return False
+        self.beat(seconds, label)
+        return True
+
+    def settle(self, extra: float = 0.0, label: str = "") -> None:
+        """Streamlit 이 다 그릴 때까지 기다린 뒤 지도에 시간을 더 준다.
+
+        재계산 중에는 pydeck 이 세계 지도로 돌아가 있다. 그 상태로 녹화되면
+        울산 자료를 보여준다면서 유럽·아프리카가 나온다. 실제로 그랬다.
+        """
+        try:                                              # 실행 표시가 사라질 때까지
+            self.page.locator("[data-testid='stStatusWidget']").wait_for(
+                state="detached", timeout=90_000)
+        except Exception:                                 # noqa: BLE001
+            pass
+        if extra:
+            self.beat(extra, label)
+        elif label:
+            print(f"  [{int(self.elapsed // 60)}:{int(self.elapsed % 60):02d}] {label}")
+
 
 def record(out_dir: Path, pace: float) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         ctx = browser.new_context(
-            viewport={"width": 1600, "height": 900},
+            # 세로가 짧으면 화면이 접혀 스크롤이 늘고, 지도가 자꾸 잘린다.
+            viewport={"width": 1600, "height": 1000},
             record_video_dir=str(out_dir),
-            record_video_size={"width": 1600, "height": 900})
+            record_video_size={"width": 1600, "height": 1000})
         page = ctx.new_page()
         page.goto(URL, wait_until="domcontentloaded", timeout=120_000)
         r = Recorder(page, pace)
         r.beat(6, "대시보드 로드")
 
         # --- 1. 예방점검 배분 -------------------------------------------
-        r.tab("예방점검 배분", 13, "① 예방점검 배분 — 인력을 먼저 넣는다")
-        r.scroll(0.9, 3)
-        r.beat(6, "   위험 상위 20% 그대로 가면 1위 구역도 못 끝낸다")
-        r.scroll(1.2, 3)
-        r.beat(7, "   같은 인력으로 갈 수 있는 조합을 고른 결과")
-        page.mouse.wheel(0, -2200)
-        r.beat(2)
+        r.tab("예방점검 배분", 6, "① 예방점검 배분 — 인력을 먼저 넣는다")
+        r.to("위험도 상위", 8, "   위험 상위 20% 그대로 가면 1위 구역도 못 끝낸다")
+        r.to("점검 순위표", 4)
+        r.settle(10, "   같은 인력으로 갈 수 있는 조합을 고른 결과 (지도)")
 
         # --- 2. 순찰 동선 (핵심) ----------------------------------------
-        r.tab("예방순찰 계획", 24, "② 순찰 동선 — 관서에서 출발해 관할을 돌고 복귀")
-        r.scroll(1.4, 4)
-        r.beat(10, "   관서별 색, 실제 도로 주행거리")
-        r.scroll(1.0, 3)
-        r.beat(8, "   관서별 순찰 구역표")
+        r.tab("예방순찰 계획", 13, "② 순찰 동선 — 관서에서 출발해 관할을 돌고 복귀")
+        if r.to("관서별 순찰 구역", 4):
+            r.settle(14, "   관서별 색, 실제 도로 주행거리")
+        r.scroll(0.7, 3)
+        r.beat(6, "   관서별 순찰 구역표")
 
         # --- 3. 조건을 바꾸면 계획이 다시 짜인다 (핵심) -----------------
         try:
-            # Streamlit 은 창이 아니라 안쪽 컨테이너가 스크롤되므로
-            # window.scrollTo 가 듣지 않는다. 요소를 지정해 올린다.
-            page.get_by_text("관서별 순찰 구역").first.scroll_into_view_if_needed(
-                timeout=15_000)
-            r.beat(3)
-            # 목록에서 이름으로 찾으면 목적 이름이 바뀔 때 깨진다.
-            # 화면 캡처 스크립트와 같은 방식으로 두 번째 항목을 고른다.
+            r.to("순찰 목적", 2, "③ 순찰 목적을 바꾼다")
             sel = page.locator("[data-testid='stMain']").get_by_role("combobox").first
-            sel.wait_for(state="visible", timeout=30_000)   # 탭이 다 그려질 때까지
-            r.beat(1, "③ 순찰 목적을 바꾼다")
+            sel.wait_for(state="visible", timeout=30_000)
             # 한 번의 클릭으로 목록이 안 열리는 경우가 있다(스크롤 직후 특히).
-            # 열릴 때까지 몇 번 더 눌러 본다.
             opts = page.get_by_role("option")
             for attempt in range(4):
                 sel.click(timeout=20_000)
@@ -114,44 +135,56 @@ def record(out_dir: Path, pace: float) -> Path:
                 raise TimeoutError("순찰 목적 목록이 열리지 않았다")
             label = opts.nth(1).inner_text().strip()
             opts.nth(1).click()
-            r.beat(30, f"   → {label} · 대상 구역과 동선이 다시 계산된다")
-            try:
-                block = page.locator("[data-testid='stHorizontalBlock']").filter(
-                    has_text="바꾸기 전").first
-                block.scroll_into_view_if_needed(timeout=15_000)
-                r.beat(10, "   바꾸기 전 / 바꾼 뒤 — 같은 범위, 같은 배율")
-            except Exception:                             # noqa: BLE001
-                r.scroll(1.4, 4)
-            r.scroll(0.8, 3)
-            r.beat(8, "   달라진 구역 수와 이동거리")
+            # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다. 기다린다.
+            r.settle(6, f"   → {label} · 대상 구역과 동선이 다시 계산된다")
+            if r.to("바꾸기 전", 4):
+                r.settle(12, "   바꾸기 전 / 바꾼 뒤 — 같은 범위, 같은 배율")
+            r.to("가장 먼 순찰조", 8, "   달라진 구역 수와 이동거리")
         except Exception as exc:                          # noqa: BLE001
             print(f"  목적 변경 장면 건너뜀: {type(exc).__name__} — {str(exc)[:120]}")
 
         # --- 4. 계획서 (결과물) -----------------------------------------
-        r.tab("순찰·점검 계획서", 6, "④ 계획서 — 결재 올릴 문서를 만든다")
+        r.tab("순찰·점검 계획서", 5, "④ 계획서 — 결재 올릴 문서를 만든다")
         try:
             page.get_by_text("AI로 문체 다듬기").click(timeout=10_000)
             r.beat(2, "   AI 문체 다듬기는 끈다(빠르고 결과가 일정하다)")
         except Exception:                                 # noqa: BLE001
             pass
-        r.scroll(1.0, 3)
+        r.to("계획서 생성", 3)
         page.get_by_role("button", name="계획서 생성").click(timeout=25_000)
-        r.beat(22, "   생성 중")
+        r.settle(4, "   생성 완료")
         try:
-            page.locator(".docview").first.scroll_into_view_if_needed(timeout=20_000)
-            r.beat(4, "   공문 서식 그대로 나온 문서")
-            r.scroll(2.2, 8)
-            r.beat(4, "   관서별 순찰 구역·중점 확인사항·법령 근거")
+            page.locator(".docview").first.scroll_into_view_if_needed(timeout=25_000)
+            r.beat(6, "   공문 서식 그대로 나온 문서")
+            r.scroll(2.2, 9)
+            r.beat(5, "   관서별 순찰 구역·중점 확인사항·법령 근거")
         except Exception as exc:                          # noqa: BLE001
             print(f"  문서 장면 건너뜀: {type(exc).__name__}")
 
-        # --- 5. 법정 서식 · 업무 도우미 (밀리면 버리는 순서) ------------
-        r.tab("대응취약 구역", 12, "⑤ 대응취약 — 고위험인데 소화전이 없는 구역")
-        r.scroll(1.2, 4)
-        r.beat(6)
-        r.tab("업무 도우미", 8, "⑥ 업무 도우미 — 법령을 조문 번호와 함께")
-        r.scroll(0.8, 3)
-        r.beat(6)
+        # --- 5. 대응취약 · 업무 도우미 (밀리면 버리는 순서) --------------
+        r.tab("대응취약 구역", 8, "⑤ 대응취약 — 고위험인데 소화전이 없는 구역")
+        r.to("소방용수 사각지대", 10)
+        r.tab("업무 도우미", 6, "⑥ 업무 도우미 — 법령을 조문 번호와 함께")
+        try:
+            # 자주 찾는 질문 첫 칸을 누른다. 문구가 바뀌어도 깨지지 않게
+            # 이름이 아니라 자리로 집는다.
+            page.get_by_text("자주 찾는 질문").first.scroll_into_view_if_needed(
+                timeout=15_000)
+            page.wait_for_timeout(1_500)
+            btn = page.locator("[data-testid='stMain']").get_by_role(
+                "button").filter(has_text="화재예방강화지구").first
+            btn.click(timeout=15_000)
+            # 자주 찾는 질문을 누르면 그대로 답변까지 실행된다(qa_run).
+            # 답변은 15~40초 걸린다. 상태 표시만 보고 넘어가면 아직 계산 중인
+            # 화면이 찍힌다. 결과가 실제로 뜰 때까지 기다린다.
+            r.beat(6, "   자주 찾는 질문을 눌러 답을 받는다 (15~40초)")
+            page.get_by_text("근거 자료").first.wait_for(state="visible",
+                                                      timeout=90_000)
+            r.to("근거 자료", 10, "   법령명과 조문 번호가 함께 나온다")
+        except Exception as exc:                          # noqa: BLE001
+            print(f"  질의응답 장면 건너뜀: {type(exc).__name__} — {str(exc)[:100]}")
+            r.scroll(0.8, 3)
+            r.beat(6)
 
         print(f"\n  총 길이 약 {int(r.elapsed // 60)}분 {int(r.elapsed % 60)}초")
         video = page.video

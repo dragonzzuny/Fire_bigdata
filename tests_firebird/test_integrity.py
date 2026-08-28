@@ -538,3 +538,24 @@ class TestBuildingAgeFeatures(unittest.TestCase):
         self.assertIn("adopted", got)
         self.assertIn("delta_ci", got)
         self.assertIn("history_only", got)
+
+
+class TestStreamlitWidgetState(unittest.TestCase):
+    """위젯 상태를 세션에 넣을 때 키를 맞췄는지 본다.
+
+    '자주 찾는 질문' 버튼이 눌려도 아무 일이 없던 적이 있다. 버튼이
+    st.session_state["qa_question"] 만 채웠는데, 정작 질문을 읽는 위젯의
+    키는 "qa_input" 이었다. text_area 의 value= 는 첫 렌더의 기본값일 뿐
+    이미 만들어진 위젯에는 반영되지 않는다. 시연 중에 드러나면 늦다.
+    """
+
+    def setUp(self):
+        from pathlib import Path
+        self.src = (Path(__file__).resolve().parents[1] / "app"
+                    / "streamlit_app.py").read_text(encoding="utf-8")
+
+    def test_자주찾는질문_버튼이_위젯_키를_채운다(self):
+        self.assertIn('st.session_state["qa_input"] = q', self.src)
+
+    def test_질문_위젯_키가_그대로다(self):
+        self.assertIn('key="qa_input"', self.src)

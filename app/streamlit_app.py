@@ -1508,6 +1508,10 @@ with tabs[6]:
         label = q if len(q) <= 26 else q[:25] + "…"
         if cols[i % 4].button(f"{label}", key=f"q_{i}", width='stretch',
                               help=q):
+            # 위젯 키(qa_input)에 직접 넣어야 한다. text_area 의 value= 는
+            # 첫 렌더의 기본값일 뿐이라, 이미 만들어진 위젯에는 반영되지 않는다.
+            # 이것 때문에 자주 찾는 질문 버튼이 눌려도 아무 일이 없었다.
+            st.session_state["qa_input"] = q
             st.session_state["qa_question"] = q
             st.session_state["qa_run"] = True
 
