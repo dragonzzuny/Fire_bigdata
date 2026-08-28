@@ -144,8 +144,18 @@ def zone_ledger(row: pd.Series, *, city_label: str, year: int,
                           blank_reason="" if val else blank_reason(k),
                           route="" if val else fill_route(k))
 
-    fields["건물동수"] = Field("건물동수", f"{num('target_total'):,}", "개소",
-                             source="특정소방대상물 현황")
+    # 서식의 '건물동수' 는 말 그대로 건축물 동수다. 특정소방대상물 수는 대상물
+    # 단위라 한 건물에 여러 건이 등록될 수 있어 동수보다 크게 나온다
+    # (실측: 한 격자에서 대상물 413건 vs 건축물 206동). 둘을 같은 칸에 넣으면
+    # 서식이 묻는 값과 다른 값이 들어간다. 건축물대장이 있으면 그것을 쓴다.
+    n_target = num("target_total")
+    if n_bld:
+        fields["건물동수"] = Field("건물동수", f"{n_bld:,}", "개",
+                                 source="건축물대장 표제부 동수")
+    else:
+        fields["건물동수"] = Field(
+            "건물동수", blank_reason="건축물대장 미연계",
+            route="국토부 건축물대장 표제부 API(동수)")
     fields["점포수"] = Field("점포수", f"{num('biz_total'):,}", "개소",
                            source="다중이용업소 현황")
     fields["지구면적"] = Field("지구면적", f"{grid_m * grid_m:,}", "㎡",
@@ -188,6 +198,8 @@ def zone_ledger(row: pd.Series, *, city_label: str, year: int,
         feats.append(f"{nm}" + (f" {val}" if val not in (None, "") else ""))
     if not feats:
         feats = [f"{year}년 화재 {num('fires')}건, 누적 {num('fires_cum')}건"]
+    if n_target:
+        feats.append(f"특정소방대상물 {n_target:,}개소")
     fields["지구특징"] = Field("지구특징", " · ".join(feats),
                              source="모델 기여요인(SHAP) 및 화재 이력")
 

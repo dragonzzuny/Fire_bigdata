@@ -394,3 +394,25 @@ class TestBuildingLedgerApi(unittest.TestCase):
         self.assertIn("건축물대장", f.source)
         # 안 온 칸은 그대로 비어 있어야 한다
         self.assertEqual(led["fields"]["건축면적"].value, "")
+
+    def test_건물동수는_대상물_수가_아니다(self):
+        """서식의 '건물동수' 는 건축물 동수다. 특정소방대상물은 대상물 단위라
+        한 건물에 여러 건이 등록될 수 있어 동수보다 크게 나온다
+        (실측: 한 격자에서 대상물 413건 vs 건축물 206동). 둘을 같은 칸에
+        넣으면 서식이 묻는 값과 다른 값이 들어간다."""
+        import pandas as pd
+        from firebird import forms as FM
+        row = pd.Series({"grid_id": "1_1", "lon": 129.3, "lat": 35.5,
+                         "target_total": 413, "biz_total": 159, "fires": 1,
+                         "emd": "달동", "sgg": "남구"})
+        # 건축물대장이 없으면 그 칸은 비운다 — 대상물 수를 대신 넣지 않는다
+        led = FM.zone_ledger(row, city_label="울산광역시", year=2021)
+        self.assertEqual(led["fields"]["건물동수"].value, "")
+        self.assertIn("건축물대장", led["fields"]["건물동수"].route)
+        # 대상물 수는 지구특징에 남는다
+        self.assertIn("413", led["fields"]["지구특징"].value)
+
+        led2 = FM.zone_ledger(row, city_label="울산광역시", year=2021,
+                              building={"연면적": "380,976", "_n": 206})
+        self.assertEqual(led2["fields"]["건물동수"].value, "206")
+        self.assertIn("건축물대장", led2["fields"]["건물동수"].source)

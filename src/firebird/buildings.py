@@ -23,6 +23,7 @@ import logging
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from urllib.parse import unquote
 
 import pandas as pd
 import requests
@@ -32,8 +33,8 @@ from . import grid as G
 
 log = logging.getLogger(__name__)
 
-#: 표제부 조회. 건축물대장정보 서비스(v2).
-TITLE_URL = "http://apis.data.go.kr/1613000/BldRgstService_v2/getBrTitleInfo"
+#: 표제부 조회. 건축HUB 건축물대장정보 서비스.
+TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
 #: 좌표 -> 법정동코드. 격자 중심에서 어느 동인지 알아낸다.
 KAKAO_REGION_URL = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json"
 
@@ -54,8 +55,16 @@ FIELDS = {
 
 
 def load_key() -> str | None:
-    """공공데이터포털 서비스 키. 없으면 None."""
-    return GC.load_api_key(KEY_ENV)
+    """공공데이터포털 서비스 키. 없으면 None.
+
+    포털은 같은 키를 Encoding/Decoding 두 가지로 준다. Encoding 키(%2F, %3D 가
+    들어간 것)를 그대로 requests 의 params 에 넘기면 % 가 다시 %25 로 인코딩돼
+    인증이 깨진다. 어느 쪽을 넣었든 여기서 풀어 두고, 인코딩은 requests 에 맡긴다.
+    """
+    key = GC.load_api_key(KEY_ENV)
+    if not key:
+        return None
+    return unquote(key) if "%" in key else key
 
 
 def region_code(lon: float, lat: float, kakao_key: str,
@@ -102,32 +111,102 @@ def _rows(xml_text: str) -> tuple[list[dict], int]:
     return out, total
 
 
-def fetch_title(sigungu_cd: str, bjdong_cd: str, key: str, *,
-                rows_per_page: int = 1000, max_pages: int = 20,
-                timeout: int = 30, pause: float = 0.2) -> pd.DataFrame:
-    """한 법정동의 표제부를 모두 받는다."""
-    got: list[dict] = []
-    for page in range(1, max_pages + 1):
+#: 한 번에 받을 건수. 1000 을 넣으면 서버가 빈 본문을 200 으로 돌려준다
+#: (오류가 아니라 그냥 아무것도 안 온다). 100 은 안정적으로 응답한다.
+ROWS_PER_PAGE = 100
+
+
+def _get_page(session: requests.Session, params: dict, *, timeout: int,
+              tries: int = 6) -> str:
+    """한 쪽을 받는다. 실패하면 점점 더 오래 쉬고 다시.
+
+    이 서버는 두 가지로 실패한다. 연결을 그냥 끊거나(RemoteDisconnected),
+    HTTP 200 에 **빈 본문**을 준다. 둘 다 오류 코드가 아니라서 그대로 두면
+    '자료가 없는 동'으로 조용히 넘어간다 — 서식에 연면적이 비는 이유가
+    자료가 없어서인지 서버가 끊어서인지 구분되지 않는다. 그래서 다시 부른다.
+    같은 요청을 연달아 두 번 보내면 한 번은 3,784건, 한 번은 0건이 오는 것을
+    실제로 확인했다.
+    """
+    for attempt in range(tries):
         try:
-            r = requests.get(TITLE_URL, timeout=timeout, params={
-                "serviceKey": key, "sigunguCd": sigungu_cd, "bjdongCd": bjdong_cd,
-                "numOfRows": rows_per_page, "pageNo": page, "_type": "xml"})
+            r = session.get(TITLE_URL, params=params, timeout=timeout)
             r.raise_for_status()
+            if r.text.strip():
+                return r.text
         except requests.RequestException as exc:
-            log.warning("건축물대장 호출 실패(%s쪽): %s", page, type(exc).__name__)
+            if attempt == tries - 1:
+                log.warning("건축물대장 호출 실패(%s쪽): %s",
+                            params.get("pageNo"), type(exc).__name__)
+        time.sleep(0.8 * (attempt + 1))
+    return ""
+
+
+def fetch_title(sigungu_cd: str, bjdong_cd: str, key: str, *, cfg=None,
+                rows_per_page: int = ROWS_PER_PAGE, timeout: int = 60,
+                pause: float = 0.35, rounds: int = 4,
+                refresh: bool = False) -> pd.DataFrame:
+    """한 법정동의 표제부를 모두 받는다. 받은 것은 디스크에 남긴다.
+
+    쪽 하나가 실패했다고 거기서 멈추면 안 된다. 쪽 번호는 서로 독립이라
+    3쪽이 실패해도 4쪽은 받을 수 있고, 실패한 쪽만 나중에 다시 부르면 된다.
+    처음엔 실패 즉시 멈추게 했더니 달동이 3,784건 중 1,100건에서 끊겼다.
+
+    다 받은 경우에만 캐시한다. 반쯤 받은 것을 캐시하면 그게 정답이 돼 버린다.
+    """
+    cache = None
+    if cfg is not None:
+        cache = cfg.paths.cache / CACHE_NAME / f"{sigungu_cd}_{bjdong_cd}.parquet"
+        if cache.exists() and not refresh:
+            return pd.read_parquet(cache)
+
+    session = requests.Session()
+    base = {"serviceKey": key, "sigunguCd": sigungu_cd, "bjdongCd": bjdong_cd,
+            "numOfRows": rows_per_page, "_type": "xml"}
+
+    first = _get_page(session, {**base, "pageNo": 1}, timeout=timeout)
+    rows, total = _rows(first)
+    if not rows:
+        return pd.DataFrame()
+    pages: dict[int, list[dict]] = {1: rows}
+    n_pages = max(1, -(-total // rows_per_page))
+
+    pending = [p for p in range(2, n_pages + 1)]
+    for rnd in range(rounds):
+        if not pending:
             break
-        rows, total = _rows(r.text)
-        got += rows
-        if not rows or len(got) >= total:
+        still = []
+        for pno in pending:
+            got, _ = _rows(_get_page(session, {**base, "pageNo": pno},
+                                     timeout=timeout))
+            if got:
+                pages[pno] = got
+            else:
+                still.append(pno)
+            time.sleep(pause)
+        if len(still) == len(pending):        # 한 쪽도 못 받았다면 더 해도 같다
+            pending = still
             break
-        time.sleep(pause)
-    df = pd.DataFrame(got)
+        pending = still
+        if pending:
+            log.info("%s-%s %d쪽 재시도 (%d회차)", sigungu_cd, bjdong_cd,
+                     len(pending), rnd + 2)
+            time.sleep(1.5 * (rnd + 1))
+
+    got_rows = [r for p in sorted(pages) for r in pages[p]]
+    df = pd.DataFrame(got_rows)
+    complete = not pending and len(got_rows) >= total
+    if not complete:
+        log.warning("%s-%s 표제부 %d/%d 건 (%d쪽 실패)", sigungu_cd, bjdong_cd,
+                    len(got_rows), total, len(pending))
     if df.empty:
         return df
     for c in ("연면적", "건축면적", "지상층수"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df["사용승인연도"] = pd.to_numeric(
         df["사용승인일"].str.slice(0, 4), errors="coerce")
+    if cache is not None and complete:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(cache, index=False)
     return df
 
 
@@ -148,15 +227,29 @@ def collect(cfg, grid_ids, *, refresh: bool = False,
         log.info("건축물대장 연계 건너뜀 (키 없음 또는 --no-api)")
         return pd.DataFrame()
 
-    centers = G.grid_centers(pd.Series(list(dict.fromkeys(grid_ids))), cfg)
+    ids = list(dict.fromkeys(str(g) for g in grid_ids))
+    centers = G.grid_centers(pd.Series(ids), cfg)
+
+    # 한 격자가 법정동 하나에 딱 들어가는 경우는 드물다. 중심점만 보면
+    # 격자에 걸친 다른 동의 건물이 통째로 빠져 연면적이 과소 집계된다.
+    # 네 모서리와 중심을 모두 물어 걸치는 동을 전부 찾는다.
+    probes: list[tuple[float, float]] = []
+    for gid in ids:
+        try:
+            corners = G.cell_bounds(gid, cfg)
+        except Exception:                                    # noqa: BLE001
+            corners = []
+        probes += [(float(x), float(y)) for x, y in corners]
+    probes += [(float(r.lon), float(r.lat)) for r in centers.itertuples()]
+
     seen: set[tuple[str, str]] = set()
     frames = []
-    for r in centers.itertuples():
-        rc = region_code(float(r.lon), float(r.lat), kakao)
+    for lon, lat in probes:
+        rc = region_code(lon, lat, kakao)
         if rc is None or rc in seen:
             continue
         seen.add(rc)
-        got = fetch_title(rc[0], rc[1], key)
+        got = fetch_title(rc[0], rc[1], key, cfg=cfg)
         if not got.empty:
             frames.append(got)
         time.sleep(0.15)
