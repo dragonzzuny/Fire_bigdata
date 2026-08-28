@@ -133,7 +133,23 @@ def main() -> int:
             print(f"    {g:<8} 위험비중 {v['risk_share']:.1%} · "
                   f"배분비중 {v['budget_share']:.1%} · 비율 "
                   f"{v['budget_share'] / v['risk_share']:.2f}")
+        # 화면·CSV 에 실제로 나가는 배분이 이것이다. 발표자료가 효율만 적용한
+        # 수(optimized)를 쓰면 표를 세는 사람과 숫자가 어긋난다.
+        eq_info["n_grids"] = int(len(alloc))
+        eq_info["cost_used"] = float(alloc["cost"].sum()) if "cost" in alloc else 0.0
+        eq_info["actual_capture_rate"] = float(got) if total else float("nan")
         alloc_cmp["equity"] = eq_info
+
+    # '위험한 순서대로 가면 1위 구역 하나도 못 끝낸다' 는 이 서비스의 출발점이다.
+    # 발표에서 쓰는 수이므로 산출물에 남긴다 — 손으로 적으면 근거를 못 댄다.
+    _cost = OP.inspection_cost(cur)
+    _top = cur.assign(_c=_cost).nlargest(1, "pred")
+    if len(_top):
+        alloc_cmp["top1_grid"] = {
+            "grid_id": str(_top.iloc[0]["grid_id"]),
+            "inspection_cost": float(_top.iloc[0]["_c"]),
+            "targets": int(_top.iloc[0].get("target_total", 0) or 0),
+        }
     alloc_cols = [c for c in ["점검순서", "grid_id", "sgg", "lon", "lat", "위험점수",
                               "expected_fires", "cost", "누적비용", "누적기대화재", "fires"]
                   if c in alloc.columns]

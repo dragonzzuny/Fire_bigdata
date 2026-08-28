@@ -470,6 +470,14 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 6 화면② 배분 ----
     op = alloc.get("optimized", {})
+    # 화면·CSV 에 실제로 나가는 배분(관할별 최소 배분 적용). 효율만 적용한
+    # optimized 를 장표에 쓰면 시연 화면과 숫자가 어긋난다.
+    eq = alloc.get("equity", {}) or {}
+    shown_grids = int(eq.get("n_grids") or op.get("n_grids", 0))
+    shown_cap = float(eq.get("actual_capture_rate")
+                      if eq.get("actual_capture_rate") == eq.get("actual_capture_rate")
+                      else op.get("actual_capture_rate", 0.0))
+
     tk = alloc.get("top_k_percent", {})
     screen_slide(
         prs, "4. 서비스 화면 ②", "인력에 맞춘 예방점검 배분",
@@ -480,12 +488,14 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          ("위험한 곳일수록 점검할 건물이 많습니다",
           f"위험도 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역, "
           f"그 안의 점검 대상 {tk.get('cost_if_all', 0):,.0f}개소.\n"
-          f"가용 {alloc.get('budget_visits', 0):,}곳으로는 1위 구역 하나도 "
-          "끝내지 못합니다."),
-         ("배낭에 무엇을 담을지 고르듯",
-          "무거운데 값싼 것 대신 가벼운데 값진 것부터 담습니다.\n"
-          f"같은 인력으로 {op.get('n_grids', 0):,}개 구역을 돌아 실제 화재 "
-          f"{pct(op.get('actual_capture_rate'))} 포착 "
+          f"위험 1위 구역 한 곳의 소요가 "
+          f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건, "
+          f"가용은 {alloc.get('budget_visits', 0):,}건입니다."),
+         ("‘한 곳당 몇 명이 드는가’를 함께 봅니다",
+          "위험도만 보지 않고 그 구역을 다 도는 데 드는 점검 건수를 같이 셉니다.\n"
+          "적은 인력으로 많이 잡히는 구역부터 갑니다.\n"
+          f"같은 인력으로 {shown_grids:,}개 구역, 실제 화재 "
+          f"{pct(shown_cap)} 포착 "
           f"({alloc.get('gain_pp', 0):+.1f}%p).")],
         note="관할별 최소 배분을 지정할 수 있어, 특정 구에 점검이 몰리지 않습니다.")
 
@@ -511,7 +521,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 6-2 조건을 바꾸면 계획이 달라진다 ----
     screen_slide(
         prs, "4. 서비스 화면 ③-1", "조건을 바꾸면 계획이 다시 짜입니다",
-        "같은 범위·같은 배율. 목적이 바뀌면 가는 곳도 시간대도 달라집니다",
+        "바꾼 조건과 그 결과를 나란히 남깁니다",
         (figs / "fig_route_compare.png"
          if (figs / "fig_route_compare.png").exists()
          else figs / "shot_patrol_compare.png"),
@@ -522,8 +532,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           "총 이동거리, 가장 먼 순찰조, 겹치는 구역 수를 전후로 비교합니다."),
          ("빠진 구역·새 구역",
           "구역 번호가 그대로 나옵니다. ‘왜 여기가 빠졌나’에 화면에서 답합니다.")],
-        note="목적이 달라지면 가야 할 곳도 시간대도 달라집니다. "
-             "같은 화면에서 근거를 남기고 비교합니다.",
+        note="두 지도는 같은 범위·같은 배율입니다. 축척이 다르면 "
+             "‘동선이 짧아졌다’가 그림에서 거짓말이 됩니다.",
         keep=1.0)
 
     # ---- 7 화면③ 계획서 ----
@@ -598,7 +608,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "질문을 바꿨습니다.\n"
          "‘어디가 가장 위험한가’가 아니라\n"
          "‘이 인력으로 갈 수 있는 조합 중 가장 많이 잡는 것은 무엇인가’.\n\n"
-         f"같은 인력으로 {op.get('n_grids', 0):,}개 구역, "
+         f"같은 인력으로 {shown_grids:,}개 구역, "
          f"{alloc.get('gain_pp', 0):+.1f}%p.",
          "국내외 위험예측 연구가 다루지 않은 지점입니다"),
         ("② 예측 결과가 결재 문서가 됩니다",
@@ -679,13 +689,15 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     picture(s10, figs / "fig_monthly_risk.png", Inches(0.9), Inches(5.0), Inches(6.4))
     band(s10, Inches(7.7), Inches(5.0), Inches(4.9), Inches(1.9))
     textbox(s10, Inches(7.95), Inches(5.2), Inches(4.4), Inches(1.6),
-            "언제 갈 것인가\n\n"
+            "‘언제’도 검증했습니다\n\n"
             "월별 화재위험 = 계절 패턴 × 기상(습도·건조일수).\n"
             f"{extra.get('season_hi_month', 0)}월이 연평균의 "
             f"{extra.get('season_hi', 0):.2f}배, "
             f"{extra.get('season_lo_month', 0)}월이 "
             f"{extra.get('season_lo', 0):.2f}배입니다.\n"
-            "월별 순찰 횟수를 이 값에 맞춰 정합니다.", size=13)
+            f"기상을 넣어 설명력이 R² {extra.get('r2_season', 0):.2f} → "
+            f"{extra.get('r2_weather', 0):.2f} 로 올라야만 채택합니다.\n"
+            "이 계수로 월간 계획서의 주차별 순찰 횟수를 정합니다.", size=12.5)
 
     # ---- 미국 사례 비교 ----
     s_us = section(prs, "6. 검증 결과 (계속)",
@@ -754,9 +766,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "격자 단위 주소 확보 시 재측정"],
         ["점검 이력을 붙일 수 없음",
          "결합할 키가 없다는 것을 실제로 확인해 기록", "대상물 관리번호 포함 자료 요청"],
-        ["순찰 횟수는 다루지 않음",
-         "어디를·언제까지. 실무는 '매일 2회' 처럼 횟수도 정한다",
-         "관서 근무편성과 연계"],
+        ["순찰 횟수를 근무편성과 잇지 못함",
+         "월 위험계수로 주차별 횟수까지는 산출",
+         "관서 교대·인원 편성 자료와 연계"],
         ["단순 기준 대비 개선폭이 크지 않음",
          f"누적 화재만으로도 {pct(probe0.get('capture_top20'))}임을 먼저 공개",
          "가치는 설명·확장·인력배분에 있음"],

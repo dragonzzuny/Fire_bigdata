@@ -502,8 +502,13 @@ with tabs[0]:
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("점검 가능 물량", f"{capacity.total_visits:,}건",
               help=capacity.describe())
-    m2.metric("배분 결과", f"{o['n_grids']:,}개 격자",
-              f"{o['cost_used']:,.0f}건 배정")
+    # 화면에 실제로 뜨는 표·지도·CSV 는 형평성 제약을 적용한 배분이다.
+    # 지표에 효율만 적용한 수(o)를 쓰면 표를 세는 사람과 숫자가 어긋난다.
+    m2.metric("배분 결과", f"{len(alloc):,}개 격자",
+              f"{alloc['cost'].sum():,.0f}건 배정" if "cost" in alloc else "",
+              delta_color="off",
+              help=f"관할별 최소 배분을 적용한 결과입니다. 형평성 제약 없이 "
+                   f"효율만 보면 {o['n_grids']:,}개 격자({o['cost_used']:,.0f}건)입니다.")
     m3.metric(f"상위 {cfg.headline_k}% 그대로 갈 때",
               f"{t['n_grids_affordable']:,} / {t['n_grids_selected']:,}개 격자",
               f"필요 {t['cost_if_all']:,.0f}건 · 가용 {capacity.total_visits:,}건",
@@ -511,15 +516,26 @@ with tabs[0]:
               help="위험한 순서대로 한 구역씩 전부 점검해 나갈 때, 지금 인력으로 "
                    "끝까지 마칠 수 있는 구역이 몇 개인가")
     if "gain_pp" in cmp:
-        m4.metric("실제 화재 포착률", f"{o['actual_capture_rate']:.1%}",
-                  f"{cmp['gain_pp']:+.1f}%p")
+        # 포착률도 화면에 뜬 배분(형평성 적용)에서 다시 센다. 지표와 표가
+        # 다른 배분을 가리키면 어느 쪽이 맞는지 발표장에서 답할 수 없다.
+        act = (float(alloc["실제화재"].sum()) / float(view["fires"].sum())
+               if "실제화재" in alloc and float(view.get("fires", pd.Series([0])).sum()) > 0
+               else o["actual_capture_rate"])
+        m4.metric("실제 화재 포착률", f"{act:.1%}",
+                  f"상위 {cfg.headline_k}% 방식 {t['actual_capture_rate']:.1%}",
+                  delta_color="off")
+
+    # 1위 구역의 소요를 화면에서 직접 계산한다 — 손으로 적은 수는 못 믿는다.
+    top1_cost = (float(view.assign(_c=OP.inspection_cost(view))
+                       .nlargest(1, "pred")["_c"].iloc[0]) if len(view) else 0.0)
 
     if t["n_grids_affordable"] < t["n_grids_selected"]:
         st.markdown(
             f"<div class='callout'><b>위험도 상위 {cfg.headline_k}% 안의 점검 대상은 "
             f"{t['cost_if_all']:,.0f}개소입니다.</b><br>"
-            + (f"가용 물량 {capacity.total_visits:,}건으로는 위험 1위 구역 하나도 "
-               f"끝내지 못합니다. 위험한 구역일수록 점검할 건물이 많기 때문입니다 — "
+            + (f"위험 1위 구역 한 곳을 다 도는 데만 {top1_cost:,.0f}건이 듭니다. "
+               f"가용 물량이 {capacity.total_visits:,}건이니 그 한 곳도 끝내지 "
+               f"못합니다. 위험한 구역일수록 점검할 건물이 많기 때문입니다 — "
                f"위험한 순서대로 줄을 세우는 것만으로는 계획이 되지 않습니다."
                if t["n_grids_affordable"] == 0 else
                f"현재 가용 물량 {capacity.total_visits:,}건으로는 "
@@ -528,10 +544,10 @@ with tabs[0]:
             + "</div>", unsafe_allow_html=True)
         if "gain_pp" in cmp:
             st.markdown(
-                f"<div class='callout good'>동일 인력으로 <b>{o['n_grids']:,}개 격자</b>를 점검하여 "
-                f"실제 화재 <b>{o['actual_capture_rate']:.1%}</b>를 포착합니다 "
-                f"(상위 {cfg.headline_k}% 방식 {t['actual_capture_rate']:.1%}, "
-                f"<b>{cmp['gain_pp']:+.1f}%p</b>).</div>", unsafe_allow_html=True)
+                f"<div class='callout good'>같은 인력으로 <b>{len(alloc):,}개 구역</b>을 "
+                f"점검하여 실제 화재 <b>{act:.1%}</b>를 포착합니다 "
+                f"(위험도 상위 {cfg.headline_k}% 방식 "
+                f"{t['actual_capture_rate']:.1%}).</div>", unsafe_allow_html=True)
 
     left, right = st.columns([3, 2])
     with left:
