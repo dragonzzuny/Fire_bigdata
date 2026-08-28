@@ -477,12 +477,15 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         figs / "shot_allocation.png",
         [("인력을 먼저 넣습니다",
           "점검관 몇 명, 하루 몇 건, 며칠. 바꾸면 배분이 즉시 다시 계산됩니다."),
-         ("구역마다 대상물 수가 다릅니다",
-          f"위험도 상위 {k}%는 {tk.get('n_grids_selected', 0):,}개 구역이지만 "
-          f"그 안의 점검 대상은 {tk.get('cost_if_all', 0):,.0f}개소입니다."),
-         ("같은 인력으로 더 많이",
-          f"인력에 맞춘 배분은 {op.get('n_grids', 0):,}개 구역을 돌아 "
-          f"실제 화재 {pct(op.get('actual_capture_rate'))}를 포착 "
+         ("위험한 곳일수록 점검할 건물이 많습니다",
+          f"위험도 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역, "
+          f"그 안의 점검 대상 {tk.get('cost_if_all', 0):,.0f}개소.\n"
+          f"가용 {alloc.get('budget_visits', 0):,}곳으로는 1위 구역 하나도 "
+          "끝내지 못합니다."),
+         ("배낭에 무엇을 담을지 고르듯",
+          "무거운데 값싼 것 대신 가벼운데 값진 것부터 담습니다.\n"
+          f"같은 인력으로 {op.get('n_grids', 0):,}개 구역을 돌아 실제 화재 "
+          f"{pct(op.get('actual_capture_rate'))} 포착 "
           f"({alloc.get('gain_pp', 0):+.1f}%p).")],
         note="관할별 최소 배분을 지정할 수 있어, 특정 구에 점검이 몰리지 않습니다.")
 
@@ -587,13 +590,16 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                      "화재위험 예측 자체는 2016년 애틀랜타가 이미 했습니다. "
                      "저희가 더한 세 가지입니다")
     cards = [
-        ("① 인력 제약을 넣고 다시 풀었습니다",
-         f"위험 상위 {k}%는 {tk.get('n_grids_selected', 0):,}개 구역이고 그 안의 점검 "
-         f"대상은 {tk.get('cost_if_all', 0):,.0f}개소입니다. 가용 "
-         f"{alloc.get('budget_visits', 0):,}건으로는 첫 구역 하나도 끝내지 못합니다.\n"
-         "위험한 순서로 줄을 세우는 것만으로는 계획이 되지 않습니다.\n"
-         f"인력을 제약으로 넣어 다시 풀면 같은 인력으로 "
-         f"{op.get('n_grids', 0):,}개 구역, {alloc.get('gain_pp', 0):+.1f}%p.",
+        ("① ‘위험한 순서대로’는 계획이 못 됩니다",
+         "위험한 구역일수록 점검할 건물이 많습니다.\n"
+         f"상위 {k}% {tk.get('n_grids_selected', 0):,}개 구역 안에 "
+         f"{tk.get('cost_if_all', 0):,.0f}개소 — 가용 "
+         f"{alloc.get('budget_visits', 0):,}곳으로는 1위 구역 하나도 못 끝냅니다.\n\n"
+         "질문을 바꿨습니다.\n"
+         "‘어디가 가장 위험한가’가 아니라\n"
+         "‘이 인력으로 갈 수 있는 조합 중 가장 많이 잡는 것은 무엇인가’.\n\n"
+         f"같은 인력으로 {op.get('n_grids', 0):,}개 구역, "
+         f"{alloc.get('gain_pp', 0):+.1f}%p.",
          "국내외 위험예측 연구가 다루지 않은 지점입니다"),
         ("② 예측 결과가 결재 문서가 됩니다",
          "일별·월별·연간 계획서를 일반기안문 배열(수신·경유·제목·붙임·끝.·발신명의)로 "

@@ -490,8 +490,9 @@ tabs = st.tabs(["예방점검 배분", "위험요인·점검계획서", "예방�
 # ================================================================== ① 배분
 with tabs[0]:
     st.subheader("가용 인력 기준 예방점검 배분")
-    st.caption("구역마다 점검 대상물 수가 다릅니다. 위험도 순으로만 자르면 "
-               "인력으로 감당할 수 없는 계획이 나오므로, 가용 물량 안에서 배분합니다.")
+    st.caption("위험한 구역일수록 점검할 건물이 많습니다. 위험도 순으로만 자르면 "
+               "인력으로 감당할 수 없는 계획이 나오므로, "
+               "**갈 수 있는 곳 중 화재를 가장 많이 잡는 조합**을 고릅니다.")
 
     cmp = OP.compare_to_topk(view, view["pred"], capacity, cfg.headline_k)
     alloc, eq_info = OP.allocate_with_equity(view, view["pred"], capacity,
@@ -507,8 +508,8 @@ with tabs[0]:
               f"{t['n_grids_affordable']:,} / {t['n_grids_selected']:,}개 격자",
               f"필요 {t['cost_if_all']:,.0f}건 · 가용 {capacity.total_visits:,}건",
               delta_color="off",
-              help="위험도 높은 순서대로 격자를 통째로 점검해 나갈 때, "
-                   "가용 물량으로 끝까지 마칠 수 있는 격자 수")
+              help="위험한 순서대로 한 구역씩 전부 점검해 나갈 때, 지금 인력으로 "
+                   "끝까지 마칠 수 있는 구역이 몇 개인가")
     if "gain_pp" in cmp:
         m4.metric("실제 화재 포착률", f"{o['actual_capture_rate']:.1%}",
                   f"{cmp['gain_pp']:+.1f}%p")
@@ -517,9 +518,9 @@ with tabs[0]:
         st.markdown(
             f"<div class='callout'><b>위험도 상위 {cfg.headline_k}% 안의 점검 대상은 "
             f"{t['cost_if_all']:,.0f}개소입니다.</b><br>"
-            + (f"가용 물량 {capacity.total_visits:,}건으로는 첫 번째 격자 하나도 "
-               f"끝내지 못합니다. 위험한 순서대로 줄을 세우는 것만으로는 "
-               f"계획이 되지 않습니다."
+            + (f"가용 물량 {capacity.total_visits:,}건으로는 위험 1위 구역 하나도 "
+               f"끝내지 못합니다. 위험한 구역일수록 점검할 건물이 많기 때문입니다 — "
+               f"위험한 순서대로 줄을 세우는 것만으로는 계획이 되지 않습니다."
                if t["n_grids_affordable"] == 0 else
                f"현재 가용 물량 {capacity.total_visits:,}건으로는 "
                f"{t['n_grids_selected']:,}개 격자 중 "
