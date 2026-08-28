@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from firebird.config import load_config          # noqa: E402
 
-DOCS = ("README.md", "docs/DEMO_SCRIPT.md")
+DOCS = ("README.md", "docs/DEMO_SCRIPT.md", "docs/DATA_PROPOSAL.md")
 
 
 def expected(cfg) -> dict[str, str]:
@@ -47,11 +47,23 @@ def expected(cfg) -> dict[str, str]:
     }
 
 
+def extra_expected(cfg) -> dict:
+    """산출물 파일이 따로 있는 수치. 없으면 건너뛴다."""
+    out = {}
+    p = cfg.paths.outputs / "building_feature_eval_ulsan.json"
+    if p.exists():
+        b = json.loads(p.read_text(encoding="utf-8"))
+        out["노후도 실측(전체)"] = f"{b['with_buildings_capture']:.1%}"
+        out["노후도 차이"] = f"{b['delta_pp']:.1f}%p".lstrip("+")
+    return out
+
+
 def main() -> int:
     cfg = load_config()
     root = Path(__file__).resolve().parents[1]
     try:
         want = expected(cfg)
+        want.update(extra_expected(cfg))
     except (FileNotFoundError, KeyError) as exc:
         print(f"산출물을 읽지 못했습니다: {exc}")
         return 1
@@ -62,9 +74,15 @@ def main() -> int:
         if p.exists():
             texts[d] = p.read_text(encoding="utf-8")
 
+    def norm(t: str) -> str:
+        """빼기 기호를 하나로 맞춘다. 문서는 −(U+2212)를 쓰고 코드는 -를 쓴다.
+        같은 값을 표기 차이로 불일치라고 말하면 검사가 무뎌진다."""
+        return t.replace("\u2212", "-").replace("\u2013", "-")
+
     missing = []
     for label, value in want.items():
-        where = [d for d, t in texts.items() if value in t]
+        v = norm(value)
+        where = [d for d, t in texts.items() if v in norm(t)]
         if not where:
             missing.append((label, value))
 
