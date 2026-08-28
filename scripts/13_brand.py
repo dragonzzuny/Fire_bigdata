@@ -28,48 +28,34 @@ AMBER_LIGHT = "#F6C86B"
 MUTED = "#6B7484"
 PAPER = "#FFFFFF"
 
-#: 4×4 격자에서 불꽃이 차지하는 칸과 그 온도.
-#: (행, 열): 색. 행 0 이 위, 행 3 이 아래.
-#: 위로 갈수록 옅어지는 것은 실제 불꽃의 끝이 그렇기 때문이다.
-FLAME = {
-    (0, 2): AMBER_LIGHT,
-    (1, 1): AMBER,
-    (1, 2): AMBER,
-    (2, 1): RED,
-    (2, 2): RED,
-    (3, 1): DEEP,
-    (3, 2): DEEP,
-}
+#: 지도 마커. 불꽃을 담는 그릇이자 '여기'를 가리키는 손가락이다.
+PIN = ("M256 78 C 174 78, 108 144, 108 226 C 108 330, 256 448, 256 448 "
+       "C 256 448, 404 330, 404 226 C 404 144, 338 78, 256 78 Z")
 
-CELL, GAP, N = 72, 16, 4
-SPAN = N * CELL + (N - 1) * GAP          # 336
-PAD = (512 - SPAN) // 2                  # 88
+#: 불꽃. 오른쪽에 굽이를 한 번 넣었다 — 좌우 대칭인 물방울 모양으로 그리면
+#: 소방 서비스에서 정반대인 '물'로 읽힌다. 이 굽이 하나가 불과 물을 가른다.
+FLAME = ("M256 66 C 248 132, 210 164, 184 196 C 152 236, 138 272, 138 312 "
+         "C 138 378, 190 430, 256 430 C 322 430, 374 378, 374 312 "
+         "C 374 266, 354 230, 326 200 C 322 232, 304 244, 292 232 "
+         "C 276 216, 302 168, 256 66 Z")
 
 
-def _cells(dark: str, x0: int = PAD, y0: int = PAD, *,
-           dim_opacity: float = 1.0) -> str:
-    """격자 16칸. 불꽃이 아닌 칸은 어둡게 깔린다."""
-    out = []
-    for r in range(N):
-        for c in range(N):
-            x = x0 + c * (CELL + GAP)
-            y = y0 + r * (CELL + GAP)
-            fill = FLAME.get((r, c))
-            op = "" if fill else f' opacity="{dim_opacity}"'
-            out.append(f'<rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" '
-                       f'rx="18" fill="{fill or dark}"{op}/>')
-    return "\n    ".join(out)
+def mark_svg(*, on_dark: bool = False, framed: bool = True) -> str:
+    """정사각 마크. 앱 아이콘·장표 모서리에 쓴다.
 
-
-def mark_svg(*, on_dark: bool = False) -> str:
-    """정사각 마크. 앱 아이콘·장표 모서리에 쓴다."""
+    핀 안을 불꽃 모양으로 도려낸다. 색을 덧칠하지 않고 구멍을 내면
+    작은 크기에서도 두 형태가 서로를 잡아먹지 않는다.
+    """
     bg = PAPER if on_dark else INK
-    dark_cell = "#E3E7EC" if on_dark else INK_SOFT
-    dim = 0.55 if on_dark else 1.0
+    pin = DEEP if on_dark else RED
+    hole = bg
+    frame = (f'<rect width="512" height="512" rx="112" fill="{bg}"/>'
+             if framed else "")
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="{bg}"/>
-  <g>
-    {_cells(dark_cell, dim_opacity=dim)}
+  {frame}
+  <path d="{PIN}" fill="{pin}"/>
+  <g transform="translate(256,212) scale(0.54) translate(-256,-256)">
+    <path d="{FLAME}" fill="{hole}"/>
   </g>
 </svg>'''
 
@@ -83,9 +69,9 @@ def lockup_svg(*, on_dark: bool = False, tagline: bool = True) -> str:
     """
     ink = PAPER if on_dark else INK
     muted = "#AAB3C0" if on_dark else MUTED
-    m = 0.72                                  # 마크 축소 비율
-    size = int(512 * m)                       # 368
-    tx = size + 56                            # 글자 시작
+    m = 0.72
+    size = int(512 * m)
+    tx = size + 44
     w = (tx + 640) if tagline else (tx + 500)
     h = 380
     my = (h - size) // 2
@@ -93,12 +79,11 @@ def lockup_svg(*, on_dark: bool = False, tagline: bool = True) -> str:
     sub = (f'<text x="{tx}" y="{my + 300}" font-family="Noto Sans CJK KR, sans-serif" '
            f'font-size="34" fill="{muted}" letter-spacing="1">'
            f'화재예방 점검·순찰 의사결정 시스템</text>') if tagline else ""
+    inner = mark_svg(on_dark=on_dark, framed=False)
+    inner = inner[inner.index(">", inner.index("<svg")) + 1:inner.rindex("</svg>")]
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}">
   {bg}
-  <g transform="translate(0,{my}) scale({m})">
-    <rect width="512" height="512" rx="112" fill="{ink if on_dark else INK}"/>
-    {_cells("#E3E7EC" if on_dark else INK_SOFT, dim_opacity=0.55 if on_dark else 1.0)}
-  </g>
+  <g transform="translate(-14,{my}) scale({m})">{inner}</g>
   <text x="{tx}" y="{my + 150}" font-family="Noto Sans CJK KR, sans-serif"
         font-size="118" font-weight="700" fill="{ink}" letter-spacing="-2">불씨예보</text>
   <text x="{tx}" y="{my + 222}" font-family="Noto Sans CJK KR, sans-serif"

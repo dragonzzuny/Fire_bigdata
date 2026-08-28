@@ -1,21 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" rx="112" fill="#1A1F2B"/>
-  <g>
-    <rect x="88" y="88" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="176" y="88" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="264" y="88" width="72" height="72" rx="18" fill="#F6C86B"/>
-    <rect x="352" y="88" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="88" y="176" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="176" y="176" width="72" height="72" rx="18" fill="#F0A63C"/>
-    <rect x="264" y="176" width="72" height="72" rx="18" fill="#F0A63C"/>
-    <rect x="352" y="176" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="88" y="264" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="176" y="264" width="72" height="72" rx="18" fill="#E34A31"/>
-    <rect x="264" y="264" width="72" height="72" rx="18" fill="#E34A31"/>
-    <rect x="352" y="264" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="88" y="352" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
-    <rect x="176" y="352" width="72" height="72" rx="18" fill="#C0492F"/>
-    <rect x="264" y="352" width="72" height="72" rx="18" fill="#C0492F"/>
-    <rect x="352" y="352" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+  <path d="M256 78 C 174 78, 108 144, 108 226 C 108 330, 256 448, 256 448 C 256 448, 404 330, 404 226 C 404 144, 338 78, 256 78 Z" fill="#E34A31"/>
+  <g transform="translate(256,212) scale(0.54) translate(-256,-256)">
+    <path d="M256 66 C 248 132, 210 164, 184 196 C 152 236, 138 272, 138 312 C 138 378, 190 430, 256 430 C 322 430, 374 378, 374 312 C 374 266, 354 230, 326 200 C 322 232, 304 244, 292 232 C 276 216, 302 168, 256 66 Z" fill="#1A1F2B"/>
   </g>
 </svg>
