@@ -159,7 +159,7 @@ def main() -> int:
             print("  법정 서식 채우는 중…")
             page.wait_for_timeout(20_000)
             block = page.locator("[data-testid='stHorizontalBlock']").filter(
-                has_text="법제처 원본 서식").first
+                has_text="별지 제11호서식").first
             block.scroll_into_view_if_needed(timeout=15_000)
             page.wait_for_timeout(5_000)
             block.screenshot(path=str(out / "shot_form_compare.png"))

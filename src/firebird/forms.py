@@ -29,21 +29,37 @@ FACILITY_MAP = {
     "소방용수": ("n_hydrant", "격자 내 소방용수시설"),
 }
 
-#: 공개 자료로는 채울 수 없는 칸과 그 이유. 화면과 문서에 그대로 적힌다.
+#: 지금 자료로 못 채우는 칸. (사유, 채울 수 있는 경로)
+#:
+#: '자료가 없다'로 끝내면 못 하는 일처럼 읽힌다. 실제로는 대부분 **연계만 하면
+#: 채워지는** 칸이고, 개인정보라서 애초에 넣으면 안 되는 칸은 따로 있다.
+#: 둘을 구분해 적는다 — 심사에서도 현장에서도 이 구분이 답이다.
 NOT_AVAILABLE = {
-    "대표자": "공개 데이터에 개인정보가 포함되지 않음",
-    "전화번호": "공개 데이터에 개인정보가 포함되지 않음",
-    "지정일자": "화재예방강화지구 지정 이력은 소방본부 내부 자료",
-    "건축연도": "건축물대장 연계 필요",
-    "연면적": "건축물대장 연계 필요",
-    "건축면적": "건축물대장 연계 필요",
-    "유동인구": "생활인구 자료 미연계",
-    "상주인구": "주민등록 자료 미연계",
-    "소방조직": "의용소방대 편성 자료 미연계",
-    "화재안전조사 결과 및 조치명령": "점검이력 데이터에 결합 키가 없어 미연계",
-    "소방설비등의 설치지원": "설치지원 집행 자료 미연계",
-    "소방훈련 및 소방교육": "훈련·교육 실시 기록 미연계",
+    "대표자": ("공개 데이터에 개인정보가 포함되지 않음", "관서 내부 대장에서 기입"),
+    "전화번호": ("공개 데이터에 개인정보가 포함되지 않음", "관서 내부 대장에서 기입"),
+    "지정일자": ("화재예방강화지구 지정 이력은 소방본부 내부 자료",
+               "소방본부 지정 대장 연계"),
+    "건축연도": ("건축물대장 미연계", "국토부 건축물대장 표제부 API(사용승인일)"),
+    "연면적": ("건축물대장 미연계", "국토부 건축물대장 표제부 API(연면적)"),
+    "건축면적": ("건축물대장 미연계", "국토부 건축물대장 표제부 API(건축면적)"),
+    "유동인구": ("생활인구 자료 미연계", "통신사 유동인구(유상) 또는 카드 매출 추정"),
+    "상주인구": ("주민등록 자료 미연계", "행안부 주민등록 인구현황(읍면동 단위)"),
+    "소방조직": ("의용소방대 편성 자료 미연계", "소방본부 의용소방대 명부 연계"),
+    "화재안전조사 결과 및 조치명령": ("점검이력 데이터에 결합 키가 없어 미연계",
+                            "대상물 관리번호가 포함된 점검이력 제공 시 연계"),
+    "소방설비등의 설치지원": ("설치지원 집행 자료 미연계", "소방본부 사업 집행 자료 연계"),
+    "소방훈련 및 소방교육": ("훈련·교육 실시 기록 미연계", "소방본부 훈련 기록 연계"),
 }
+
+
+def blank_reason(key: str) -> str:
+    v = NOT_AVAILABLE.get(key)
+    return v[0] if isinstance(v, tuple) else str(v or "")
+
+
+def fill_route(key: str) -> str:
+    v = NOT_AVAILABLE.get(key)
+    return v[1] if isinstance(v, tuple) and len(v) > 1 else ""
 
 
 @dataclass(frozen=True)
@@ -54,6 +70,7 @@ class Field:
     unit: str = ""
     blank_reason: str = ""
     source: str = ""            # 이 값이 어느 자료에서 나왔는지
+    route: str = ""             # 비었다면, 무엇을 연계하면 채워지는가
 
 
 def _station_distances(row: pd.Series, stations: pd.DataFrame) -> dict:
@@ -111,7 +128,10 @@ def zone_ledger(row: pd.Series, *, city_label: str, year: int,
                           source="UTM-K(EPSG:5179) 격자")
     for k in ("대표자", "전화번호", "지정일자", "건축연도", "연면적", "건축면적",
               "유동인구", "상주인구", "소방조직"):
-        fields[k] = Field(k, blank_reason=NOT_AVAILABLE[k])
+        unit = {"연면적": "㎡", "건축면적": "㎡", "유동인구": "명",
+                "상주인구": "명", "소방조직": "명"}.get(k, "")
+        fields[k] = Field(k, unit=unit, blank_reason=blank_reason(k),
+                          route=fill_route(k))
 
     fields["건물동수"] = Field("건물동수", f"{num('target_total'):,}", "개소",
                              source="특정소방대상물 현황")
@@ -180,11 +200,9 @@ def zone_ledger(row: pd.Series, *, city_label: str, year: int,
     fields["도로여건"] = Field("도로여건", blank_reason="도로 폭·소방차 진입로 자료 미연계")
     fields["현대화사업"] = Field("현대화사업", blank_reason="사업 집행 자료 미연계")
 
-    sections = {
-        "화재안전조사 결과 및 조치명령": NOT_AVAILABLE["화재안전조사 결과 및 조치명령"],
-        "소방설비등의 설치지원": NOT_AVAILABLE["소방설비등의 설치지원"],
-        "소방훈련 및 소방교육": NOT_AVAILABLE["소방훈련 및 소방교육"],
-    }
+    sections = {k: blank_reason(k) for k in
+                ("화재안전조사 결과 및 조치명령", "소방설비등의 설치지원",
+                 "소방훈련 및 소방교육")}
     filled = sum(1 for f in fields.values() if f.value)
     return {
         "law": FORM_LAW, "form_no": FORM_NO, "title": FORM_TITLE,
@@ -194,114 +212,202 @@ def zone_ledger(row: pd.Series, *, city_label: str, year: int,
     }
 
 
+def ledger_values(led: dict) -> tuple[dict, dict]:
+    """zone_ledger 결과를 서식 채우기용으로 옮긴다.
+
+    빈칸에는 아무것도 쓰지 않는다. 서식은 정부 원본 그대로 두고, 비운 칸과
+    그 사유는 서식 **바깥**에 적는다 — 칸 안에 회색 글씨를 넣는 순간
+    원본과 다른 문서가 된다.
+    """
+    vals, bl = {}, {}
+    for key, f in led["fields"].items():
+        if not f.value:
+            continue
+        if key in BULLET_KEYS:
+            bl[key] = [x.strip() for x in str(f.value).split(" · ") if x.strip()]
+        else:
+            vals[key] = f.value
+    return vals, bl
+
+
+#: 가운뎃점이 인쇄된 서술 칸.
+BULLET_KEYS = ("지구특징", "취약요소", "도로여건", "현대화사업")
+
+
+def fill_official(led: dict, pdf_path, out_png, *, dpi: int = 200):
+    """법제처 서식 PDF 위에 값을 얹어 그림을 만든다."""
+    from . import formfill
+
+    vals, bl = ledger_values(led)
+    return formfill.fill(pdf_path, vals, bl, out_png, dpi=dpi)
+
+
 # ---------------------------------------------------------------- 렌더링
 
-def _cell(f: Field) -> str:
+def _val(f: Field) -> str:
+    """칸 안에 들어갈 내용.
+
+    채운 값은 검은 글씨 그대로 둔다 — 실제로 손으로 채운 대장과 같아야 한다.
+    빈칸에는 왜 비었는지를 아주 옅게 적는다. 빈칸을 그럴듯한 값으로 메우면
+    결재 문서가 아니라 추정치가 되고, 아무 표시도 없으면 '아직 안 썼다'와
+    '쓸 수 없다'가 구분되지 않는다.
+    """
     import html as _h
     if f.value:
-        unit = f" <span class='u'>{_h.escape(f.unit)}</span>" if f.unit else ""
-        tip = f" title=\"{_h.escape(f.source)}\"" if f.source else ""
-        return f"<td class='v'{tip}>{_h.escape(f.value)}{unit}</td>"
-    reason = _h.escape(f.blank_reason or "")
-    return (f"<td class='e' title=\"{reason}\">"
-            f"<span class='why'>{reason}</span></td>")
+        tip = f' title="{_h.escape(f.source)}"' if f.source else ""
+        return f'<span class="v"{tip}>{_h.escape(f.value)}</span>'
+    tip = f' title="연계 경로: {_h.escape(f.route)}"' if f.route else ""
+    return f'<span class="why"{tip}>{_h.escape(f.blank_reason or "")}</span>'
+
+
+def _unit(f: Field) -> str:
+    return f'<span class="u">{f.unit}</span>' if f.unit else ""
 
 
 LEDGER_CSS = """
 <style>
-.form { font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#111; }
-.form .hdr { font-size:11px; letter-spacing:.02em; margin:0 0 6px; }
-.form h2 { text-align:center; font-size:21px; letter-spacing:.14em;
-           margin:2px 0 10px; font-weight:700; }
-.form .side { text-align:right; font-size:11px; margin:0 0 4px; }
-.form .sec { border:1px solid #111; border-bottom:0; padding:4px 8px;
-             font-weight:700; font-size:12.5px; background:#f2f2f2; }
+.form { font-family:'Malgun Gothic','맑은 고딕','Noto Sans CJK KR',sans-serif;
+        color:#000; background:#fff; }
+.form .hdr { font-size:11.5px; margin:0 0 8px; letter-spacing:-.2px; }
+.form h2 { text-align:center; font-size:22px; letter-spacing:.32em;
+           margin:0 0 6px; font-weight:700; }
+.form .side { text-align:right; font-size:11px; margin:0 0 3px; }
 .form table { border-collapse:collapse; width:100%; table-layout:fixed;
-              font-size:12px; margin-bottom:10px; }
-.form th, .form td { border:1px solid #111; padding:5px 7px; height:26px;
+              font-size:12px; margin:0 0 9px; }
+.form th, .form td { border:1px solid #000; padding:3px 6px; height:23px;
                      vertical-align:middle; word-break:break-all; }
-.form th { background:#fafafa; font-weight:500; text-align:center; width:110px; }
-.form td.v { background:#fff7ed; }
-.form td.e { background:#fbfbfb; }
-.form td .u { color:#666; font-size:10.5px; margin-left:2px; }
-.form td .why { color:#b8b8b8; font-size:10px; font-style:italic; }
-.form .foot { text-align:right; font-size:10.5px; color:#333; margin-top:6px; }
-.form .legend { font-size:11px; color:#555; margin:8px 0 0; }
-.form .legend b { background:#fff7ed; padding:1px 6px; border:1px solid #ddd; }
+.form th { font-weight:400; text-align:center; }
+.form td { text-align:left; }
+.form td.r { text-align:right; }
+.form .sec td { text-align:left; font-weight:700; font-size:12.5px;
+                padding:4px 8px; }
+.form .v { color:#111; }
+.form .u { color:#000; font-size:11px; }
+.form .why { color:#c9ccd1; font-size:9.5px; font-style:italic; }
+.form .dot { color:#000; }
+.form .foot { text-align:right; font-size:10.5px; margin-top:4px; }
+.form .legend { font-size:11px; color:#555; margin:10px 0 0; line-height:1.6;
+                border-top:1px dashed #ccc; padding-top:8px; }
 </style>
 """
 
 
 def render_ledger_html(led: dict, *, city_label: str = "", year: int = 0) -> str:
-    """관리대장을 서식 배치 그대로 HTML 로 만든다.
+    """[별지 제11호서식] 관리대장을 **원본 서식 배치 그대로** 만든다.
 
-    칸 순서·묶음은 법제처 PDF 서식과 같게 두었다. 채운 칸은 배경으로 구분하고,
-    빈칸에는 왜 비었는지를 작은 글씨로 적는다.
+    칸 순서·묶음·단위 표기·괘선을 법제처 PDF 와 같게 둔다. 색을 칠하거나
+    칸을 합치면 그 순간 '비슷하게 만든 표'가 되고, 결재선에서 되돌아온다.
+    채운 값과 빈칸은 배경색이 아니라 글자로 구분한다.
     """
     F = led["fields"]
 
-    def row2(a, b):
-        return (f"<tr><th>{F[a].label}</th>{_cell(F[a])}"
-                f"<th>{F[b].label}</th>{_cell(F[b])}</tr>")
+    def row2(a, b, ua="", ub=""):
+        return (f"<tr><th>{F[a].label}</th><td>{_val(F[a])}</td>"
+                f"<th>{F[b].label}</th><td>{_val(F[b])}</td></tr>")
 
-    parts = [LEDGER_CSS, "<div class='form'>",
-             f"<div class='hdr'>■ {led['law']} [{led['form_no']}]</div>",
-             f"<h2>{led['title']}</h2>",
-             "<div class='side'>(앞쪽)</div>",
-             "<div class='sec'>1. 화재예방강화지구 지정현황</div>",
-             "<table><colgroup><col width='110'><col><col width='110'><col></colgroup>"]
-    parts.append(f"<tr><th>{F['명칭'].label}</th>{_cell(F['명칭'])}"
-                 f"<th>{F['위치'].label}</th>{_cell(F['위치'])}</tr>")
-    parts.append(row2("대표자", "전화번호"))
-    parts.append(row2("지정일자", "건축연도"))
-    parts.append(row2("연면적", "건축면적"))
-    parts.append(row2("건물동수", "점포수"))
-    parts.append(row2("유동인구", "상주인구"))
-    parts.append(f"<tr><th>소방조직</th>{_cell(F['소방조직'])}<th></th><td></td></tr>")
-    parts.append(f"<tr><th>건물구조</th>{_cell(F['건물구조'])}"
-                 f"<th>지구면적</th>{_cell(F['지구면적'])}</tr>")
-    parts.append("</table>")
+    def row2u(a, b):
+        """단위가 칸 오른쪽에 인쇄되어 있는 행(연면적 ㎡, 건물동수 개 …)."""
+        return (f"<tr><th>{F[a].label}</th>"
+                f"<td class='r'>{_val(F[a])} {_unit(F[a])}</td>"
+                f"<th>{F[b].label}</th>"
+                f"<td class='r'>{_val(F[b])} {_unit(F[b])}</td></tr>")
 
-    parts.append("<table><colgroup><col width='110'><col width='120'><col>"
-                 "<col width='120'><col></colgroup>")
-    fac = [("소방시설:소화설비", "소방시설:경보설비"),
-           ("소방시설:피난구조설비", "소방시설:소방용수"),
-           ("소방시설:소화활동설비", "소방시설:기타설비")]
-    for i, (a, b) in enumerate(fac):
+    def sec(no, name):
+        return (f"<table><tr class='sec'><td>{no}. {name}</td></tr></table>")
+
+    p = [LEDGER_CSS, "<div class='form'>",
+         f"<div class='hdr'>■ {led['law']} [{led['form_no']}]</div>",
+         f"<h2>{led['title']}</h2>",
+         "<div class='side'>(앞쪽)</div>",
+         sec(1, "화재예방강화지구 지정현황"),
+         "<table><colgroup><col width='96'><col><col width='96'><col></colgroup>",
+         row2("명칭", "위치"),
+         row2("대표자", "전화번호"),
+         row2("지정일자", "건축연도"),
+         row2u("연면적", "건축면적"),
+         row2u("건물동수", "점포수"),
+         row2u("유동인구", "상주인구"),
+         f"<tr><th>{F['소방조직'].label}</th>"
+         f"<td class='r'>{_val(F['소방조직'])} {_unit(F['소방조직'])}</td>"
+         f"<th></th><td></td></tr>",
+         f"<tr><th>{F['건물구조'].label}</th><td>{_val(F['건물구조'])}</td>"
+         f"<th>{F['지구면적'].label}</th>"
+         f"<td class='r'>{_val(F['지구면적'])} {_unit(F['지구면적'])}</td></tr>",
+         "</table>"]
+
+    # 소방시설 — 원본은 3행 2열, 각 칸이 [ ]설비명 / 값 / 개 로 나뉜다.
+    p.append("<table><colgroup><col width='96'><col width='118'><col>"
+             "<col width='34'><col width='118'><col><col width='34'>"
+             "</colgroup>")
+    rows = [("소방시설:소화설비", "소방시설:경보설비"),
+            ("소방시설:피난구조설비", "소방시설:소방용수"),
+            ("소방시설:소화활동설비", "소방시설:기타설비")]
+    for i, (a, b) in enumerate(rows):
         head = "<th rowspan='3'>소방시설</th>" if i == 0 else ""
-        parts.append(f"<tr>{head}<th>[&nbsp;&nbsp;]{F[a].label}</th>{_cell(F[a])}"
-                     f"<th>[&nbsp;&nbsp;]{F[b].label}</th>{_cell(F[b])}</tr>")
-    parts.append("</table>")
+        p.append(f"<tr>{head}"
+                 f"<th>[&nbsp;&nbsp;]{F[a].label}</th>"
+                 f"<td class='r'>{_val(F[a])}</td><th>개</th>"
+                 f"<th>[&nbsp;&nbsp;]{F[b].label}</th>"
+                 f"<td class='r'>{_val(F[b])}</td><th>개</th></tr>")
+    p.append("</table>")
 
-    parts.append("<table><colgroup><col width='110'><col width='120'><col>"
-                 "<col width='140'><col></colgroup>")
-    parts.append(f"<tr><th>소방관서거리</th><th>본서</th>"
-                 f"{_cell(F['소방관서거리:본서'])}<th>관할119안전센터</th>"
-                 f"{_cell(F['소방관서거리:관할119안전센터'])}</tr>")
-    parts.append("</table>")
+    p.append("<table><colgroup><col width='96'><col width='60'><col>"
+             "<col width='34'><col width='130'><col><col width='34'>"
+             "</colgroup>")
+    p.append(f"<tr><th>소방관서거리</th><th>본서</th>"
+             f"<td class='r'>{_val(F['소방관서거리:본서'])}</td><th>km</th>"
+             f"<th>관할119안전센터</th>"
+             f"<td class='r'>{_val(F['소방관서거리:관할119안전센터'])}</td>"
+             f"<th>km</th></tr>")
+    p.append("</table>")
 
-    parts.append("<table><colgroup><col width='110'><col></colgroup>")
+    # 지구특징·취약요소·도로여건·현대화사업 — 원본은 각 칸에 가운뎃점 두 줄.
+    p.append("<table><colgroup><col width='96'><col></colgroup>")
     for k in ("지구특징", "취약요소", "도로여건", "현대화사업"):
-        parts.append(f"<tr><th>{F[k].label}</th>{_cell(F[k])}</tr>")
-    parts.append("</table>")
+        f = F[k]
+        if f.value:
+            items = [x.strip() for x in str(f.value).split(" · ") if x.strip()]
+        else:
+            items = []
+        body = "".join(
+            f"<div><span class='dot'>·</span> "
+            f"<span class='v'>{__import__('html').escape(it)}</span></div>"
+            for it in items) or f"<div><span class='dot'>·</span> {_val(f)}</div>"
+        if len(items) < 2:
+            body += "<div><span class='dot'>·</span></div>"
+        p.append(f"<tr><th>{f.label}</th><td>{body}</td></tr>")
+    p.append("</table>")
 
+    heads = {"화재안전조사 결과 및 조치명령": ("일자", "조치사항", "보완일자"),
+             "소방설비등의 설치지원": ("일자", "설치내용", "완료일자"),
+             "소방훈련 및 소방교육": ("훈련일자", "참석인원", "교육일자", "참석인원")}
+    widths = {3: "<col width='120'><col><col width='120'>",
+              4: "<col width='110'><col><col width='110'><col>"}
     for i, (name, reason) in enumerate(led["empty_sections"].items(), 2):
-        parts.append(f"<div class='sec'>{i}. {name}</div>")
-        parts.append("<table><colgroup><col width='130'><col>"
-                     "<col width='130'></colgroup>")
-        heads = {"화재안전조사 결과 및 조치명령": ("일자", "조치사항", "보완일자"),
-                 "소방설비등의 설치지원": ("일자", "설치내용", "완료일자"),
-                 "소방훈련 및 소방교육": ("훈련일자", "참석인원", "교육일자")}[name]
-        parts.append("<tr>" + "".join(f"<th>{h}</th>" for h in heads) + "</tr>")
-        parts.append(f"<tr><td class='e' colspan='3'>"
-                     f"<span class='why'>{reason}</span></td></tr>")
-        parts.append("<tr>" + "<td class='e'></td>" * 3 + "</tr>")
-        parts.append("</table>")
+        tail = "(최근 3년)" if "훈련" in name or "조사" in name else ""
+        p.append(sec(i, name + tail))
+        h = heads[name]
+        p.append(f"<table><colgroup>{widths[len(h)]}</colgroup>")
+        p.append("<tr>" + "".join(f"<th>{x}</th>" for x in h) + "</tr>")
+        p.append(f"<tr><td colspan='{len(h)}'>"
+                 f"<span class='why'>{reason}</span></td></tr>")
+        for _ in range(2):
+            p.append("<tr>" + "<td></td>" * len(h) + "</tr>")
+        p.append("</table>")
 
-    parts.append("<div class='foot'>210mm×297mm[백상지(80g/㎡) 또는 중질지(80g/㎡)]</div>")
-    parts.append(f"<div class='legend'><b>주황색 칸</b> = 불씨예보가 채운 칸 "
-                 f"({led['n_filled']}/{led['n_fields']}, {led['fill_rate']:.0%}). "
-                 f"나머지는 연계 자료가 없어 비워 두었으며, 칸마다 사유를 적었습니다."
-                 + (f" · 기준 {city_label} {year}년" if city_label else "") + "</div>")
-    parts.append("</div>")
-    return "\n".join(parts)
+    p.append("<div class='foot'>210mm×297mm[백상지(80g/㎡) 또는 중질지(80g/㎡)]</div>")
+    linkable = sorted({f.label for f in F.values()
+                       if not f.value and f.route and "개인정보" not in f.blank_reason})
+    private = sorted({f.label for f in F.values()
+                      if not f.value and "개인정보" in f.blank_reason})
+    p.append(
+        f"<div class='legend'><b>불씨예보가 채운 칸 "
+        f"{led['n_filled']}/{led['n_fields']}</b> ({led['fill_rate']:.0%}). "
+        f"서식·괘선·칸 순서는 법제처 원본 그대로이며, 값만 데이터에서 채웠습니다."
+        + (f"<br><b>연계하면 채워지는 칸</b> — {', '.join(linkable)}. "
+           if linkable else "")
+        + (f"<br><b>넣지 않는 칸</b> — {', '.join(private)} (개인정보)."
+           if private else "")
+        + (f"<br>기준 {city_label} {year}년." if city_label else "") + "</div>")
+    p.append("</div>")
+    return "\n".join(p)

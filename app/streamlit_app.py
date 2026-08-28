@@ -544,8 +544,7 @@ with tabs[0]:
 # ================================================================== ② 이유
 with tabs[1]:
     st.subheader("구역별 위험요인 및 점검계획서")
-    st.caption("이 구역의 위험을 끌어올린 요인과, 현장에서 확인할 항목을 "
-               "함께 보여 드립니다.")
+    st.caption("위험을 끌어올린 요인과 현장 확인 항목.")
 
     if alloc.empty:
         st.markdown("<div class='callout info'>배분된 구역이 없습니다. "
@@ -606,7 +605,7 @@ with tabs[1]:
                         dd[["label", "value", "contribution"]].rename(columns={
                             "label": "요인", "value": "현재값", "contribution": "기여도"}),
                         hide_index=True, width='stretch')
-                    st.caption("기여도가 클수록 이 구역의 위험을 많이 끌어올린 요인입니다.")
+                    st.caption("기여도가 클수록 이 구역의 위험을 크게 끌어올린 요인")
                 else:
                     st.caption("표시할 요인이 없습니다.")
 
@@ -742,8 +741,7 @@ with tabs[2]:
                 brief = [c for c in ["출동관서", "구역 수", "총 거리(km)", "소요 시간(분)"]
                          if c in summ.columns]
                 st.dataframe(summ[brief], hide_index=True, width='stretch', height=380)
-                st.caption(f"{len(summ)}개 조가 동시에 나갑니다. "
-                           "구역이 겹치지 않도록 나눈 결과입니다.")
+                st.caption(f"{len(summ)}개 조 동시 출동 · 구역 중복 없음")
                 with st.expander("구간별 거리 자세히"):
                     st.dataframe(summ, hide_index=True, width='stretch')
 
@@ -792,7 +790,7 @@ with tabs[2]:
                     st.pydeck_chart(deck(layers, both, tooltip=TIP_PLAIN))
                     st.caption(f"{facts['격자']}격자 · {facts['관서']}개 관서 · "
                                f"총 {facts['총이동']:.1f} km")
-                st.caption("두 지도는 같은 범위·같은 배율입니다.")
+                st.caption("같은 범위 · 같은 배율")
 
                 gone = sorted(bf["grids"] - facts["grids"])
                 new_g = sorted(facts["grids"] - bf["grids"])
@@ -809,8 +807,7 @@ with tabs[2]:
                 st.divider()
 
             with st.expander("계획서용 지도 (인쇄·첨부용)", expanded=False):
-                st.caption("화재위험 분포 위에 순찰 동선을 얹은 그림입니다. "
-                           "계획서에 그대로 붙습니다.")
+                st.caption("계획서에 첨부되는 동선도")
                 if st.button("지도 만들기"):
                     with st.spinner("지도 생성 중…"):
                         fig = MV.route_map(
@@ -846,8 +843,7 @@ with tabs[2]:
                 if c in det:
                     det[c] = pd.to_numeric(det[c], errors="coerce").fillna(0).astype(int)
             st.dataframe(det, hide_index=True, width='stretch')
-            st.caption("순번대로 이동합니다. 관서에서 출발해 마지막 구역을 돌고 "
-                       "관서로 복귀하는 시간까지 포함한 계획입니다.")
+            st.caption("관서 출발 → 순번대로 → 관서 복귀. 복귀 시간 포함.")
 
         with st.expander(f"{mode.label} 현장 중점 확인 항목", expanded=False):
             for chk in mode.checks:
@@ -888,7 +884,7 @@ with tabs[2]:
                 mtb["건조일수"] = pd.to_numeric(
                     mtb["건조일수"], errors="coerce").fillna(0).astype(int)
             st.dataframe(mtb, hide_index=True, width='stretch')
-            st.caption("위험계수 1.0 = 연평균 수준. 실효습도는 건조주의보 발표 기준값입니다.")
+            st.caption("위험계수 1.0 = 연평균 · 실효습도는 건조주의보 발표 기준")
 
     st.divider()
     fires = get_fires(city)
@@ -1033,11 +1029,12 @@ with tabs[3]:
     # ---------------- 법정 서식 채우기 --------------------------------
     st.divider()
     st.markdown("### 법정 서식으로 내보내기")
-    st.caption("자체 계획서와 별개로, 법에 서식이 정해진 문서는 그 서식을 써야 "
-               "결재가 됩니다. 왼쪽이 법제처 원본 서식, 오른쪽이 같은 서식을 "
-               "우리 데이터로 채운 것입니다.")
+    st.caption("법에 서식이 정해진 문서는 그 서식을 써야 결재가 됩니다. "
+               "법제처 배포 서식에 값만 채웁니다.")
 
     blank_form = cfg.paths.processed / "forms" / "서식11_빈양식.png"
+    form_pdf = next(iter(sorted(
+        (cfg.paths.processed / "forms").glob("서식11_*.pdf"))), None)
     if alloc.empty:
         st.markdown("<div class='callout info'>‘예방점검 배분’ 탭에서 인력을 "
                     "설정하면 대상 구역이 정해집니다.</div>", unsafe_allow_html=True)
@@ -1049,7 +1046,7 @@ with tabs[3]:
         pick_g = fl.selectbox("대장을 작성할 구역", list(gid_opts), key="form_grid")
         make = fr.button("서식 채우기", type="primary", width='stretch')
 
-        if make or st.session_state.get("ledger_html"):
+        if make or st.session_state.get("ledger_png"):
             if make:
                 grow = cur[cur["grid_id"] == gid_opts[pick_g]].iloc[0]
                 st_all = pd.concat(
@@ -1066,45 +1063,52 @@ with tabs[3]:
                 led = FM.zone_ledger(grow, city_label=cfg.city(city)["label"],
                                      year=int(year), stations=st_all,
                                      drivers=drv, grid_m=int(cfg.grid_size_m))
-                st.session_state["ledger_html"] = FM.render_ledger_html(
-                    led, city_label=cfg.city(city)["label"], year=int(year))
-                st.session_state["ledger_stat"] = (led["n_filled"], led["n_fields"],
-                                                   led["grid_id"])
+                png = cfg.paths.figures / f"서식11_{led['grid_id']}.png"
+                try:
+                    # 서식을 다시 그리지 않는다. 법제처가 배포한 그 파일에 값만 얹는다.
+                    with st.spinner("서식 채우는 중…"):
+                        FM.fill_official(led, form_pdf, png, dpi=170)
+                    st.session_state["ledger_png"] = str(png)
+                except Exception as exc:                    # noqa: BLE001
+                    st.session_state["ledger_png"] = ""
+                    st.warning(f"서식을 채우지 못했습니다: {type(exc).__name__}")
+                st.session_state["ledger_stat"] = (
+                    led["n_filled"], led["n_fields"], led["grid_id"],
+                    sorted({f.label for f in led["fields"].values()
+                            if not f.value and f.route
+                            and "개인정보" not in f.blank_reason}),
+                    sorted({f.label for f in led["fields"].values()
+                            if not f.value and "개인정보" in f.blank_reason}))
 
-            n_f, n_t, g_id = st.session_state.get("ledger_stat", (0, 0, ""))
+            n_f, n_t, g_id, linkable, private = st.session_state.get(
+                "ledger_stat", (0, 0, "", [], []))
             st.markdown(
-                f"<div class='callout good'><b>{FM.FORM_NO} {FM.FORM_TITLE}</b> "
-                f"— {n_t}개 칸 중 <b>{n_f}개</b>를 공개 데이터로 채웠습니다. "
-                f"나머지는 연계 자료가 없어 비워 두고, 칸마다 사유를 적었습니다. "
-                f"빈칸을 그럴듯한 값으로 메우면 결재 문서가 아니라 추정치가 "
-                f"됩니다.</div>", unsafe_allow_html=True)
+                f"<div class='callout good'><b>{FM.FORM_NO} {FM.FORM_TITLE}</b>"
+                f" · {g_id} 구역 · <b>{n_f}/{n_t}칸</b> 자동 작성<br>"
+                + (f"연계하면 채워지는 칸 — {', '.join(linkable)}<br>" if linkable else "")
+                + (f"넣지 않는 칸 — {', '.join(private)} (개인정보)" if private else "")
+                + "</div>", unsafe_allow_html=True)
 
             g1, g2 = st.columns(2)
             with g1:
-                st.markdown("**법제처 원본 서식 (빈 양식)**")
+                st.markdown(f"**{FM.FORM_NO}**")
                 if blank_form.exists():
                     st.image(str(blank_form), width='stretch')
-                    st.caption(f"「{FM.FORM_LAW}」 {FM.FORM_NO} · "
-                               "`scripts/09_forms.py` 로 법제처에서 직접 내려받습니다.")
+                    st.caption(f"「{FM.FORM_LAW}」 법제처 배포본")
                 else:
                     st.markdown("<div class='callout info'>`python scripts/09_forms.py` "
                                 "를 실행하면 원본 서식이 표시됩니다.</div>",
                                 unsafe_allow_html=True)
             with g2:
-                st.markdown(f"**불씨예보가 채운 대장: {g_id}**")
-                st.markdown(
-                    f"<div style='border:1px solid #e5e5e5;padding:14px;"
-                    f"background:#fff;max-height:1180px;overflow:auto'>"
-                    f"{st.session_state['ledger_html']}</div>",
-                    unsafe_allow_html=True)
-                st.download_button(
-                    "채운 대장 내려받기 (HTML)",
-                    ("<html><head><meta charset='utf-8'><title>"
-                     f"{FM.FORM_TITLE}</title></head><body style='width:900px;"
-                     "margin:20px auto;background:#fff'>"
-                     + st.session_state["ledger_html"] + "</body></html>").encode("utf-8"),
-                    file_name=f"화재예방강화지구_관리대장_{g_id}.html",
-                    mime="text/html")
+                st.markdown(f"**{g_id} 구역**")
+                shot = st.session_state.get("ledger_png", "")
+                if shot and Path(shot).exists():
+                    st.image(shot, width='stretch')
+                    st.caption("같은 서식 · 값만 채움")
+                    with open(shot, "rb") as fh:
+                        st.download_button("내려받기 (PNG)", fh.read(),
+                                           file_name=f"화재예방강화지구_관리대장_{g_id}.png",
+                                           mime="image/png", width='stretch')
 
 
 # ================================================================== ⑤ 대응취약
@@ -1316,7 +1320,7 @@ with tabs[5]:
                     "group": "관할", "share_of_fires": "화재비중",
                     "share_of_inspections": "점검비중", "inspection_vs_risk": "비율"}),
                     hide_index=True, width='stretch')
-                st.caption("비율 1.0 = 위험한 만큼 점검이 갔다는 뜻입니다.")
+                st.caption("비율 1.0 = 위험 비중만큼 배분")
         with cc[1]:
             if "ranking_comparison" in ev and ev["ranking_comparison"].get("capture_by_model"):
                 st.markdown("##### 알고리즘 비교")
@@ -1400,7 +1404,7 @@ with tabs[6]:
     if L.is_available(cfg):
         a3.caption("AI 답변 사용 가능 · 15~40초 소요")
     else:
-        a3.caption("AI 미연결. 관련 자료를 찾아 그대로 보여 드립니다")
+        a3.caption("AI 미연결 — 검색 결과만 제시")
 
     if (ask or st.session_state.pop("qa_run", False)) and question.strip():
         index = get_index(city, year)
@@ -1417,8 +1421,8 @@ with tabs[6]:
                         "질문을 다르게 표현해 보십시오.</div>", unsafe_allow_html=True)
         else:
             if res["source_backend"] == "search_only":
-                st.markdown("<div class='callout info'>AI 답변 생성이 연결되지 않아 "
-                            "관련 자료를 그대로 보여 드립니다.</div>",
+                st.markdown("<div class='callout info'>AI 답변 생성 미연결 — "
+                            "검색된 근거 자료만 제시합니다.</div>",
                             unsafe_allow_html=True)
             st.caption(f"질문: {st.session_state.get('qa_asked','')}")
             st.markdown(f"<div class='answer'>{_md_to_html(res['answer'])}</div>",
