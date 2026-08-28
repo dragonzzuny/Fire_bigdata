@@ -399,6 +399,30 @@ def annual_plan(ctx: PlanContext) -> dict:
 
 # ---------------------------------------------------------------- 문서
 
+#: 순찰이라는 활동 자체의 근거. 법령에 '순찰'은 없다.
+#: 소방 법령 457개 조문과 별표·서식 68건을 검색해도 그 낱말이 나오지 않는다.
+#: 순찰은 소방기본법 제3조의 '화재 예방ㆍ경계' 업무를 관서가 스스로 정한
+#: 방식으로 수행하는 것이고, 아래 조문들은 순찰 중 발견한 위험에 무엇을 할 수
+#: 있는가(조치ㆍ조사 권한)를 말한다. 이 구분을 흐리면 결재선에서
+#: '순찰 근거가 제7조냐'는 질문에 답할 수 없다.
+DUTY_BASIS_LINE = (
+    "가. 업무 근거 — 「소방기본법」 제3조(소방기관의 설치 등)에 따른 "
+    "화재 예방ㆍ경계 업무. 순찰의 방법과 횟수는 법령이 정하지 않으며 "
+    "소방관서가 정한다."
+)
+
+
+def _basis_lines(legal: list[dict], head: str) -> list[str]:
+    """세부 근거 절. 업무 근거와 조치·조사 근거를 나눠 적는다."""
+    out = ["", f"**{head}**", "", f"   {DUTY_BASIS_LINE}", "",
+           "   나. 순찰 중 조치ㆍ조사 근거", ""]
+    for l in legal:
+        out.append(f"○ {l['ref']}")
+        out.append(f"   > {l['excerpt']}")
+        out.append("")
+    return out
+
+
 def _legal_block(legal: list[dict], n: int) -> list[str]:
     """법령 근거 절. 번호를 인자로 받아 앞 절과 이어지게 한다.
 
@@ -407,6 +431,16 @@ def _legal_block(legal: list[dict], n: int) -> list[str]:
     if not legal:
         return []
     out = ["", f"## {n}. 법령 근거", ""]
+    # 법령에 '순찰'이라는 말은 없다. 순찰은 소방기본법 제3조의 '화재 예방ㆍ경계'
+    # 업무를 관서가 스스로 정한 방식으로 수행하는 것이고, 아래 조문들은 순찰 중
+    # 발견한 위험에 무엇을 할 수 있는가(조치ㆍ조사 권한)를 말한다.
+    # 이 구분을 흐리면 '순찰 근거가 제7조냐'는 질문에 답할 수 없다.
+    out.append("   가. 업무 근거: 「소방기본법」 제3조(소방기관의 설치 등) — "
+               "시ㆍ도의 화재 예방ㆍ경계 업무. 순찰의 방법과 횟수는 법령이 정하지 "
+               "않으며 관서가 정한다.")
+    out.append("")
+    out.append("   나. 순찰 중 조치ㆍ조사 근거")
+    out.append("")
     for i, l in enumerate(legal, 1):
         out.append(f"{i}) **{l['ref']}**")
         out.append(f"   > {l['excerpt']}")
@@ -474,11 +508,7 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
         out.append(f"   □ {c}")
 
     if legal:
-        out += ["", "**바. 세부 근거**", ""]
-        for l in legal:
-            out.append(f"○ {l['ref']}")
-            out.append(f"   > {l['excerpt']}")
-            out.append("")
+        out += _basis_lines(legal, "바. 세부 근거")
 
     out += ["", "**사. 용어 및 유의사항**", "", GRID_DEFINITION, "",
             "- 본 계획은 공개 데이터 기반 화재위험 예측 결과이며, 법정 점검주기 및 "
@@ -533,11 +563,7 @@ def render_monthly(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) ->
         out.append(f"   □ {c}")
 
     if legal:
-        out += ["", "**마. 세부 근거**", ""]
-        for l in legal:
-            out.append(f"○ {l['ref']}")
-            out.append(f"   > {l['excerpt']}")
-            out.append("")
+        out += _basis_lines(legal, "마. 세부 근거")
 
     out += ["", "**바. 용어**", "", GRID_DEFINITION,
             "- **위험계수**: 최근 8년 화재 발생과 기상(습도·건조일수)을 반영한 값으로, "
@@ -574,11 +600,7 @@ def render_annual(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> 
         out.append(f"| {name} | {cycle} | {ref} |")
 
     if legal:
-        out += ["", "**라. 세부 근거**", ""]
-        for l in legal:
-            out.append(f"○ {l['ref']}")
-            out.append(f"   > {l['excerpt']}")
-            out.append("")
+        out += _basis_lines(legal, "라. 세부 근거")
 
     out += ["", "**마. 용어 및 유의사항**", "", GRID_DEFINITION, "",
             "- **위험계수**: 최근 8년 화재 발생과 기상(습도·건조일수)을 반영한 값으로, "
