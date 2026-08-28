@@ -29,6 +29,7 @@ import pydeck as pdk  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from firebird import buildings as BD, dataset as D, evaluate as E, \
+    population as POP, \
     explain as X, forms as FM, \
     grid as G, \
     hydrant as H, llm as L, model as M, operations as OP, patrol as P, \
@@ -172,6 +173,17 @@ def get_stations(city: str, year: int, level: str) -> pd.DataFrame:
     cfg = get_config()
     return ST.station_table(scored(city, year), cfg, level=level,
                             city_label=cfg.city(city)["label"])
+
+
+@st.cache_data(show_spinner=False)
+def get_population(city: str, year: int):
+    """읍면동 상주인구(통계청 SGIS). 키가 없으면 빈 표."""
+    import pandas as _pd
+    try:
+        return POP.collect(get_config(), scored(city, year),
+                           city_label=get_config().city(city)["label"])
+    except Exception:                                       # noqa: BLE001
+        return _pd.DataFrame()
 
 
 @st.cache_data(show_spinner=False)
@@ -1164,9 +1176,14 @@ with tabs[4]:
                 f"소화전이 없거나 {cfg['hydrant']['max_dist_m']}m 밖입니다. "
                 f"예산 요구 시 객관적 근거로 씁니다.</div>", unsafe_allow_html=True)
 
+            # 소화전 사각 구역에 사람이 얼마나 사는지는 예산 요구의 근거가 된다.
+            # 읍면동 단위 값이므로 열 이름에 그렇게 적는다 — 격자 값이 아니다.
+            pop = get_population(city, year)
+            blind = POP.attach(blind, pop)
             show = [c for c in ["우선순위", "grid_id", "station", "center", "emd",
                                 "risk", "fires", "n_hydrant", "dist_hydrant_m",
-                                "target_total", "biz_total"] if c in blind.columns]
+                                "target_total", "biz_total", "읍면동 인구"]
+                    if c in blind.columns]
             tb = blind[show].rename(columns={
                 "grid_id": "구역", "station": "소방서", "center": "119안전센터",
                 "emd": "읍면동", "risk": "위험도", "fires": "실제화재",
@@ -1178,7 +1195,7 @@ with tabs[4]:
             if "최근접 소화전" in tb:
                 tb["최근접 소화전"] = tb["최근접 소화전"].apply(
                     lambda v: "—" if pd.isna(v) else f"{float(v):,.0f}m")
-            for c in ("실제화재", "소화전", "대상물", "업소"):
+            for c in ("실제화재", "소화전", "대상물", "업소", "읍면동 인구"):
                 if c in tb:
                     tb[c] = pd.to_numeric(tb[c], errors="coerce").fillna(0).astype(int)
             st.dataframe(tb, hide_index=True, width='stretch', height=330,
@@ -1204,6 +1221,14 @@ with tabs[4]:
                     st.markdown("**소방서별 사각 구역**")
                     st.dataframe(by.rename(columns={"station": "소방서"}),
                                  hide_index=True, width='stretch')
+            if "읍면동 인구" in blind.columns:
+                emds = blind[["emd", "읍면동 인구"]].dropna().drop_duplicates("emd")
+                if len(emds):
+                    st.caption(
+                        f"이 {len(blind)}개 구역은 {len(emds)}개 읍면동에 걸쳐 있고, "
+                        f"그 동들의 상주인구는 모두 "
+                        f"{emds['읍면동 인구'].sum():,.0f}명입니다 "
+                        f"(통계청 SGIS, 읍면동 단위).")
             st.download_button("사각지대 내려받기 (CSV)",
                                blind.to_csv(index=False).encode("utf-8-sig"),
                                file_name=f"소방용수사각_{city}_{year}.csv")

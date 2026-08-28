@@ -416,3 +416,47 @@ class TestBuildingLedgerApi(unittest.TestCase):
                               building={"연면적": "380,976", "_n": 206})
         self.assertEqual(led2["fields"]["건물동수"].value, "206")
         self.assertIn("건축물대장", led2["fields"]["건물동수"].source)
+
+
+class TestPopulationApi(unittest.TestCase):
+    """SGIS 인구 연계.
+
+    가장 중요한 것: **읍면동 값을 격자 값인 척 쓰지 않는다.** 서식의 상주인구
+    칸은 비워 두고, 읍면동 단위임을 이름에 박아 다른 곳에서만 쓴다.
+    """
+
+    def test_SGIS_코드는_법정동코드가_아니다(self):
+        """법정동코드 31140 은 울산 남구지만 SGIS 31140 은 오산시다.
+        코드를 그대로 넘기면 다른 도시 인구가 들어온다."""
+        from firebird import population as P
+        self.assertIn("법정동코드", P.__doc__)
+        self.assertTrue(hasattr(P, "find_code"))
+
+    def test_상주인구_칸은_비운다(self):
+        import pandas as pd
+        from firebird import forms as FM
+        row = pd.Series({"grid_id": "1_1", "lon": 129.3, "lat": 35.5,
+                         "target_total": 10, "biz_total": 3, "fires": 1,
+                         "emd": "달동", "sgg": "남구"})
+        led = FM.zone_ledger(row, city_label="울산광역시", year=2021)
+        f = led["fields"]["상주인구"]
+        self.assertEqual(f.value, "")
+        self.assertIn("격자", f.blank_reason)
+
+    def test_인구를_붙이면_읍면동_단위임이_이름에_남는다(self):
+        import pandas as pd
+        from firebird import population as P
+        grid = pd.DataFrame([{"grid_id": "1_1", "sgg": "남구", "emd": "달동"}])
+        pop = pd.DataFrame([{"sgg": "남구", "emd": "달동", "상주인구": 26067,
+                             "인구밀도": 20149.0}])
+        out = P.attach(grid, pop)
+        self.assertIn("읍면동 인구", out.columns)
+        self.assertNotIn("상주인구", out.columns)
+        self.assertEqual(int(out.iloc[0]["읍면동 인구"]), 26067)
+
+    def test_키가_없으면_빈_표를_돌려준다(self):
+        import pandas as pd
+        from firebird import population as P
+        self.assertTrue(P.attach(pd.DataFrame(), pd.DataFrame()).empty)
+        grid = pd.DataFrame([{"grid_id": "1_1", "sgg": "남구", "emd": "달동"}])
+        pd.testing.assert_frame_equal(P.attach(grid, pd.DataFrame()), grid)
