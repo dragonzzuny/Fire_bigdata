@@ -18,41 +18,44 @@ done
 
 step() { printf '\n\033[1m=== %s ===\033[0m\n' "$1"; }
 
-step "0/9 환경 확인"
+step "0/10 환경 확인"
 "$PY" -c "import pandas, lightgbm, shap, pyproj, streamlit; print('의존성 OK')"
 
-step "1/9 원본 진단"
+step "1/10 원본 진단"
 # 필수 컬럼이 안 맞으면 여기서 멈춘다. 반쯤 맞는 데이터로 학습하느니
 # 스키마를 먼저 고치는 편이 싸다.
 "$PY" scripts/01_inspect_raw.py
 
-step "2/9 지오코딩 캐시 채우기"
+step "2/10 지오코딩 캐시 채우기"
 if [ -n "$NO_API" ]; then
   echo "  --no-api: 건너뜀 (기존 캐시 사용)"
 else
   "$PY" scripts/02_geocode.py
 fi
 
-step "3/9 격자 패널 구축"
+step "3/10 격자 패널 구축"
 "$PY" scripts/03_build_dataset.py $NO_API
 
-step "4/9 학습 · 검증 (시간분할 / 관할제외 / 타지역 적용)"
+step "4/10 학습 · 검증 (시간분할 / 관할제외 / 타지역 적용)"
 "$PY" scripts/04_train_eval.py
 
-step "5/9 현장 산출물 (배분·점검계획서·순찰·소화전)"
+step "5/10 현장 산출물 (배분·점검계획서·순찰·소화전)"
 "$PY" scripts/05_artifacts.py
 
-step "6/9 발표용 그림"
+step "6/10 브랜드 자산(로고)"
+"$PY" scripts/13_brand.py || echo "  건너뜀"
+
+step "7/10 발표용 그림"
 "$PY" scripts/06_figures.py
 
-step "7/9 법정 서식 원본·대조 이미지"
+step "8/10 법정 서식 원본·대조 이미지"
 # 네트워크가 막히면 서식만 건너뛴다. 발표자료는 그 없이도 만들어진다.
 "$PY" scripts/09_forms.py || echo "  건너뜀 (법제처 접속 실패)"
 
-step "8/9 발표자료(PPTX)"
+step "9/10 발표자료(PPTX)"
 "$PY" scripts/07_deck.py
 
-step "9/9 발표자료 검증 (수치 출처 · 장표 배치 · 문서 수치)"
+step "10/10 발표자료 검증 (수치 출처 · 장표 배치 · 문서 수치)"
 # 장표에 근거 없는 숫자가 들어가면 발표장에서 고칠 수 없다. 만들 때 잡는다.
 "$PY" scripts/10_audit_numbers.py
 "$PY" scripts/11_audit_layout.py

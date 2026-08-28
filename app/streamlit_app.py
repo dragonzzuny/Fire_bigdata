@@ -35,7 +35,11 @@ from firebird import dataset as D, evaluate as E, explain as X, forms as FM, \
     assistant as AS, lawdata as LW, stations as ST  # noqa: E402
 from firebird.config import load_config  # noqa: E402
 
-st.set_page_config(page_title="불씨예보 K-Firebird", page_icon="🔥", layout="wide")
+# 브라우저 탭 아이콘도 로고로. 없으면 이모지로 물러난다.
+_ICON = Path(__file__).resolve().parents[1] / "reports" / "brand" / "logo_mark.png"
+st.set_page_config(page_title="불씨예보 K-Firebird",
+                   page_icon=str(_ICON) if _ICON.exists() else "🔥",
+                   layout="wide")
 
 # 실행 중인 앱은 임포트한 모듈을 메모리에 물고 있다. 코드를 고쳐도 재기동하지 않으면
 # 옛 모듈이 그대로 쓰여 'has no attribute' 같은 오류가 난다. 필요한 기능이
@@ -399,8 +403,15 @@ hr {{ border:0; border-top:1px solid #c8ccd2; margin:14pt 0; }}
 # ------------------------------------------------------------------ 사이드바
 
 cfg = get_config()
-st.sidebar.markdown("## 🔥 불씨예보")
-st.sidebar.caption("K-Firebird · 화재예방 업무 지원 시스템")
+
+BRAND = Path(__file__).resolve().parents[1] / "reports" / "brand"
+_lockup = BRAND / "logo_lockup.png"
+if _lockup.exists():
+    st.sidebar.image(str(_lockup), width='stretch')
+else:
+    st.sidebar.markdown("## 불씨예보")
+    st.sidebar.caption("K-Firebird · 화재예방 점검·순찰 의사결정 시스템")
+st.sidebar.divider()
 
 city = st.sidebar.selectbox("도시", list(cfg["cities"]),
                             format_func=lambda c: cfg.city(c)["label"])

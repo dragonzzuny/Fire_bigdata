@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 924 380" width="924" height="380">
+  
+  <g transform="translate(0,6) scale(0.72)">
+    <rect width="512" height="512" rx="112" fill="#1A1F2B"/>
+    <rect x="88" y="88" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="176" y="88" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="264" y="88" width="72" height="72" rx="18" fill="#F6C86B"/>
+    <rect x="352" y="88" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="88" y="176" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="176" y="176" width="72" height="72" rx="18" fill="#F0A63C"/>
+    <rect x="264" y="176" width="72" height="72" rx="18" fill="#F0A63C"/>
+    <rect x="352" y="176" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="88" y="264" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="176" y="264" width="72" height="72" rx="18" fill="#E34A31"/>
+    <rect x="264" y="264" width="72" height="72" rx="18" fill="#E34A31"/>
+    <rect x="352" y="264" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="88" y="352" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+    <rect x="176" y="352" width="72" height="72" rx="18" fill="#C0492F"/>
+    <rect x="264" y="352" width="72" height="72" rx="18" fill="#C0492F"/>
+    <rect x="352" y="352" width="72" height="72" rx="18" fill="#2E3542" opacity="1.0"/>
+  </g>
+  <text x="424" y="156" font-family="Noto Sans CJK KR, sans-serif"
+        font-size="118" font-weight="700" fill="#1A1F2B" letter-spacing="-2">불씨예보</text>
+  <text x="424" y="228" font-family="Noto Sans CJK KR, sans-serif"
+        font-size="52" font-weight="500" fill="#C0492F" letter-spacing="7">K-FIREBIRD</text>
+  
+</svg>

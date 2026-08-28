@@ -81,9 +81,25 @@ def title_slide(prs, title, subtitle, foot=""):
     return s
 
 
+#: 장표마다 붙는 마크 경로. build() 가 채운다.
+_MARK: Path | None = None
+
+
+def stamp(slide):
+    """장표 오른쪽 위에 마크를 찍는다.
+
+    발표 중 어느 장표를 캡처해도 무엇에 관한 자료인지 남는다. 이름을 글자로
+    다시 쓰면 시선을 뺏으므로, 작은 마크만 둔다.
+    """
+    if _MARK and _MARK.exists():
+        slide.shapes.add_picture(str(_MARK), Inches(12.62), Inches(0.42),
+                                 width=Inches(0.42), height=Inches(0.42))
+
+
 def section(prs, kicker, title, lead=""):
     s = blank(prs)
     band(s, 0, 0, W, Inches(0.14), RED)
+    stamp(s)
     textbox(s, Inches(0.8), Inches(0.45), Inches(11.8), Inches(0.4),
             kicker, size=13, bold=True, color=RED)
     textbox(s, Inches(0.8), Inches(0.85), Inches(11.8), Inches(0.8),
@@ -283,6 +299,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     """
     prs = Presentation()
     prs.slide_width, prs.slide_height = W, H
+    global _MARK
+    _MARK = figs / "logo_mark.png"
+
     k = cfg.headline_k
     # 장표에 손으로 적는 값을 없애기 위해, 필요한 수치는 모두 여기서 뽑아 둔다.
     grid_m = int(ev.get("grid_size_m", cfg.grid_size_m))
@@ -302,11 +321,17 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 1 표지 ----
     s1 = blank(prs)
     band(s1, 0, 0, W, Inches(0.14), RED)
-    textbox(s1, Inches(0.9), Inches(1.15), Inches(11.5), Inches(1.0),
-            "불씨예보", size=52, bold=True)
-    textbox(s1, Inches(0.9), Inches(2.25), Inches(11.5), Inches(0.5),
-            "K-Firebird", size=24, color=RED, bold=True)
-    textbox(s1, Inches(0.9), Inches(2.95), Inches(11.5), Inches(0.9),
+    logo = figs / "logo_lockup_plain.png"
+    if logo.exists():
+        # 이름을 글자로 다시 쓰지 않는다. 로고가 이름이다.
+        # 로고 아래 설명 문구와 겹치지 않도록 높이를 잡아 준다.
+        picture(s1, logo, Inches(0.85), Inches(1.05), Inches(3.9), max_h=Inches(1.75))
+    else:
+        textbox(s1, Inches(0.9), Inches(1.15), Inches(11.5), Inches(1.0),
+                "불씨예보", size=52, bold=True)
+        textbox(s1, Inches(0.9), Inches(2.25), Inches(11.5), Inches(0.5),
+                "K-Firebird", size=24, color=RED, bold=True)
+    textbox(s1, Inches(0.9), Inches(3.05), Inches(11.5), Inches(0.9),
             "소방안전 빅데이터 기반 화재예방 점검·순찰 의사결정 시스템\n"
             "한정된 인력을 가장 위험한 곳에, 실행 가능한 계획으로",
             size=18, color=MUTED)
@@ -324,9 +349,13 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             "발표자", size=14, bold=True, color=RED)
     textbox(s1, Inches(8.1), Inches(4.92), Inches(4.0), Inches(1.2),
             "박용준\n아주대학교 산업공학과 석사과정", size=16, bold=True)
-    textbox(s1, Inches(0.9), Inches(6.55), Inches(11.5), Inches(0.5),
+    band(s1, 0, Inches(6.42), W, Inches(1.08), BAND)
+    textbox(s1, Inches(0.9), Inches(6.62), Inches(8.0), Inches(0.5),
             "제6회 소방안전 빅데이터 활용 및 아이디어 경진대회 · 서비스 개발 부문",
             size=13, color=MUTED)
+    textbox(s1, Inches(8.9), Inches(6.62), Inches(3.5), Inches(0.5),
+            "주최 소방청 · 주관 소방안전 빅데이터 플랫폼",
+            size=12, color=MUTED, align=PP_ALIGN.RIGHT)
 
     # ---- 2 왜 (배경) ----
     s2 = section(prs, "1. 배경 및 문제점",
@@ -682,9 +711,11 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 13 마무리 ----
     s13 = blank(prs)
     band(s13, 0, 0, W, Inches(0.14), RED)
-    textbox(s13, Inches(0.9), Inches(2.4), Inches(11.5), Inches(1.6),
+    if logo.exists():
+        picture(s13, logo, Inches(0.85), Inches(1.05), Inches(3.6), max_h=Inches(1.6))
+    textbox(s13, Inches(0.9), Inches(2.75), Inches(11.5), Inches(1.6),
             "한정된 인력을\n가장 위험한 곳에", size=44, bold=True)
-    textbox(s13, Inches(0.9), Inches(4.55), Inches(11.5), Inches(1.4),
+    textbox(s13, Inches(0.9), Inches(4.9), Inches(11.5), Inches(1.4),
             f"울산광역시 {manifest.get('panel', {}).get('grids', 0):,}개 구역 · "
             f"화재 {manifest.get('panel', {}).get('total_fires', 0):,.0f}건으로 검증\n\n"
             "박용준 · 아주대학교 산업공학과 석사과정\n"
