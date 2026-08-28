@@ -47,6 +47,7 @@ step "6/10 브랜드 자산(로고)"
 
 step "7/10 발표용 그림"
 "$PY" scripts/06_figures.py
+"$PY" scripts/14_compare_map.py || echo "  전후 비교 지도 건너뜀"
 
 step "8/10 법정 서식 원본·대조 이미지"
 # 네트워크가 막히면 서식만 건너뛴다. 발표자료는 그 없이도 만들어진다.

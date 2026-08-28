@@ -505,7 +505,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     screen_slide(
         prs, "4. 서비스 화면 ③-1", "조건을 바꾸면 계획이 다시 짜입니다",
         "바뀐 조건과 그 결과를 같은 범위·같은 배율의 지도 두 장으로 보여 줍니다",
-        figs / "shot_patrol_compare.png",
+        (figs / "fig_route_compare.png"
+         if (figs / "fig_route_compare.png").exists()
+         else figs / "shot_patrol_compare.png"),
         [("무엇을 바꿨는지 남깁니다",
           "목적 · 격자 수 · 1회 순찰 시간 · 지역 · 거리 기준 가운데 "
           "무엇을 바꿨는지 문장으로 적힙니다."),

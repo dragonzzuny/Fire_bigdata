@@ -259,7 +259,7 @@ def deck(layers, df, zoom=None, tooltip=TIP_GRID):
                       float(lon_s.max() - lon_s.min()) * 111.0
                       * math.cos(math.radians(lat)),
                       0.8)
-        span_km *= 1.35                       # 가장자리가 잘리지 않도록 여유
+        span_km *= 1.12                       # 가장자리가 잘리지 않을 만큼만
         zoom = float(np.clip(math.log2(360.0 * 111.0 / span_km) - 1.2, 8.0, 14.0))
     return pdk.Deck(layers=layers, map_style=None, tooltip=tooltip,
                     initial_view_state=pdk.ViewState(latitude=lat, longitude=lon,

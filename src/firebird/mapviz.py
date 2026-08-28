@@ -238,6 +238,96 @@ def route_map(panel_year: pd.DataFrame, routes: list[pd.DataFrame], cfg, *,
     return fig
 
 
+def _fit_box(xs, ys, pad_m: float, aspect: float):
+    """좌표들이 담기는 네모. 그림틀 비율에 맞춰 좁은 축을 늘린다."""
+    cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+    half_x = max(max(xs) - min(xs), 1.0) / 2 + pad_m
+    half_y = max(max(ys) - min(ys), 1.0) / 2 + pad_m
+    if half_x / half_y < aspect:
+        half_x = half_y * aspect
+    else:
+        half_y = half_x / aspect
+    return (np.array([cx - half_x, cx + half_x]),
+            np.array([cy - half_y, cy + half_y]))
+
+
+def _panel(ax, df, routes, cfg, risk_col: str):
+    """비교용 한 칸. 위험 격자 + 동선. 번호와 관서명은 뺀다 — 두 칸을 나란히
+    놓으면 글자가 겹쳐 읽히지 않는다. 필요한 수치는 제목에 적는다."""
+    x, y = _cells(df["grid_id"], cfg)
+    s = cfg.grid_size_m
+    risk = pd.to_numeric(df[risk_col], errors="coerce").fillna(0.0)
+    patches = [mpatches.Rectangle((xi, yi), s, s) for xi, yi in zip(x, y)]
+    pc = PatchCollection(patches, cmap=RISK_CMAP, edgecolor="#ffffff",
+                         linewidths=0.12, alpha=0.85)
+    pc.set_array(risk.rank(pct=True).to_numpy())
+    pc.set_clim(0, 1)
+    ax.add_collection(pc)
+
+    tf = G._to_metric(cfg.crs_geographic, cfg.crs_metric)
+    xs, ys = [], []
+    for i, r in enumerate(routes):
+        if r.empty:
+            continue
+        col = ROUTE_COLORS[i % len(ROUTE_COLORS)]
+        rx, ry = tf.transform(r["lon"].astype(float).to_numpy(),
+                              r["lat"].astype(float).to_numpy())
+        xs += list(rx); ys += list(ry)
+        dep = r.attrs.get("depot", {})
+        if dep:
+            dx, dy = tf.transform(float(dep["lon"]), float(dep["lat"]))
+            xs.append(dx); ys.append(dy)
+            px, py = np.r_[dx, rx, dx], np.r_[dy, ry, dy]
+            ax.plot(dx, dy, marker="s", ms=10, color="#111111", zorder=9,
+                    markeredgecolor="white", markeredgewidth=1.3)
+        else:
+            px, py = rx, ry
+        # 발표 화면에서 뒷자리까지 보이려면 선이 굵어야 한다.
+        ax.plot(px, py, color=col, lw=3.4, alpha=0.95, zorder=7,
+                solid_capstyle="round")
+        ax.scatter(rx, ry, s=70, color=col, zorder=8, edgecolor="white",
+                   linewidths=1.2)
+    return x, y, xs, ys
+
+
+def route_compare(panel_year: pd.DataFrame, before: list[pd.DataFrame],
+                  after: list[pd.DataFrame], cfg, *, risk_col: str = "pred",
+                  before_title: str = "바꾸기 전", after_title: str = "바꾼 뒤",
+                  figsize=(13.4, 6.0), pad_m: float = 1200.0):
+    """조건을 바꾸기 전과 후의 동선을 나란히 그린다.
+
+    **두 지도는 같은 범위·같은 배율**이다. 축척이 다르면 '동선이 짧아졌다'가
+    그림에서 거짓말이 된다. 두 계획의 좌표를 합쳐 틀을 한 번만 잡고
+    양쪽에 똑같이 씌운다.
+
+    화면을 캡처하지 않고 직접 그린다. 캡처는 스크롤 위치와 창 크기에 따라
+    지도가 잘리고 배율도 그때그때 달라져, 같은 그림을 두 번 얻을 수 없다.
+    """
+    df = panel_year.dropna(subset=["grid_id"]).copy()
+    if df.empty:
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    packs, all_x, all_y = [], [], []
+    for ax, routes, title in ((axes[0], before, before_title),
+                              (axes[1], after, after_title)):
+        x, y, xs, ys = _panel(ax, df, routes, cfg, risk_col)
+        packs.append((ax, x, y, title))
+        all_x += xs
+        all_y += ys
+
+    s = cfg.grid_size_m
+    aspect = (figsize[0] / 2) / figsize[1]
+    box = _fit_box(all_x, all_y, pad_m, aspect) if all_x else None
+    for ax, x, y, title in packs:
+        if box is not None:
+            _finish(ax, box[0], box[1], s, title, fit=False)
+        else:
+            _finish(ax, x, y, s, title)
+    fig.tight_layout()
+    return fig
+
+
 def _finish(ax, x, y, s, title: str, *, fit: bool = True):
     if fit:
         ax.set_xlim(x.min() - s, x.max() + 2 * s)

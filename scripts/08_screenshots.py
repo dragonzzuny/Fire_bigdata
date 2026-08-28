@@ -41,7 +41,7 @@ def main() -> int:
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        page = browser.new_page(viewport={"width": 1680, "height": 1050},
+        page = browser.new_page(viewport={"width": 1680, "height": 1400},
                                 device_scale_factor=2)
         # networkidle 은 지도 타일이 계속 오가면 끝나지 않는다.
         # 문서만 뜨면 되므로 domcontentloaded 로 기다리고, 이후는 시간으로 준다.
@@ -126,15 +126,26 @@ def main() -> int:
             opts.nth(1).click()
             print(f"  순찰 목적 변경 → {label}, 재계산 대기")
             page.wait_for_timeout(35_000)
-            h = page.get_by_text("조건을 바꾸기 전과 후").first
-            h.scroll_into_view_if_needed(timeout=15_000)
-            page.wait_for_timeout(6_000)
-            box = h.bounding_box()
-            top = max((box["y"] if box else 0) - 40, 0)
-            page.screenshot(path=str(out / "shot_patrol_compare.png"),
-                            clip={"x": 360, "y": top, "width": 1320,
-                                  "height": min(1050 - top, 900)})
-            print("  shot_patrol_compare.png  (조건 변경 전후)")
+            # 지도 두 장만 찍는다. 좌표를 손으로 잘라 내면 지도가 중간에서
+            # 끊긴다 — 화면이 길어지거나 짧아지면 그 값이 바로 틀어지기 때문이다.
+            # 두 지도를 담고 있는 블록 자체를 찍으면 잘릴 일이 없다.
+            block = page.locator("[data-testid='stHorizontalBlock']").filter(
+                has_text="바꾸기 전").first
+            block.scroll_into_view_if_needed(timeout=15_000)
+            page.wait_for_timeout(8_000)          # 지도 타일이 다시 그려질 시간
+            block.screenshot(path=str(out / "shot_patrol_compare.png"))
+            print("  shot_patrol_compare.png  (전후 지도)")
+
+            # 달라진 수치는 따로 찍어 둔다. 지도와 한 장에 넣으면 둘 다 작아진다.
+            try:
+                mblock = page.locator("[data-testid='stHorizontalBlock']").filter(
+                    has_text="가장 먼 순찰조").first
+                mblock.scroll_into_view_if_needed(timeout=10_000)
+                page.wait_for_timeout(2_000)
+                mblock.screenshot(path=str(out / "shot_patrol_delta.png"))
+                print("  shot_patrol_delta.png  (전후 수치)")
+            except Exception:                             # noqa: BLE001
+                pass
         except Exception as exc:                          # noqa: BLE001
             print(f"  전후 비교 캡처 건너뜀: {type(exc).__name__}")
 
@@ -147,14 +158,11 @@ def main() -> int:
             page.get_by_role("button", name="서식 채우기").click(timeout=20_000)
             print("  법정 서식 채우는 중…")
             page.wait_for_timeout(20_000)
-            h = page.get_by_text("법제처 원본 서식").first
-            h.scroll_into_view_if_needed(timeout=15_000)
+            block = page.locator("[data-testid='stHorizontalBlock']").filter(
+                has_text="법제처 원본 서식").first
+            block.scroll_into_view_if_needed(timeout=15_000)
             page.wait_for_timeout(5_000)
-            box = h.bounding_box()
-            top = max((box["y"] if box else 0) - 130, 0)
-            page.screenshot(path=str(out / "shot_form_compare.png"),
-                            clip={"x": 360, "y": top, "width": 1320,
-                                  "height": min(1050 - top, 940)})
+            block.screenshot(path=str(out / "shot_form_compare.png"))
             print("  shot_form_compare.png  (빈 양식 ↔ 채운 대장)")
         except Exception as exc:                          # noqa: BLE001
             print(f"  법정 서식 캡처 건너뜀: {type(exc).__name__}")
