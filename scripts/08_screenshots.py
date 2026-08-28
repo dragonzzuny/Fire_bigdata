@@ -89,11 +89,16 @@ def main() -> int:
             page.get_by_role("button", name="계획서 생성").click(timeout=20_000)
             print("  계획서 생성 중…")
             page.wait_for_timeout(20_000)
-            # 문서는 화면 아래에 나온다. 미리보기까지 내려가야 결과가 보인다.
-            page.get_by_text("미리보기").first.scroll_into_view_if_needed(timeout=15_000)
-            page.wait_for_timeout(2_500)
-            page.screenshot(path=str(out / "shot_plan_result.png"),
-                            clip={"x": 360, "y": 0, "width": 1320, "height": 1050})
+            # 문서는 화면 아래에 나온다. 화면 위쪽을 찍으면 입력 폼만 잡히고
+            # '무엇이 나오는지'가 안 보인다. 미리보기 제목의 좌표에서 자른다.
+            prev = page.get_by_text("미리보기").first
+            prev.scroll_into_view_if_needed(timeout=15_000)
+            page.wait_for_timeout(3_000)
+            # 좌표를 계산해 자르려다 316px 짜리 조각을 얻은 적이 있다.
+            # 문서 자체를 요소로 찍으면 좌표 계산이 필요 없다.
+            doc = page.locator(".docview").first
+            doc.wait_for(state="visible", timeout=20_000)
+            doc.screenshot(path=str(out / "shot_plan_result.png"))
             print("  shot_plan_result.png  (생성된 계획서 본문)")
         except Exception as exc:                          # noqa: BLE001
             print(f"  계획서 캡처 건너뜀: {type(exc).__name__}")

@@ -28,6 +28,9 @@ def expected(cfg) -> dict[str, str]:
     city, year = ev.get("city", "ulsan"), ev["temporal"]["test_year"]
     s = json.loads((out / f"artifacts_summary_{city}_{year}.json").read_text(encoding="utf-8"))
 
+    bt_path = out / f"backtest_patrol_{city}.json"
+    bt = json.loads(bt_path.read_text(encoding="utf-8")) if bt_path.exists() else {}
+
     t, a = ev["temporal"], s["allocation"]
     h, ci = t["headline"], t["ci"][f"top{int(t['headline_k'])}"]
     tk, op = a["top_k_percent"], a["optimized"]
@@ -43,6 +46,10 @@ def expected(cfg) -> dict[str, str]:
         # 화면·CSV 에 나가는 배분(관할별 최소 배분 적용)이 문서에 적히는 수다.
         "배분 구역 수": f"{(a.get('equity') or {}).get('n_grids', op['n_grids'])}개",
         "배분 개선폭": f"{a['gain_pp']:+.1f}%p",
+        "순찰 회고 기준선": f"{(bt.get('headline') or {}).get('baseline_fires', 0):,.0f}건",
+        "순찰 회고 포착": f"{(bt.get('headline') or {}).get('capture_share', 0):.1%}",
+        "순찰 회고 화재": f"{(bt.get('headline') or {}).get('model_fires', 0):,.0f}건",
+        "순찰 회고 구역비중": f"{(bt.get('headline') or {}).get('share_of_city', 0):.1%}",
         "형평성 대가": f"{(a.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p",
         "1위 구역 점검비용": f"{(a.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건",
         "소화전 사각 구역": f"{s['n_blind_spots']}개",

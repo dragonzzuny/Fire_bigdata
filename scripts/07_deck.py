@@ -387,8 +387,28 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             "한정된 인력을 가장 위험한 곳과 시기에 먼저 배치하도록 돕습니다.",
             size=15, bold=True)
 
+    # ---- 7 화면③ 계획서 ----
+    screen_slide(
+        prs, "2. 결과물", "저희가 내놓는 것은 이 문서입니다",
+        "순찰 동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 순찰 계획서",
+        (figs / "shot_plan_result.png"
+         if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
+        [("일별 · 월별 · 연간",
+          "월별은 그 달의 화재위험을 반영해 순찰 횟수를 정하고, 연간은 "
+          "계절별 순찰 유형과 법정 이행사항을 배치합니다."),
+         ("공문 서식 그대로",
+          "기관·수신·시행일·관련 근거·붙임·결재란까지. 담당자가 다시 옮겨 "
+          "적을 필요가 없습니다."),
+         ("법정 서식 안내",
+          "조치가 필요하면 어느 별지 서식을 쓰는지 함께 알려 줍니다. "
+          "(예: 화재예방강화지구 관리대장)")],
+        note="화재위험 예측은 이 문서를 만들기 위한 중간 단계입니다. "
+             "지금부터 이 한 장이 어떤 자료와 어떤 계산을 거쳐 나오는지 보여드리겠습니다.",
+        # 계획서 원본은 세로로 매우 길다. 장표 비율에 맞게 머리 부분만 쓴다.
+        keep=0.26)
+
     # ---- 3 무엇을 (구성) ----
-    s3 = section(prs, "2. 제안 내용",
+    s3 = section(prs, "3. 제안 내용",
                  "예측부터 결재 문서까지 한 흐름으로",
                  "위험 예측 → 인력 기준 배분 → 관서별 순찰 동선 → 공문 서식 계획서")
     picture(s3, figs / "fig_pipeline.png", Inches(1.35), Inches(2.15), Inches(10.6))
@@ -407,7 +427,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                 size=12, color=MUTED, align=PP_ALIGN.CENTER)
 
     # ---- 4 활용 데이터 (필수 요건) ----
-    s4 = section(prs, "3. 활용 데이터",
+    s4 = section(prs, "4. 활용 데이터",
                  "소방안전 빅데이터 플랫폼 데이터 상품 8종",
                  "울산 4종으로 만들고, 세종 4종으로 타 지역 적용을 확인했습니다")
     rows = [["데이터셋", "제공", "역할", "적재 건수"]] + [list(r) for r in ds_rows]
@@ -432,7 +452,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             size=12.5, bold=True)
 
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
-    s_map = section(prs, "4. 서비스 화면 ①",
+    s_map = section(prs, "5. 서비스 화면 ①",
                     "화재위험 지도와 관서별 순찰 동선",
                     "예측 결과와 실제 이동 경로를 한 장에서 봅니다")
     map_img = figs / "map_route.png"
@@ -480,7 +500,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     tk = alloc.get("top_k_percent", {})
     screen_slide(
-        prs, "4. 서비스 화면 ②", "인력에 맞춘 예방점검 배분",
+        prs, "5. 서비스 화면 ②", "인력에 맞춘 예방점검 배분",
         "점검관 인원과 기간을 넣으면 그 인력으로 갈 수 있는 구역만 배분합니다",
         figs / "shot_allocation.png",
         [("인력을 먼저 넣습니다",
@@ -503,7 +523,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 6 화면② 순찰 ----
     screen_slide(
-        prs, "4. 서비스 화면 ③", "목적별 순찰 동선 자동 생성",
+        prs, "5. 서비스 화면 ③", "목적별 순찰 동선 자동 생성",
         "119안전센터 출발 → 관할 순회 → 복귀. 실제 도로 주행거리 기준",
         (figs / "shot_patrol_map.png"
          if (figs / "shot_patrol_map.png").exists() else figs / "shot_patrol.png"),
@@ -522,7 +542,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 6-2 조건을 바꾸면 계획이 달라진다 ----
     screen_slide(
-        prs, "4. 서비스 화면 ③-1", "조건을 바꾸면 계획이 다시 짜입니다",
+        prs, "5. 서비스 화면 ③-1", "조건을 바꾸면 계획이 다시 짜입니다",
         "바꾼 조건과 그 결과를 나란히 남깁니다",
         (figs / "fig_route_compare.png"
          if (figs / "fig_route_compare.png").exists()
@@ -538,30 +558,11 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
              "‘동선이 짧아졌다’가 그림에서 거짓말이 됩니다.",
         keep=1.0)
 
-    # ---- 7 화면③ 계획서 ----
-    screen_slide(
-        prs, "4. 서비스 화면 ④", "공문 서식 계획서 자동 작성",
-        "동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 계획서를 만듭니다",
-        (figs / "shot_plan_result.png"
-         if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
-        [("일별 · 월별 · 연간",
-          "월별은 그 달의 화재위험을 반영해 순찰 횟수를 정하고, 연간은 "
-          "계절별 순찰 유형과 법정 이행사항을 배치합니다."),
-         ("공문 서식 그대로",
-          "기관·수신·시행일·관련 근거·붙임·결재란까지. 담당자가 다시 옮겨 "
-          "적을 필요가 없습니다."),
-         ("법정 서식 안내",
-          "조치가 필요하면 어느 별지 서식을 쓰는지 함께 알려 줍니다. "
-          "(예: 화재예방강화지구 관리대장)")],
-        note="숫자·동선·법령 조문은 시스템이 확정하고, 생성형 AI는 문장만 다듬습니다. "
-             "인쇄용 HTML 로 내려받아 그대로 A4 출력합니다.",
-        keep=0.82)
-
     # ---- 8 화면④ 업무 도우미 ----
     if (figs / "fig_form_compare.png").exists() or \
             (figs / "shot_form_compare.png").exists():
         screen_slide(
-            prs, "4. 서비스 화면 ④-1", "법정 서식을 데이터로 채웁니다",
+            prs, "5. 서비스 화면 ④", "법정 서식을 데이터로 채웁니다",
             "[별지 제11호서식] 화재예방강화지구 관리대장 — 괘선 하나까지 원본 그대로",
             (figs / "fig_form_compare.png"
              if (figs / "fig_form_compare.png").exists()
@@ -577,8 +578,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             note="서식 파일은 법제처에서 내려받은 원본 그대로입니다.",
             keep=1.0)
 
+    # ---- 법령 검색 ----
     screen_slide(
-        prs, "4. 서비스 화면 ⑤", "소방 법령 검색 및 근거 제시",
+        prs, "5. 서비스 화면 ⑤", "소방 법령 검색 및 근거 제시",
         f"법령 {extra.get('n_article', 0)}개 조문과 별표·서식 "
         f"{extra.get('n_annex_all', 0)}건을 색인해 조문 번호와 함께 답합니다",
         (figs / "shot_assistant_answer.png"
@@ -595,51 +597,6 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           "같은 화면에서 확인합니다.")],
         note="답변은 업무 참고용이며, 법령 원문은 국가법령정보센터에서 확인합니다.",
         keep=0.78)
-
-    # ---- 8-2 차별성 ----
-    s_diff = section(prs, "5. 차별성",
-                     "예측은 이미 있습니다. 없던 것은 그 다음입니다",
-                     "화재위험 예측 자체는 2016년 애틀랜타가 이미 했습니다. "
-                     "저희가 더한 세 가지입니다")
-    cards = [
-        ("① ‘위험한 순서대로’는 계획이 못 됩니다",
-         "위험한 구역일수록 점검할 건물이 많습니다.\n"
-         f"상위 {k}% {tk.get('n_grids_selected', 0):,}개 구역 안에 "
-         f"{tk.get('cost_if_all', 0):,.0f}개소 — 가용 "
-         f"{alloc.get('budget_visits', 0):,}곳으로는 1위 구역 하나도 못 끝냅니다.\n\n"
-         "질문을 바꿨습니다.\n"
-         "‘어디가 가장 위험한가’가 아니라\n"
-         "‘이 인력으로 갈 수 있는 조합 중 가장 많이 잡는 것은 무엇인가’.\n\n"
-         f"같은 인력으로 {shown_grids:,}개 구역, "
-         f"{alloc.get('gain_pp', 0):+.1f}%p.",
-         "국내외 위험예측 연구가 다루지 않은 지점입니다"),
-        ("② 예측 결과가 결재 문서가 됩니다",
-         "일별·월별·연간 계획서를 일반기안문 배열(수신·경유·제목·붙임·끝.·발신명의)로 "
-         "만들고, 법정 서식([별지 제11호서식] 화재예방강화지구 관리대장)은 "
-         "괘선까지 원본 그대로 두고 값만 채웁니다.\n"
-         "담당자가 옮겨 적을 일이 없습니다.",
-         "위험점수에서 끝나지 않고 결재선까지 갑니다"),
-        ("③ 생성형 AI의 인용을 기계가 검증합니다",
-         "공공에서 생성형 AI 를 못 쓰는 이유는 성능이 아니라 검증이 안 되기 "
-         "때문입니다.\n"
-         "· 계획서: 다듬은 문장에 원문에 없던 수·조문이 하나라도 생기면 버립니다\n"
-         "· 업무 도우미: 인용한 법령·조문을 검색 원문과 대조하고, "
-         "자료 밖이면 화면에 '확인 필요'로 표시합니다",
-         "숫자·동선·조문은 시스템이 확정하고, AI 는 문장만 다듬습니다"),
-    ]
-    x0, w_card = 0.8, 3.87
-    for i, (head, body, foot) in enumerate(cards):
-        x = Inches(x0 + i * (w_card + 0.16))
-        band(s_diff, x, Inches(2.35), Inches(w_card), Inches(4.0))
-        textbox(s_diff, x + Inches(0.22), Inches(2.55), Inches(w_card - 0.44),
-                Inches(0.7), head, size=14, bold=True, color=RED)
-        textbox(s_diff, x + Inches(0.22), Inches(3.3), Inches(w_card - 0.44),
-                Inches(2.3), body, size=11, color=INK, spacing=1.22)
-        textbox(s_diff, x + Inches(0.22), Inches(5.72), Inches(w_card - 0.44),
-                Inches(0.5), foot, size=10.5, color=MUTED)
-    textbox(s_diff, Inches(0.8), Inches(6.55), Inches(11.8), Inches(0.5),
-            "구역 단위 화재위험은 손해 예방·요율 산정에도 쓸 수 있습니다 "
-            "(후원 한국화재보험협회).", size=11.5, color=MUTED)
 
     # ---- 9 어떻게 믿나 (검증) ----
     s9 = section(prs, "6. 검증 결과",
@@ -701,8 +658,108 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             f"{extra.get('r2_weather', 0):.2f} 로 올라야만 채택합니다.\n"
             "이 계수로 월간 계획서의 주차별 순찰 횟수를 정합니다.", size=12.5)
 
+    # ---- 회고 검증: 그해 이전 자료만으로 세웠다면 ----
+    bt = extra.get("backtest", {})
+    if bt:
+        bh = bt.get("headline", {})
+        s_bt = section(prs, "6. 검증 결과 (계속)",
+                       f"{bh.get('train_upto', 0)}년까지만 알고 "
+                       f"{bh.get('year', 0)}년 순찰을 짰다면",
+                       "그해 화재를 몇 건 만났는지 되돌려 세어 봤습니다")
+        rows = [["순찰 구역", "관내 비중", "우리 계획", "작년 화재 순", "무작위",
+                 "그해 화재 중"]]
+        for r in bt["years"][0]["by_patrol_size"]:
+            rows.append([f"{r['patrol_grids']}개", f"{r['share_of_city']:.1%}",
+                         f"{r['model_fires']:.0f}건", f"{r['baseline_fires']:.0f}건",
+                         f"{r['random_fires']:.1f}건", f"{r['capture_share']:.1%}"])
+        table(s_bt, Inches(0.8), Inches(2.3), Inches(6.9), Inches(2.4), rows,
+              col_widths=[1.5, 1.4, 1.4, 1.5, 1.2, 1.4], size=12.5)
+
+        kpi(s_bt, Inches(8.1), Inches(2.3), Inches(2.1),
+            f"{bh.get('share_of_city', 0):.1%}",
+            "순찰한 구역", f"{bh.get('patrol_grids', 0)}개 / 관내 전체")
+        kpi(s_bt, Inches(10.4), Inches(2.3), Inches(2.2),
+            f"{bh.get('capture_share', 0):.1%}", "그 안에서 난 화재",
+            f"{bh.get('model_fires', 0):,.0f}건 / "
+            f"{bh.get('total_fires', 0):,.0f}건", color=RED)
+
+        sc = bh.get("scenarios", [])
+        lines_ = ["순찰이 화재를 e 만큼 막는다고 두면"]
+        for s in sc:
+            lines_.append(f"   e = {s['assumed_effect']:.0%}  →  "
+                          f"연 {s['prevented_if_patrolled']:.1f}건")
+        band(s_bt, Inches(0.8), Inches(5.55), Inches(5.6), Inches(1.45))
+        textbox(s_bt, Inches(1.05), Inches(5.68), Inches(5.1), Inches(1.2),
+                "\n".join(lines_), size=13)
+        band(s_bt, Inches(6.7), Inches(5.55), Inches(5.9), Inches(1.45))
+        textbox(s_bt, Inches(6.95), Inches(5.68), Inches(5.4), Inches(1.2),
+                "e 는 저희가 측정할 수 없는 값입니다.\n"
+                "그래서 하나로 정하지 않고 세 경우를 나란히 둡니다.\n"
+                "저희가 잰 것은 ‘순찰 구역 안에서 난 화재 건수’뿐이고,\n"
+                "그 수는 세 해 모두 같은 방식으로 다시 나옵니다.", size=12.5)
+        _g = bh.get("gain_ci", {})
+        band(s_bt, Inches(0.8), Inches(4.85), Inches(11.8), Inches(0.55))
+        textbox(s_bt, Inches(1.0), Inches(4.93), Inches(11.4), Inches(0.4),
+                f"작년 화재 순으로 같은 {bh.get('patrol_grids', 0)}곳을 골랐다면 "
+                f"{bh.get('baseline_fires', 0):.0f}건 — 차이 "
+                f"{bh.get('gain_over_baseline', 0):+.0f}건, 95% 신뢰구간 "
+                f"{_g.get('lo', 0):+.0f} ~ {_g.get('hi', 0):+.0f}건입니다.",
+                size=12.5)
+        s_bt_note = ("같은 절차를 "
+                     + " · ".join(f"{y['year']}년 {y['by_patrol_size'][2]['capture_share']:.1%}"
+                                  for y in bt["years"])
+                     + " 로 세 해 반복했습니다.")
+        textbox(s_bt, Inches(0.8), Inches(7.05), Inches(11.8), Inches(0.4),
+                s_bt_note, size=12, color=MUTED)
+
+
+    # ---- 8-2 차별성 ----
+    s_diff = section(prs, "7. 차별성",
+                     "예측은 이미 있습니다. 없던 것은 그 다음입니다",
+                     "화재위험 예측 자체는 2016년 애틀랜타가 이미 했습니다. "
+                     "저희가 더한 세 가지입니다")
+    cards = [
+        ("① ‘위험한 순서대로’는 계획이 못 됩니다",
+         "위험한 구역일수록 점검할 건물이 많습니다.\n"
+         f"상위 {k}% {tk.get('n_grids_selected', 0):,}개 구역 안에 "
+         f"{tk.get('cost_if_all', 0):,.0f}개소 — 가용 "
+         f"{alloc.get('budget_visits', 0):,}곳으로는 1위 구역 하나도 못 끝냅니다.\n\n"
+         "질문을 바꿨습니다.\n"
+         "‘어디가 가장 위험한가’가 아니라\n"
+         "‘이 인력으로 갈 수 있는 조합 중 가장 많이 잡는 것은 무엇인가’.\n\n"
+         f"같은 인력으로 {shown_grids:,}개 구역, "
+         f"{alloc.get('gain_pp', 0):+.1f}%p.",
+         "국내외 위험예측 연구가 다루지 않은 지점입니다"),
+        ("② 예측 결과가 결재 문서가 됩니다",
+         "일별·월별·연간 계획서를 일반기안문 배열(수신·경유·제목·붙임·끝.·발신명의)로 "
+         "만들고, 법정 서식([별지 제11호서식] 화재예방강화지구 관리대장)은 "
+         "괘선까지 원본 그대로 두고 값만 채웁니다.\n"
+         "담당자가 옮겨 적을 일이 없습니다.",
+         "위험점수에서 끝나지 않고 결재선까지 갑니다"),
+        ("③ 생성형 AI의 인용을 기계가 검증합니다",
+         "공공에서 생성형 AI 를 못 쓰는 이유는 성능이 아니라 검증이 안 되기 "
+         "때문입니다.\n"
+         "· 계획서: 다듬은 문장에 원문에 없던 수·조문이 하나라도 생기면 버립니다\n"
+         "· 업무 도우미: 인용한 법령·조문을 검색 원문과 대조하고, "
+         "자료 밖이면 화면에 '확인 필요'로 표시합니다",
+         "숫자·동선·조문은 시스템이 확정하고, AI 는 문장만 다듬습니다"),
+    ]
+    x0, w_card = 0.8, 3.87
+    for i, (head, body, foot) in enumerate(cards):
+        x = Inches(x0 + i * (w_card + 0.16))
+        band(s_diff, x, Inches(2.35), Inches(w_card), Inches(4.0))
+        textbox(s_diff, x + Inches(0.22), Inches(2.55), Inches(w_card - 0.44),
+                Inches(0.7), head, size=14, bold=True, color=RED)
+        textbox(s_diff, x + Inches(0.22), Inches(3.3), Inches(w_card - 0.44),
+                Inches(2.3), body, size=11, color=INK, spacing=1.22)
+        textbox(s_diff, x + Inches(0.22), Inches(5.72), Inches(w_card - 0.44),
+                Inches(0.5), foot, size=10.5, color=MUTED)
+    textbox(s_diff, Inches(0.8), Inches(6.55), Inches(11.8), Inches(0.5),
+            "구역 단위 화재위험은 손해 예방·요율 산정에도 쓸 수 있습니다 "
+            "(후원 한국화재보험협회).", size=11.5, color=MUTED)
+
     # ---- 미국 사례 비교 ----
-    s_us = section(prs, "6. 검증 결과 (계속)",
+    s_us = section(prs, "7. 차별성 (계속)",
                    "해외 사례 비교: 애틀랜타 Firebird",
                    "미국 NFPA 모범사례 선정 시스템 (KDD 2016)")
     rows = [["", "Firebird (애틀랜타, 2016)", "불씨예보 (울산, 2026)"],
@@ -727,7 +784,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             "그 지점이 저희가 더한 부분입니다.", size=13, bold=True, color=GREEN)
 
     # ---- 11 기대효과 ----
-    s11 = section(prs, "7. 기대효과 및 활용방안",
+    s11 = section(prs, "8. 기대효과 및 활용방안",
                   "동일 인력 기준 포착률 개선과 근거 기록", "")
     if alloc and "gain_pp" in alloc:
         kpi(s11, Inches(0.8), Inches(2.4), Inches(3.8),
@@ -750,7 +807,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             size=15.5, spacing=1.65)
 
     # ---- 12 한계 ----
-    s12 = section(prs, "8. 기타 (한계 및 향후 계획)",
+    s12 = section(prs, "9. 한계와 향후 계획",
                   "확인된 한계와 대응 방안",
                   "자료상 제약, 현재 대응, 개선 방향 순으로 정리했습니다")
     rows = [["한계", "현재 대응", "향후"]]
@@ -794,7 +851,10 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             f"화재 {manifest.get('panel', {}).get('total_fires', 0):,.0f}건으로 검증\n\n"
             "박용준 · 아주대학교 산업공학과 석사과정\n"
             "github.com/dragonzzuny/Fire_bigdata", size=17, color=MUTED)
+
     return prs
+
+
 
 
 def collect_extra(cfg, city: str) -> dict:
@@ -872,6 +932,11 @@ def collect_extra(cfg, city: str) -> dict:
                 out["season_lo"] = float(lo["seasonal_index"])
     except Exception:                                    # noqa: BLE001
         pass
+
+    # 회고 검증(scripts/17). 장표에 손으로 적지 않기 위해 파일에서 읽는다.
+    bt = cfg.paths.outputs / f"backtest_patrol_{city}.json"
+    if bt.exists():
+        out["backtest"] = json.loads(bt.read_text(encoding="utf-8"))
     return out
 
 

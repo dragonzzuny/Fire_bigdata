@@ -65,31 +65,38 @@ LITERALS = {
 }
 
 
-def shake(obj):
-    """자료 구조 안의 모든 수를 흔든다. 문자열 속 숫자까지 바꾼다."""
+def shake(obj, factor: float = None, bump: int = 7):
+    """자료 구조 안의 모든 수를 흔든다. 문자열 속 숫자까지 바꾼다.
+
+    한 번만 흔들면 흔든 값이 진짜 값과 우연히 같아질 수 있다. 실제로
+    순찰 구역 15개가 흔들려 119안전센터 28개와 겹쳤다. 그래서 서로 다른
+    계수로 두 번 흔들고, 두 번 다 살아남은 수만 손 상수로 본다.
+    """
+    factor = SHAKE if factor is None else factor
     if isinstance(obj, bool) or obj is None:
         return obj
     if isinstance(obj, dict):
-        return {k: shake(v) for k, v in obj.items()}
+        return {k: shake(v, factor, bump) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return type(obj)(shake(v) for v in obj)
+        return type(obj)(shake(v, factor, bump) for v in obj)
     if isinstance(obj, int):
-        return int(round(obj * SHAKE)) + 7
+        return int(round(obj * factor)) + bump
     if isinstance(obj, float):
-        return obj * SHAKE + 0.137
+        return obj * factor + 0.137
     if isinstance(obj, str):
         return re.sub(r"\d[\d,]*(?:\.\d+)?",
-                      lambda m: _shake_token(m.group()), obj)
+                      lambda m: _shake_token(m.group(), factor, bump), obj)
     return obj
 
 
-def _shake_token(tok: str) -> str:
+def _shake_token(tok: str, factor: float = None, bump: int = 7) -> str:
+    factor = SHAKE if factor is None else factor
     raw = tok.replace(",", "")
     try:
         v = float(raw)
     except ValueError:
         return tok
-    out = v * SHAKE + 7
+    out = v * factor + bump
     if "." in raw:
         return f"{out:.{len(raw.split('.')[1])}f}"
     return f"{int(round(out)):,}" if "," in tok else str(int(round(out)))
@@ -134,15 +141,19 @@ def main() -> int:
 
     real = numbers_in(deck.build(cfg, ev, summary, manifest, figs,
                                  ds_rows, extra))
-    fake = numbers_in(deck.build(cfg, shake(copy.deepcopy(ev)),
-                                 shake(copy.deepcopy(summary)),
-                                 shake(copy.deepcopy(manifest)), figs,
-                                 shake(copy.deepcopy(ds_rows)),
-                                 shake(copy.deepcopy(extra))))
+    def shaken(factor, bump):
+        return numbers_in(deck.build(
+            cfg, shake(copy.deepcopy(ev), factor, bump),
+            shake(copy.deepcopy(summary), factor, bump),
+            shake(copy.deepcopy(manifest), factor, bump), figs,
+            shake(copy.deepcopy(ds_rows), factor, bump),
+            shake(copy.deepcopy(extra), factor, bump)))
+
+    fakes = [shaken(SHAKE, 7), shaken(SHAKE * 2.3 + 0.41, 13)]
 
     derived, hardcoded, unsourced = [], [], []
     for n, spots in sorted(real.items(), key=lambda kv: -len(kv[1])):
-        if n not in fake:
+        if any(n not in f for f in fakes):
             derived.append(n)                      # 산출물이 바뀌자 따라 바뀜
         elif n in TRIVIAL or n in LITERALS:
             hardcoded.append(n)
