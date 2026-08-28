@@ -390,7 +390,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 7 화면③ 계획서 ----
     screen_slide(
         prs, "2. 결과물", "저희가 내놓는 것은 이 문서입니다",
-        "순찰 동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 순찰 계획서",
+        "순찰 동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 순찰 계획서 "
+        "— 아래는 그 첫머리입니다",
         (figs / "shot_plan_result.png"
          if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
         [("일별 · 월별 · 연간",
@@ -675,10 +676,10 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         table(s_bt, Inches(0.8), Inches(2.3), Inches(6.9), Inches(2.4), rows,
               col_widths=[1.5, 1.4, 1.4, 1.5, 1.2, 1.4], size=12.5)
 
-        kpi(s_bt, Inches(8.1), Inches(2.3), Inches(2.1),
+        kpi(s_bt, Inches(8.1), Inches(2.3), Inches(2.15),
             f"{bh.get('share_of_city', 0):.1%}",
             "순찰한 구역", f"{bh.get('patrol_grids', 0)}개 / 관내 전체")
-        kpi(s_bt, Inches(10.4), Inches(2.3), Inches(2.2),
+        kpi(s_bt, Inches(10.45), Inches(2.3), Inches(2.15),
             f"{bh.get('capture_share', 0):.1%}", "그 안에서 난 화재",
             f"{bh.get('model_fires', 0):,.0f}건 / "
             f"{bh.get('total_fires', 0):,.0f}건", color=RED)
@@ -719,29 +720,31 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                      "화재위험 예측 자체는 2016년 애틀랜타가 이미 했습니다. "
                      "저희가 더한 세 가지입니다")
     cards = [
-        ("① ‘위험한 순서대로’는 계획이 못 됩니다",
-         "위험한 구역일수록 점검할 건물이 많습니다.\n"
-         f"상위 {k}% {tk.get('n_grids_selected', 0):,}개 구역 안에 "
-         f"{tk.get('cost_if_all', 0):,.0f}개소 — 가용 "
-         f"{alloc.get('budget_visits', 0):,}곳으로는 1위 구역 하나도 못 끝냅니다.\n\n"
+        ("① ‘위험한 순서’로는 안 됩니다",
+         "위험한 곳일수록 점검할 건물이 많습니다.\n"
+         f"상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역 · "
+         f"{tk.get('cost_if_all', 0):,.0f}개소.\n"
+         f"가용 {alloc.get('budget_visits', 0):,}곳으로는 1위 구역도 못 끝냅니다.\n\n"
          "질문을 바꿨습니다.\n"
-         "‘어디가 가장 위험한가’가 아니라\n"
-         "‘이 인력으로 갈 수 있는 조합 중 가장 많이 잡는 것은 무엇인가’.\n\n"
-         f"같은 인력으로 {shown_grids:,}개 구역, "
-         f"{alloc.get('gain_pp', 0):+.1f}%p.",
+         "‘가장 위험한 곳’이 아니라\n"
+         "‘이 인력으로 가장 많이 잡는 조합’.\n\n"
+         f"→ 같은 인력, {shown_grids:,}개 구역, "
+         f"{alloc.get('gain_pp', 0):+.1f}%p",
          "국내외 위험예측 연구가 다루지 않은 지점입니다"),
         ("② 예측 결과가 결재 문서가 됩니다",
-         "일별·월별·연간 계획서를 일반기안문 배열(수신·경유·제목·붙임·끝.·발신명의)로 "
-         "만들고, 법정 서식([별지 제11호서식] 화재예방강화지구 관리대장)은 "
-         "괘선까지 원본 그대로 두고 값만 채웁니다.\n"
+         "일별·월별·연간 계획서를 일반기안문 배열로 만듭니다.\n"
+         "수신·경유·제목·붙임·끝.·발신명의까지.\n\n"
+         "법정 서식([별지 제11호서식])은\n"
+         "괘선까지 원본 그대로 두고 값만 채웁니다.\n\n"
          "담당자가 옮겨 적을 일이 없습니다.",
          "위험점수에서 끝나지 않고 결재선까지 갑니다"),
-        ("③ 생성형 AI의 인용을 기계가 검증합니다",
-         "공공에서 생성형 AI 를 못 쓰는 이유는 성능이 아니라 검증이 안 되기 "
-         "때문입니다.\n"
-         "· 계획서: 다듬은 문장에 원문에 없던 수·조문이 하나라도 생기면 버립니다\n"
-         "· 업무 도우미: 인용한 법령·조문을 검색 원문과 대조하고, "
-         "자료 밖이면 화면에 '확인 필요'로 표시합니다",
+        ("③ AI 인용을 기계가 검증합니다",
+         "공공이 생성형 AI 를 못 쓰는 이유는\n"
+         "성능이 아니라 검증입니다.\n\n"
+         "· 계획서 — 원문에 없던 수·조문이\n"
+         "   하나라도 생기면 버립니다\n\n"
+         "· 업무 도우미 — 인용 조문을 원문과 대조,\n"
+         "   자료 밖이면 ‘확인 필요’ 표시",
          "숫자·동선·조문은 시스템이 확정하고, AI 는 문장만 다듬습니다"),
     ]
     x0, w_card = 0.8, 3.87
@@ -785,13 +788,24 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 11 기대효과 ----
     s11 = section(prs, "8. 기대효과 및 활용방안",
-                  "동일 인력 기준 포착률 개선과 근거 기록", "")
-    if alloc and "gain_pp" in alloc:
+                  "적은 순찰로 더 많이, 근거는 문서로", "")
+    # 이 서비스의 결과물은 순찰 경로다. 머리 지표도 순찰에서 시작한다.
+    _bh = (extra.get("backtest") or {}).get("headline", {})
+    if _bh:
+        kpi(s11, Inches(0.8), Inches(2.4), Inches(3.8),
+            f"{_bh.get('capture_share', 0):.1%}", "순찰 구역 안에서 난 화재",
+            f"관내 {_bh.get('share_of_city', 0):.1%}"
+            f"({_bh.get('patrol_grids', 0)}개 구역)만 돌았을 때 · "
+            f"{_bh.get('year', 0)}년 회고")
+    elif alloc and "gain_pp" in alloc:
         kpi(s11, Inches(0.8), Inches(2.4), Inches(3.8),
             f"{alloc['gain_pp']:+.1f}%p", "같은 인력 기준 포착률 개선",
             f"인력에 맞춘 배분 vs 상위 {k}% 방식")
-    kpi(s11, Inches(4.85), Inches(2.4), Inches(3.8), f"{h['model_lift']:.2f}배",
-        "아무 데나 갔을 때 대비", "경험·민원 기반 → 데이터 기반 전환", color=BLUE)
+    if alloc and "gain_pp" in alloc:
+        kpi(s11, Inches(4.85), Inches(2.4), Inches(3.8),
+            f"{alloc['gain_pp']:+.1f}%p", "같은 인력 기준 점검 포착률",
+            f"인력에 맞춘 배분 vs 상위 {k}% 방식 · "
+            f"무작위 대비 {h['model_lift']:.2f}배", color=BLUE)
     hc = summary.get("hydrant_coverage", {})
     kpi(s11, Inches(8.9), Inches(2.4), Inches(3.7),
         f"{summary.get('n_blind_spots', 0)}개",
@@ -799,8 +813,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         f"전체 구역의 {pct(hc.get('share_without_hydrant'))}에 소화전 없음",
         color=GREEN)
     textbox(s11, Inches(0.8), Inches(4.3), Inches(11.8), Inches(2.4),
-            "· 예방점검   화재안전조사 대상 우선순위를 자동으로 정하고, 공문 서식 계획서로 바로 결재\n"
             "· 예방순찰   119안전센터별 출동 계획, 목적별 순찰 6종, 월별 순찰 강도\n"
+            "· 예방점검   화재안전조사 대상 우선순위를 자동으로 정하고, 공문 서식 계획서로 바로 결재\n"
             "· 소방용수 정책   고위험인데 소화전이 없는 구역을 신설 우선순위의 객관적 근거로\n"
             "· 행정 지원   신규 대원·신규 부임지에서 위험 판단 근거와 법령 조문을 함께 제공\n"
             "· 확산   세종 적용으로 확인. 공개데이터만 쓰므로 별도 운영비가 들지 않음",
