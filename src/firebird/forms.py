@@ -104,10 +104,13 @@ def _station_distances(row: pd.Series, stations: pd.DataFrame) -> dict:
 def zone_ledger(row: pd.Series, *, city_label: str, year: int,
                 stations: pd.DataFrame | None = None,
                 drivers: list[dict] | None = None,
-                grid_m: int = 500) -> dict:
+                grid_m: int = 500,
+                building: dict | None = None) -> dict:
     """격자 하나를 [별지 제11호서식] 관리대장 칸에 맞춰 채운다.
 
     row 는 그 해 격자 한 줄(패널). drivers 는 SHAP 상위 요인이며 '지구특징'에 쓴다.
+    building 은 건축물대장 집계(buildings.stats_for)이며, 있으면 연면적·건축면적·
+    건축연도 칸이 채워진다. 없으면 그 칸은 비워 두고 연계 경로만 남는다.
     """
     def num(col, default=0):
         v = row.get(col, default)
@@ -126,12 +129,20 @@ def zone_ledger(row: pd.Series, *, city_label: str, year: int,
                           source=f"{year}년 위험도 분석 결과")
     fields["위치"] = Field("위치", f"{where} (격자 {gid}, {grid_m}m×{grid_m}m)",
                           source="UTM-K(EPSG:5179) 격자")
+    bd = building or {}
+    n_bld = int(bd.get("_n", 0) or 0)
     for k in ("대표자", "전화번호", "지정일자", "건축연도", "연면적", "건축면적",
               "유동인구", "상주인구", "소방조직"):
         unit = {"연면적": "㎡", "건축면적": "㎡", "유동인구": "명",
                 "상주인구": "명", "소방조직": "명"}.get(k, "")
-        fields[k] = Field(k, unit=unit, blank_reason=blank_reason(k),
-                          route=fill_route(k))
+        val = str(bd.get(k, "") or "")
+        src = ""
+        if val:
+            src = (f"건축물대장 표제부 {n_bld:,}동 "
+                   + ("중앙값" if k == "건축연도" else "합계"))
+        fields[k] = Field(k, value=val, unit=unit, source=src,
+                          blank_reason="" if val else blank_reason(k),
+                          route="" if val else fill_route(k))
 
     fields["건물동수"] = Field("건물동수", f"{num('target_total'):,}", "개소",
                              source="특정소방대상물 현황")

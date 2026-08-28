@@ -28,7 +28,8 @@ import pandas as pd  # noqa: E402
 import pydeck as pdk  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from firebird import dataset as D, evaluate as E, explain as X, forms as FM, \
+from firebird import buildings as BD, dataset as D, evaluate as E, \
+    explain as X, forms as FM, \
     grid as G, \
     hydrant as H, llm as L, model as M, operations as OP, patrol as P, \
     monthly as MO, mapviz as MV, patrol_modes as PM, plans as PLN, routing as RT, rules as R, \
@@ -171,6 +172,16 @@ def get_stations(city: str, year: int, level: str) -> pd.DataFrame:
     cfg = get_config()
     return ST.station_table(scored(city, year), cfg, level=level,
                             city_label=cfg.city(city)["label"])
+
+
+@st.cache_data(show_spinner=False)
+def get_buildings(city: str, grid_id: str):
+    """격자 하나에 걸치는 법정동의 건축물대장. 키가 없으면 빈 표."""
+    import pandas as _pd
+    try:
+        return BD.collect(get_config(), [grid_id])
+    except Exception:                                       # noqa: BLE001
+        return _pd.DataFrame()
 
 
 @st.cache_data(show_spinner="법령 별표 불러오는 중…")
@@ -1060,9 +1071,19 @@ with tabs[3]:
                         drv = list(d["drivers"].iloc[0]) if len(d) else []
                     except Exception:                       # noqa: BLE001
                         drv = []
+                # 건축물대장은 키가 있을 때만 붙는다. 없으면 해당 칸은 비고
+                # '연계하면 채워지는 칸' 으로 남는다.
+                bd = {}
+                try:
+                    with st.spinner("건축물대장 조회 중…"):
+                        stats = get_buildings(city, gid_opts[pick_g])
+                    bd = BD.stats_for(stats, gid_opts[pick_g])
+                except Exception:                           # noqa: BLE001
+                    bd = {}
                 led = FM.zone_ledger(grow, city_label=cfg.city(city)["label"],
                                      year=int(year), stations=st_all,
-                                     drivers=drv, grid_m=int(cfg.grid_size_m))
+                                     drivers=drv, grid_m=int(cfg.grid_size_m),
+                                     building=bd)
                 png = cfg.paths.figures / f"서식11_{led['grid_id']}.png"
                 try:
                     # 서식을 다시 그리지 않는다. 법제처가 배포한 그 파일에 값만 얹는다.

@@ -315,3 +315,82 @@ class TestStationMatching(unittest.TestCase):
                         "관할 중심으로 돌아와야 한다")
         ok = t[t["name"] == "가안전센터"].iloc[0]
         self.assertTrue(bool(ok["matched"]))
+
+
+class TestBuildingLedgerApi(unittest.TestCase):
+    """건축물대장 연계.
+
+    키가 없는 환경에서도 아무것도 깨지지 않아야 하고, 응답이 오면 정확히
+    읽어야 한다. 반쯤 채워진 값이 결재 문서에 들어가는 것이 최악이다.
+    """
+
+    OK_XML = """<response><header><resultCode>00</resultCode></header><body><items>
+      <item><platPlc>울산 남구 달동 100</platPlc><newPlatPlc>울산 남구 삼산로 100</newPlatPlc>
+      <bldNm>가나빌딩</bldNm><totArea>5230.5</totArea><archArea>820.2</archArea>
+      <useAprDay>19980312</useAprDay><grndFlrCnt>8</grndFlrCnt>
+      <mainPurpsCdNm>업무시설</mainPurpsCdNm></item>
+      <item><platPlc>울산 남구 달동 101</platPlc><newPlatPlc>울산 남구 삼산로 102</newPlatPlc>
+      <bldNm>다라상가</bldNm><totArea>1120.0</totArea><archArea>310.0</archArea>
+      <useAprDay>20140820</useAprDay><grndFlrCnt>4</grndFlrCnt>
+      <mainPurpsCdNm>근린생활시설</mainPurpsCdNm></item>
+      </items><totalCount>2</totalCount></body></response>"""
+
+    def test_표제부를_읽는다(self):
+        from firebird import buildings as B
+        rows, total = B._rows(self.OK_XML)
+        self.assertEqual(total, 2)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["연면적"], "5230.5")
+        self.assertEqual(rows[0]["사용승인일"], "19980312")
+
+    def test_키가_안_먹으면_빈_결과다(self):
+        """서비스 키 미등록은 HTTP 200 에 오류 코드로 온다. 이걸 자료로 세면
+        연면적 0 ㎡ 가 서식에 찍힌다."""
+        from firebird import buildings as B
+        bad = ("<response><header><resultCode>30</resultCode>"
+               "<resultMsg>SERVICE KEY IS NOT REGISTERED ERROR</resultMsg>"
+               "</header></response>")
+        self.assertEqual(B._rows(bad), ([], 0))
+
+    def test_깨진_응답에도_죽지_않는다(self):
+        from firebird import buildings as B
+        for junk in ("", "not xml", "<response>"):
+            self.assertEqual(B._rows(junk), ([], 0))
+
+    def test_격자에_값이_없으면_빈_사전(self):
+        import pandas as pd
+        from firebird import buildings as B
+        df = pd.DataFrame([{"grid_id": "1_1", "연면적": 100.0, "건축면적": 20.0,
+                            "사용승인연도": 2001.0, "건물수": 3}])
+        self.assertEqual(B.stats_for(df, "9_9"), {})
+        self.assertEqual(B.stats_for(pd.DataFrame(), "1_1"), {})
+        got = B.stats_for(df, "1_1")
+        self.assertEqual(got["연면적"], "100")
+        self.assertEqual(got["건축연도"], "2001")
+
+    def test_건축물대장이_없으면_칸이_비고_경로가_남는다(self):
+        import pandas as pd
+        from firebird import forms as FM
+        row = pd.Series({"grid_id": "1_1", "lon": 129.3, "lat": 35.5,
+                         "target_total": 10, "biz_total": 3, "fires": 1,
+                         "emd": "달동", "sgg": "남구"})
+        led = FM.zone_ledger(row, city_label="울산광역시", year=2021)
+        f = led["fields"]["연면적"]
+        self.assertEqual(f.value, "")
+        self.assertIn("건축물대장", f.blank_reason)
+        self.assertIn("건축물대장", f.route)
+
+    def test_건축물대장이_있으면_칸이_채워지고_출처가_남는다(self):
+        import pandas as pd
+        from firebird import forms as FM
+        row = pd.Series({"grid_id": "1_1", "lon": 129.3, "lat": 35.5,
+                         "target_total": 10, "biz_total": 3, "fires": 1,
+                         "emd": "달동", "sgg": "남구"})
+        led = FM.zone_ledger(row, city_label="울산광역시", year=2021,
+                             building={"연면적": "6,350", "건축연도": "2006", "_n": 2})
+        f = led["fields"]["연면적"]
+        self.assertEqual(f.value, "6,350")
+        self.assertEqual(f.blank_reason, "")
+        self.assertIn("건축물대장", f.source)
+        # 안 온 칸은 그대로 비어 있어야 한다
+        self.assertEqual(led["fields"]["건축면적"].value, "")

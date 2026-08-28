@@ -96,8 +96,17 @@ def _compare_image(cfg) -> None:
     label = cfg.city(city)["label"]
     sta = pd.concat([ST.station_table(cur, cfg, level=lv, city_label=label)
                      for lv in ("station", "center")], ignore_index=True)
+    bd = {}
+    try:
+        from firebird import buildings as BD
+        stats = BD.collect(cfg, [row["grid_id"]])
+        bd = BD.stats_for(stats, row["grid_id"])
+        if bd:
+            print(f"  건축물대장 {bd.get('_n', 0):,}동 연계")
+    except Exception as exc:                        # noqa: BLE001
+        print(f"  건축물대장 건너뜀: {type(exc).__name__}")
     led = FM.zone_ledger(row, city_label=label, year=year, stations=sta,
-                         grid_m=int(cfg.grid_size_m))
+                         grid_m=int(cfg.grid_size_m), building=bd)
 
     filled = cfg.paths.figures / "서식11_채운양식.png"
     try:

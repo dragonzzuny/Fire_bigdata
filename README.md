@@ -105,6 +105,8 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
 cp .env.example .env      # 카카오 REST API 키를 채운다
+                          # (선택) DATA_GO_KR_KEY 를 넣으면 관리대장 서식의
+                          # 연면적·건축면적·건축연도가 건축물대장에서 채워진다
 ```
 
 ### 1) 데이터 받기
@@ -262,6 +264,8 @@ src/firebird/
   operations.py    가용 인력 제약 하 점검 배분(배낭), 경로 개선
   resolution.py    주소 해상도 정직성 검사(동 중심점 뭉침의 영향 측정)
   forms.py         법정 서식 채우기(별지 제11호서식 화재예방강화지구 관리대장)
+  formfill.py      법제처 서식 PDF 위에 값만 얹기(괘선·칸 위치를 그림에서 검출)
+  buildings.py     국토부 건축물대장 연계(연면적·건축면적·사용승인연도)
   mapviz.py        계획서 첨부용 정적 지도(위험 분포 + 순찰 동선)
 scripts/           01~07 파이프라인 + run_all.sh
                    08 화면 캡처 · 09 법정 서식 · 10 발표 수치 출처 검증
