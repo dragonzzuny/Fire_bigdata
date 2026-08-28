@@ -565,3 +565,73 @@ class TestPatrolModes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestGridHourProfile(unittest.TestCase):
+    """격자별 시간대.
+
+    격자 하나의 화재는 중앙 7건뿐이다. 그대로 비율을 내면 우연이 그 구역의
+    성격으로 둔갑하고, 근거 없이 순찰 시간이 흔들린다.
+    """
+
+    def _fires(self, rows):
+        return pd.DataFrame([{"grid_id": g, "hour": h, "has_time": True}
+                             for g, hs in rows for h in hs])
+
+    def test_표본이_적으면_특이시간대를_말하지_않는다(self):
+        from firebird import patrol as P
+        # 도시 전체는 오후 중심, 문제의 격자는 심야 화재 1건뿐
+        city = [("bulk", [13, 14, 15, 16, 17] * 40)]
+        small = [("g1", [1])]
+        prof = P.label_blocks(P.grid_hour_profile(self._fires(city + small)))
+        row = prof[prof["grid_id"] == "g1"].iloc[0]
+        self.assertEqual(row["특이시간대"], "",
+                         "화재 1건으로 시간대 성격을 단정하면 안 된다")
+
+    def test_표본이_충분하면_특이시간대를_잡아낸다(self):
+        from firebird import patrol as P
+        city = [("bulk", [13, 14, 15, 16, 17] * 60)]
+        night = [("g1", [1, 2, 3, 4] * 15)]          # 60건 전부 심야
+        prof = P.label_blocks(P.grid_hour_profile(self._fires(city + night)))
+        row = prof[prof["grid_id"] == "g1"].iloc[0]
+        self.assertEqual(row["특이시간대"], "심야")
+        self.assertEqual(row["최다시간대"], "심야")
+
+    def test_최다시간대와_특이시간대는_다를_수_있다(self):
+        """도시가 오후 중심이면, 오후가 가장 많은 구역도 오후가 유별나지는 않다.
+        순찰 시간을 옮길 근거는 '유별난 때'이지 '가장 많은 때'가 아니다."""
+        from firebird import patrol as P
+        city = [("bulk", [13, 14, 15, 16, 17] * 80)]
+        # 오후가 최다지만, 심야 비중이 도시보다 뚜렷하게 높은 구역
+        mixed = [("g1", [13] * 30 + [1] * 25 + [8] * 10 + [20] * 10)]
+        prof = P.label_blocks(P.grid_hour_profile(self._fires(city + mixed)))
+        row = prof[prof["grid_id"] == "g1"].iloc[0]
+        self.assertEqual(row["최다시간대"], "오후")
+        self.assertEqual(row["특이시간대"], "심야")
+
+    def test_축소추정이_도시_평균쪽으로_당긴다(self):
+        from firebird import patrol as P
+        city = [("bulk", [13, 14, 15] * 100)]
+        one = [("g1", [1])]
+        prof = P.grid_hour_profile(self._fires(city + one))
+        row = prof[prof["grid_id"] == "g1"].iloc[0]
+        # 원 비율은 심야 100% 지만 축소추정은 도시 평균 가까이 남아야 한다
+        self.assertLess(float(row["심야"]), 0.3)
+        self.assertEqual(int(row["n"]), 1)
+
+    def test_시각이_없는_화재는_빼고_센다(self):
+        """2021년 자료는 시각이 전부 000000 이라 시간대 분석에서 빠져야 한다."""
+        from firebird import patrol as P
+        df = pd.DataFrame([
+            {"grid_id": "g1", "hour": 13, "has_time": True},
+            {"grid_id": "g1", "hour": 0, "has_time": False},
+            {"grid_id": "g1", "hour": 0, "has_time": False},
+        ])
+        prof = P.grid_hour_profile(df)
+        self.assertEqual(int(prof.iloc[0]["n"]), 1)
+
+    def test_신뢰구간_아래끝은_표본이_작을수록_낮다(self):
+        from firebird import patrol as P
+        self.assertLess(P._wilson_lower(1, 3), P._wilson_lower(100, 300))
+        self.assertEqual(P._wilson_lower(0, 0), 0.0)
+        self.assertLessEqual(P._wilson_lower(3, 3), 1.0)

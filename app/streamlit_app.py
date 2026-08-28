@@ -176,6 +176,12 @@ def get_stations(city: str, year: int, level: str) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
+def get_hour_profile(city: str):
+    """격자별 시간대 구성. 표본이 적은 격자는 도시 평균 쪽으로 당겨진다."""
+    return P.label_blocks(P.grid_hour_profile(get_fires(city)))
+
+
+@st.cache_data(show_spinner=False)
 def get_population(city: str, year: int):
     """읍면동 상주인구(통계청 SGIS). 키가 없으면 빈 표."""
     import pandas as _pd
@@ -603,6 +609,27 @@ with tabs[1]:
         if loc:
             st.caption(f"관할: {loc}")
 
+        # 이 구역의 화재가 언제 나는가. '가장 많은 때'와 '도시 대비 유별난 때'는
+        # 다른 질문이고, 순찰 시간을 옮길 근거가 되는 것은 뒤쪽이다.
+        hp = get_hour_profile(city)
+        hrow = hp[hp["grid_id"] == gid]
+        if len(hrow):
+            h = hrow.iloc[0]
+            n_t = int(h["n"])
+            if n_t >= P.MIN_FIRES_FOR_LABEL:
+                parts = [f"시각이 확인된 화재 {n_t}건 중 "
+                         + " · ".join(f"{b} {int(h[f'n_{b}'])}건"
+                                      for b, _, _ in P.TIME_BLOCKS)]
+                if h["특이시간대"]:
+                    span = P.block_hours(h["특이시간대"])
+                    parts.append(
+                        f"**{h['특이시간대']}({span[0]:02d}–{span[1]:02d}시)가 "
+                        f"관내 평균보다 뚜렷하게 많습니다** — 순찰 시간을 여기에 둡니다.")
+                else:
+                    parts.append("시간대 쏠림은 관내 평균과 다르지 않습니다.")
+                st.markdown("<div class='callout info'>" + "<br>".join(parts)
+                            + "</div>", unsafe_allow_html=True)
+
         st.divider()
         left, right = st.columns([1, 1])
 
@@ -699,6 +726,21 @@ with tabs[2]:
         stations = get_stations(city, year, level)
         targets = ST.assign_dispatch(targets, stations, level=level)
         hours = PM.recommended_hours(mode, get_fires(city))
+        # 목적이 정한 시간대가 있으면 그것을 따른다(야간순찰은 밤에 가야 한다).
+        # 없을 때만 고른 구역들이 실제로 언제 타는지를 본다.
+        hint = ""
+        if mode.hours is None:
+            hp = get_hour_profile(city)
+            sel = hp[hp["grid_id"].isin(targets["grid_id"])]
+            sel = sel[sel["특이시간대"] != ""]
+            if len(sel):
+                top = sel["특이시간대"].value_counts()
+                blk = str(top.index[0])
+                span = P.block_hours(blk)
+                if span:
+                    hint = (f"고른 {len(targets)}개 구역 중 {int(top.iloc[0])}곳이 "
+                            f"**{blk}({span[0]:02d}–{span[1]:02d}시)**에 관내 평균보다 "
+                            f"화재가 많습니다.")
 
         with st.spinner("관서 출발 동선 계산 중…"):
             plan = RT.plan_from_stations(targets, stations, level=level,
@@ -730,6 +772,9 @@ with tabs[2]:
         m4.metric("총 이동", f"{plan['total_km']:.1f} km",
                   f"최장 {plan['max_team_km']:.1f} km", delta_color="off")
 
+        if hint:
+            st.markdown(f"<div class='callout info'>{hint}</div>",
+                        unsafe_allow_html=True)
         st.caption("거리 기준: " + ("실제 도로 주행거리 (OSRM)"
                                  if plan["distance_source"] == "osrm"
                                  else "직선거리 × 우회계수 1.35 (도로망 서버 미응답)")
@@ -1006,6 +1051,7 @@ with tabs[3]:
                 distance_source=plan["distance_source"],
                 month_plan=st.session_state.get("month_plan", pd.DataFrame()),
                 law_index=get_index(city, year), fires=get_fires(city),
+                hour_profile=get_hour_profile(city),
                 map_path=st.session_state.get("map_path", ""))
             with st.spinner("계획서 작성 중…"):
                 if kind == "일별":

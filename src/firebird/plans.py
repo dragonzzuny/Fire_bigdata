@@ -162,6 +162,9 @@ class PlanContext:
     month_plan: pd.DataFrame = field(default_factory=pd.DataFrame)
     law_index: object | None = None
     fires: pd.DataFrame = field(default_factory=pd.DataFrame)
+    #: 격자별 시간대 구성(patrol.label_blocks 결과). 있으면 계획서에
+    #: '이 구역들은 언제 타는가'가 근거로 들어간다.
+    hour_profile: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 # ---------------------------------------------------------------- 법령 근거
@@ -433,6 +436,11 @@ def render_daily(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> s
         f"| 순찰 구역 | {sum(t['격자수'] for t in plan['teams'])}개 격자 |",
         "",
         "**나. 순찰 목적**", "", f"   {mode.purpose}", "",
+    ]
+    note = _hour_note(ctx)
+    if note:
+        out += ["   " + note, ""]
+    out += [
         "**다. 관서별 순찰 구역**", "",
         "| 출동관서 | 순찰 격자 | 이동거리 | 소요시간 |", "|---|---|---|---|",
     ]
@@ -578,6 +586,32 @@ def render_annual(plan: dict, ctx: PlanContext, meta: DocMeta | None = None) -> 
             "- 본 계획은 법정 점검주기를 대체하지 않으며, 그 위에 우선순위를 더하는 것입니다."]
     out += _doc_footer(meta, ["월별 순찰 계획표", "관서별 관할 구역 현황"])
     return "\n".join(out)
+
+
+def _hour_note(ctx) -> str:
+    """이 계획이 고른 구역들이 실제로 언제 타는지 한 줄.
+
+    '오후에 순찰한다'가 관행이 아니라 근거에서 나오게 한다. 관내 평균과
+    다르지 않으면 그렇게 적는다 — 없는 특징을 문서에 쓰지 않는다.
+    """
+    hp = getattr(ctx, "hour_profile", None)
+    if hp is None or len(hp) == 0 or "특이시간대" not in hp.columns:
+        return ""
+    ids = set(ctx.targets["grid_id"].astype(str)) if len(ctx.targets) else set()
+    sel = hp[hp["grid_id"].astype(str).isin(ids)]
+    if sel.empty:
+        return ""
+    hit = sel[sel["특이시간대"] != ""]
+    if hit.empty:
+        return (f"순찰 대상 {len(ids)}개 구역의 화재 시간대는 관내 평균과 "
+                f"다르지 않아, 순찰 시간은 목적별 권장 시간대를 따른다.")
+    top = hit["특이시간대"].value_counts()
+    blk = str(top.index[0])
+    from .patrol import block_hours
+    span = block_hours(blk)
+    return (f"순찰 대상 {len(ids)}개 구역 중 {int(top.iloc[0])}개 구역은 "
+            f"{blk}({span[0]:02d}~{span[1]:02d}시)에 관내 평균보다 화재가 많다"
+            f"(시각이 확인된 화재 기준). 순찰 시간 배정 시 참고한다.")
 
 
 def _law_citation(ref: str) -> str:
