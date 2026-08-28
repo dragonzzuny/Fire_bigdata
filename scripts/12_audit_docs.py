@@ -43,6 +43,7 @@ def expected(cfg) -> dict[str, str]:
         # 화면·CSV 에 나가는 배분(관할별 최소 배분 적용)이 문서에 적히는 수다.
         "배분 구역 수": f"{(a.get('equity') or {}).get('n_grids', op['n_grids'])}개",
         "배분 개선폭": f"{a['gain_pp']:+.1f}%p",
+        "형평성 대가": f"{(a.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p",
         "1위 구역 점검비용": f"{(a.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건",
         "소화전 사각 구역": f"{s['n_blind_spots']}개",
         "전체 구역 수": f"{s['n_grids']:,}개",

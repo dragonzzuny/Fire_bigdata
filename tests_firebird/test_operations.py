@@ -272,3 +272,44 @@ class TestEquityFloorScanning(unittest.TestCase):
         cap = O.Capacity(3, 8, 15)
         alloc, _ = O.allocate_with_equity(df, df["fires"], cap, min_share=1.0)
         self.assertLessEqual(alloc["cost"].sum(), cap.total_visits + 1e-6)
+
+
+class TestAllocationColumnNames(unittest.TestCase):
+    """화면이 배분 결과를 다시 셀 때 쓰는 컬럼 이름을 고정한다.
+
+    한 번 '실제화재'(표시용 이름)로 찾았다가, 컬럼이 없어 조용히 형평성
+    미적용 값으로 되돌아간 적이 있다. 화면에는 186개 구역이 뜨는데 포착률은
+    155개 구역 기준이 나갔다. 이름이 바뀌면 여기서 걸린다.
+    """
+
+    def test_allocation_keeps_raw_fires_column(self):
+        panel = pd.DataFrame({
+            "grid_id": [f"g{i}" for i in range(6)],
+            "pred": [9.0, 7.0, 5.0, 4.0, 3.0, 1.0],
+            "fires": [4, 3, 2, 1, 1, 0],
+            "sgg": ["A", "A", "A", "B", "B", "B"],
+            "target_total": [2, 2, 2, 2, 2, 2],
+        })
+        cap = O.Capacity(inspectors=1, per_day=4, days=2)
+        alloc, _ = O.allocate_with_equity(panel, panel["pred"], cap,
+                                           min_share=0.3)
+        self.assertIn("fires", alloc.columns)
+        self.assertNotIn("실제화재", alloc.columns)
+        rate = O.capture_rate(alloc, panel)
+        self.assertIsNotNone(rate)
+        self.assertAlmostEqual(
+            rate, float(alloc["fires"].sum()) / float(panel["fires"].sum()))
+        self.assertGreater(rate, 0.0)
+        self.assertLessEqual(rate, 1.0)
+
+    def test_capture_rate_returns_none_when_it_cannot_count(self):
+        """셀 수 없으면 0 이 아니라 None — 0% 는 '못 잡았다'는 거짓말이다."""
+        panel = pd.DataFrame({"grid_id": ["a"], "pred": [1.0], "fires": [0]})
+        self.assertIsNone(O.capture_rate(panel, panel))          # 분모 0
+        self.assertIsNone(O.capture_rate(panel.drop(columns=["fires"]), panel))
+
+    def test_app_counts_capture_through_the_shared_helper(self):
+        """앱이 표시용 컬럼 이름으로 배분을 다시 세지 않는지 본다."""
+        src = (ROOT / "app" / "streamlit_app.py").read_text(encoding="utf-8")
+        self.assertIn("OP.capture_rate(alloc, view)", src)
+        self.assertNotIn('alloc["실제화재"]', src)

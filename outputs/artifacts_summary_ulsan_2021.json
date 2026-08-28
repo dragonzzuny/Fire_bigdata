@@ -64,7 +64,9 @@
       "ratio_max": 1.0072733084666026,
       "n_grids": 186,
       "cost_used": 640.0,
-      "actual_capture_rate": 0.1781317885590152
+      "actual_capture_rate": 0.1781317885590152,
+      "efficiency_only_capture_rate": 0.1781317885590152,
+      "equity_cost_pp": 0.0
     },
     "top1_grid": {
       "grid_id": "2331_3456",

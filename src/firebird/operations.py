@@ -210,6 +210,23 @@ def two_opt(points: np.ndarray, order: list[int], *, max_rounds: int = 40) -> li
 
 # ---------------------------------------------------------------- 형평성 제약
 
+def capture_rate(allocation: pd.DataFrame, panel_year: pd.DataFrame,
+                 *, label: str = "fires") -> float | None:
+    """배분한 구역들이 그해 실제 화재의 몇 할을 품고 있었는가.
+
+    화면·장표·보고서가 저마다 이 값을 다시 세다가, 표에는 형평성을 적용한
+    배분이 뜨고 지표에는 효율만 적용한 값이 뜬 적이 있다. 세는 자리를 하나로
+    둔다. 셀 수 없으면 0 으로 얼버무리지 않고 None 을 돌려준다 — 부를 쪽이
+    무엇을 대신 쓸지 정하게 한다.
+    """
+    if label not in allocation.columns or label not in panel_year.columns:
+        return None
+    total = float(panel_year[label].fillna(0).sum())
+    if total <= 0:
+        return None
+    return float(allocation[label].fillna(0).sum()) / total
+
+
 def allocate_with_equity(panel_year: pd.DataFrame, risk, capacity: Capacity,
                          *, group_col: str = "sgg", min_share: float = 0.5,
                          cost: pd.Series | None = None) -> tuple[pd.DataFrame, dict]:

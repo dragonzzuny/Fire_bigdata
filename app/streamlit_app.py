@@ -518,9 +518,10 @@ with tabs[0]:
     if "gain_pp" in cmp:
         # 포착률도 화면에 뜬 배분(형평성 적용)에서 다시 센다. 지표와 표가
         # 다른 배분을 가리키면 어느 쪽이 맞는지 발표장에서 답할 수 없다.
-        act = (float(alloc["실제화재"].sum()) / float(view["fires"].sum())
-               if "실제화재" in alloc and float(view.get("fires", pd.Series([0])).sum()) > 0
-               else o["actual_capture_rate"])
+        # 화면에 실제로 뜨는 배분에서 다시 센다. 셀 수 없을 때만 요약값으로.
+        act = OP.capture_rate(alloc, view)
+        if act is None:
+            act = o["actual_capture_rate"]
         m4.metric("실제 화재 포착률", f"{act:.1%}",
                   f"상위 {cfg.headline_k}% 방식 {t['actual_capture_rate']:.1%}",
                   delta_color="off")
@@ -581,6 +582,15 @@ with tabs[0]:
                              hide_index=True, width='stretch')
                 st.caption("비율 1.0 = 화재 비중만큼 배분. 슬라이더를 0으로 내리면 "
                            "효율만 고려하여 특정 관할에 쏠릴 수 있습니다.")
+                # '형평성 때문에 성능을 깎은 것 아니냐'에 이 자리에서 답한다.
+                eff_only = OP.allocate(view, view["pred"], capacity)
+                eff_rate = OP.capture_rate(eff_only, view)
+                if eff_rate is not None and act is not None:
+                    diff = (act - eff_rate) * 100
+                    st.caption(
+                        f"형평성을 뺀 효율 전용 배분은 {len(eff_only):,}개 구역 · "
+                        f"포착 {eff_rate:.1%}. 지금 배분과의 차이는 "
+                        f"{diff:+.1f}%p 입니다.")
 
     st.download_button("점검 계획 내려받기 (CSV)",
                        alloc.to_csv(index=False).encode("utf-8-sig"),

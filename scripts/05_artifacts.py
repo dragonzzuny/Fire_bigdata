@@ -138,6 +138,13 @@ def main() -> int:
         eq_info["n_grids"] = int(len(alloc))
         eq_info["cost_used"] = float(alloc["cost"].sum()) if "cost" in alloc else 0.0
         eq_info["actual_capture_rate"] = float(got) if total else float("nan")
+        # 형평성을 걸면 포착률을 얼마나 내주는가. 심사장에서 반드시 나올
+        # 질문이므로 짐작하지 않고 두 배분을 실제로 돌려 차이를 적어 둔다.
+        eff_only = OP.allocate(cur, cur["pred"], cap)
+        eff_rate = OP.capture_rate(eff_only, cur)
+        if eff_rate is not None:
+            eq_info["efficiency_only_capture_rate"] = float(eff_rate)
+            eq_info["equity_cost_pp"] = float((got - eff_rate) * 100)
         alloc_cmp["equity"] = eq_info
 
     # '위험한 순서대로 가면 1위 구역 하나도 못 끝낸다' 는 이 서비스의 출발점이다.

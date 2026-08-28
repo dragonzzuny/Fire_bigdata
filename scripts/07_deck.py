@@ -497,7 +497,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           f"같은 인력으로 {shown_grids:,}개 구역, 실제 화재 "
           f"{pct(shown_cap)} 포착 "
           f"({alloc.get('gain_pp', 0):+.1f}%p).")],
-        note="관할별 최소 배분을 지정할 수 있어, 특정 구에 점검이 몰리지 않습니다.")
+        note=(f"관할별 최소 배분을 걸어 특정 구에 몰리지 않게 합니다. "
+              f"그 대가는 포착률 "
+              f"{(alloc.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p 입니다."))
 
     # ---- 6 화면② 순찰 ----
     screen_slide(
