@@ -45,6 +45,16 @@ step "5/10 현장 산출물 (배분·점검계획서·순찰·소화전)"
 step "6/10 브랜드 자산(로고)"
 "$PY" scripts/13_brand.py || echo "  건너뜀"
 
+step "6b/10 건축물대장·노후도 (선택, 키가 있을 때)"
+# 노후도는 측정 결과 도움이 되지 않아 모델에 넣지 않는다. 다만 법정 서식의
+# 연면적·건축연도를 채우는 데 쓰고, 측정 자체를 재현할 수 있게 남겨 둔다.
+if [ -n "$NO_API" ]; then
+  echo "  --no-api: 건너뜀"
+else
+  "$PY" scripts/15_fetch_buildings.py || echo "  수집 건너뜀"
+  "$PY" scripts/16_eval_buildings.py  || echo "  측정 건너뜀"
+fi
+
 step "7/10 발표용 그림"
 "$PY" scripts/06_figures.py
 "$PY" scripts/14_compare_map.py || echo "  전후 비교 지도 건너뜀"

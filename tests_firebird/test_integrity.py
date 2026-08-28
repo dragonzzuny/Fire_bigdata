@@ -460,3 +460,81 @@ class TestPopulationApi(unittest.TestCase):
         self.assertTrue(P.attach(pd.DataFrame(), pd.DataFrame()).empty)
         grid = pd.DataFrame([{"grid_id": "1_1", "sgg": "남구", "emd": "달동"}])
         pd.testing.assert_frame_equal(P.attach(grid, pd.DataFrame()), grid)
+
+
+class TestBuildingAgeFeatures(unittest.TestCase):
+    """연도별 노후도 피처.
+
+    이 피처의 존재 이유는 '연도에 따라 변한다'는 것 하나다. 스냅샷 피처처럼
+    모든 연도에 같은 값이 들어가면 만든 의미가 없다.
+    """
+
+    def _b(self):
+        import pandas as pd
+        return pd.DataFrame([
+            {"지번주소": "울산광역시 남구 달동 100", "연면적": 1000.0,
+             "사용승인연도": 1990.0},
+            {"지번주소": "울산광역시 남구 달동 101", "연면적": 2000.0,
+             "사용승인연도": 2018.0},
+            {"지번주소": "울산광역시 남구 달동 102", "연면적": 500.0,
+             "사용승인연도": 2019.0},
+            # 연도가 없는 건물은 어느 해에도 세지 않는다
+            {"지번주소": "울산광역시 남구 달동 103", "연면적": 900.0,
+             "사용승인연도": None},
+            # 범위 밖 값(원본에 978년, 2026년 같은 것이 섞여 있다)
+            {"지번주소": "울산광역시 남구 달동 104", "연면적": 100.0,
+             "사용승인연도": 978.0},
+        ])
+
+    def test_해마다_값이_달라진다(self):
+        from firebird import buildings as B
+        f = B.emd_year_features(None, [2015, 2017, 2018, 2020],
+                                buildings=self._b())
+        by = f.set_index("year")
+        self.assertEqual(int(by.loc[2015, "bld_n"]), 1)      # 1990년 건물만
+        self.assertEqual(int(by.loc[2018, "bld_n"]), 2)
+        self.assertEqual(int(by.loc[2020, "bld_n"]), 3)
+        # 건물 구성이 그대로면 평균 연령은 해마다 1씩 오른다
+        self.assertAlmostEqual(float(by.loc[2017, "bld_age_mean"])
+                               - float(by.loc[2015, "bld_age_mean"]), 2.0)
+        # 신축이 들어오면 평균 연령은 오히려 내려간다 — 그게 맞는 동작이다
+        self.assertLess(by.loc[2018, "bld_age_mean"], by.loc[2017, "bld_age_mean"])
+
+    def test_미래_준공은_세지_않는다(self):
+        """t년 피처에 t년 이후 준공 건물이 들어가면 그게 곧 누수다."""
+        from firebird import buildings as B
+        f = B.emd_year_features(None, [2015], buildings=self._b())
+        self.assertEqual(float(f.iloc[0]["bld_area"]), 1000.0)
+
+    def test_범위_밖_연도와_결측은_버린다(self):
+        from firebird import buildings as B
+        f = B.emd_year_features(None, [2021], buildings=self._b())
+        self.assertEqual(int(f.iloc[0]["bld_n"]), 3)
+
+    def test_노후비율은_0과_1_사이(self):
+        from firebird import buildings as B
+        f = B.emd_year_features(None, [2015, 2021], buildings=self._b())
+        for c in ("bld_old_share", "bld_new_share"):
+            self.assertTrue(((f[c] >= 0) & (f[c] <= 1)).all())
+
+    def test_붙일_자료가_없으면_패널을_그대로_둔다(self):
+        import pandas as pd
+        from firebird import buildings as B
+        panel = pd.DataFrame([{"grid_id": "1_1", "sgg": "남구", "emd": "달동",
+                               "year": 2021, "fires": 1}])
+        pd.testing.assert_frame_equal(B.attach_features(panel, pd.DataFrame()),
+                                      panel)
+
+    def test_측정_결과가_기록되어_있다(self):
+        """넣을지 말지는 측정으로 정한다. 그 측정이 파일로 남아 있어야
+        나중에 '왜 안 넣었나'에 답할 수 있다."""
+        import json
+        from pathlib import Path
+        p = (Path(__file__).resolve().parents[1] / "outputs"
+             / "building_feature_eval_ulsan.json")
+        if not p.exists():
+            self.skipTest("scripts/16_eval_buildings.py 를 아직 돌리지 않았다")
+        got = json.loads(p.read_text(encoding="utf-8"))
+        self.assertIn("adopted", got)
+        self.assertIn("delta_ci", got)
+        self.assertIn("history_only", got)

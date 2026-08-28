@@ -25,6 +25,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import unquote
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -297,3 +298,100 @@ def stats_for(df: pd.DataFrame, grid_id: str) -> dict:
         out["건축연도"] = f"{int(r['사용승인연도'])}"
     out["_n"] = int(r.get("건물수", 0) or 0)
     return out
+
+# ---------------------------------------------------------------- 연도별 노후도
+
+#: 사용승인연도로 인정할 범위. 원본에 978년, 2026년 같은 값이 섞여 있다.
+YEAR_MIN, YEAR_MAX = 1900, 2030
+
+#: '노후'로 보는 경과연수. 소방에서 30년은 정밀안전진단·리모델링을 말할 때
+#: 쓰는 경계선이라 현장에서 설명이 통한다.
+OLD_YEARS = 30
+#: '신축'으로 보는 경과연수. 준공 직후는 공사 잔재·전기 설비 초기 불량이 있다.
+NEW_YEARS = 5
+
+
+def load_cached(cfg) -> pd.DataFrame:
+    """받아 둔 법정동 표제부를 모두 읽어 한 표로."""
+    d = cfg.paths.cache / CACHE_NAME
+    files = sorted(d.glob("*.parquet")) if d.exists() else []
+    if not files:
+        return pd.DataFrame()
+    return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+
+
+def emd_year_features(cfg, years, *, buildings: pd.DataFrame | None = None
+                      ) -> pd.DataFrame:
+    """읍면동 × 연도 노후도 피처.
+
+    **이 피처가 있는 이유**: 대상물·업소·소화전은 '언제부터 존재했는가'가 없어
+    2014년 행에도 현재 값이 들어간다(스냅샷 누수). 건축물대장에는 사용승인일이
+    있으므로 't년 이전에 준공된 건물'만 세면 그 해에 실제로 서 있던 것이 되고,
+    스냅샷이 아니라 시계열이 된다.
+
+    **격자가 아니라 읍면동인 이유**: 격자에 붙이려면 건물마다 주소를 좌표로
+    바꿔야 하는데 울산 전체가 25만 동 규모다. 무료 지오코딩 한도를 넘는다.
+    읍면동 단위는 대장이 이미 법정동별로 오므로 지오코딩이 필요 없고,
+    '연도에 따라 변한다'는 핵심 성질은 그대로 남는다.
+
+    **남는 한계**: 대장은 현재 시점 자료라 t년 이전에 헐린 건물은 들어 있지
+    않다. 미래를 당겨쓰는 누수는 아니지만 생존 편향이다. 그리고 사용승인연도가
+    비어 있는 건물(약 10%)은 어느 해에도 세지 않는다.
+    """
+    b = buildings if buildings is not None else load_cached(cfg)
+    if b.empty or "지번주소" not in b.columns:
+        return pd.DataFrame()
+
+    b = b.dropna(subset=["사용승인연도"]).copy()
+    b["사용승인연도"] = pd.to_numeric(b["사용승인연도"], errors="coerce")
+    b = b[b["사용승인연도"].between(YEAR_MIN, YEAR_MAX)]
+    if b.empty:
+        return pd.DataFrame()
+
+    # 지번주소에서 시군구·읍면동을 뽑는다. 대장은 '울산광역시 남구 달동 100' 꼴이다.
+    parts = b["지번주소"].astype(str).str.split()
+    b["sgg"] = parts.str[1]
+    b["emd"] = parts.str[2]
+    b = b[b["emd"].astype(str).str.len() > 1]
+    b["연면적"] = pd.to_numeric(b["연면적"], errors="coerce").fillna(0.0)
+
+    rows = []
+    for y in sorted({int(x) for x in years}):
+        cur = b[b["사용승인연도"] <= y]
+        if cur.empty:
+            continue
+        age = y - cur["사용승인연도"]
+        g = cur.assign(_age=age,
+                       _old=(age >= OLD_YEARS).astype(float),
+                       _new=(age <= NEW_YEARS).astype(float))
+        agg = (g.groupby(["sgg", "emd"])
+                 .agg(**{"bld_n": ("_age", "size"),
+                         "bld_area": ("연면적", "sum"),
+                         "bld_age_mean": ("_age", "mean"),
+                         "bld_old_share": ("_old", "mean"),
+                         "bld_new_share": ("_new", "mean")})
+                 .reset_index())
+        agg["year"] = y
+        rows.append(agg)
+    if not rows:
+        return pd.DataFrame()
+    out = pd.concat(rows, ignore_index=True)
+    out["bld_area_per_n"] = out["bld_area"] / out["bld_n"].replace(0, np.nan)
+    return out
+
+
+def attach_features(panel: pd.DataFrame, feats: pd.DataFrame) -> pd.DataFrame:
+    """패널에 읍면동×연도 노후도를 붙인다. 없으면 그대로 돌려준다."""
+    if panel.empty or feats is None or feats.empty:
+        return panel
+    on = [c for c in ("sgg", "emd", "year") if c in panel.columns and c in feats.columns]
+    if len(on) < 3:
+        return panel
+    out = panel.merge(feats, on=on, how="left")
+    cols = [c for c in feats.columns if c.startswith("bld_")]
+    # 대장을 아직 안 받은 동은 결측이다. 0 으로 채우면 '건물이 없는 동'이 되므로
+    # 그대로 두고 LightGBM 이 결측으로 다루게 한다.
+    got = out[cols].notna().any(axis=1).mean() if cols else 0.0
+    log.info("노후도 피처 %d개 · 격자행 %.1f%% 에 붙었다", len(cols), got * 100)
+    return out
+

@@ -308,6 +308,11 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     conc = ev.get("resolution_concentration", {})
     probe = ev.get("single_feature_probe", [])
     probe0 = probe[0] if probe else {}
+    hist_cap = (ev.get("temporal_history_only", {}).get("headline", {})
+                  .get("model_capture"))
+    # 넣어 보고 안 되면 안 넣는다. 그 측정 결과도 장표에 남긴다.
+    # extra 로 받아야 수치 출처 검사(scripts/10)가 이 값도 흔들어 볼 수 있다.
+    bld = extra.get("building_eval", {})
     t = ev["temporal"]
     h = t["headline"]
     key = f"top{k}"
@@ -735,7 +740,12 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         [f"화재의 {pct(conc.get('share_from_emd_centroid'), 0)}가 읍면동 중심 좌표",
          "도로명이 있는 건만으로 따로 검증(성능 저하 없음)", "도로명 기재율 개선 협의"],
         ["대상물·업소는 현재 시점 현황",
-         "과거 이력만으로도 검증해 함께 제시", "연도별 이력 자료 확보"],
+         "과거 이력만으로도 검증해 함께 제시(" + pct(hist_cap) + ")",
+         "연도별 이력 자료 확보"],
+        ["건축물대장 노후도로 대체 시도",
+         f"읍면동 단위로 붙여 측정 — 개선 없음 "
+         f"({bld.get('delta_pp', 0):+.1f}%p, 신뢰구간 0 포함)",
+         "격자 단위 주소 확보 시 재측정"],
         ["점검 이력을 붙일 수 없음",
          "결합할 키가 없다는 것을 실제로 확인해 기록", "대상물 관리번호 포함 자료 요청"],
         ["단순 기준 대비 개선폭이 크지 않음",
@@ -780,6 +790,13 @@ def collect_extra(cfg, city: str) -> dict:
                                .dropna().nunique())
     except Exception:                                    # noqa: BLE001
         pass
+
+    bp = cfg.paths.outputs / f"building_feature_eval_{city}.json"
+    if bp.exists():
+        try:
+            out["building_eval"] = json.loads(bp.read_text(encoding="utf-8"))
+        except Exception:                                # noqa: BLE001
+            pass
 
     law = cfg.paths.cache / "law_articles.parquet"
     if law.exists():
