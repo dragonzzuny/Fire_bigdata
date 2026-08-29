@@ -379,7 +379,8 @@ def burn(src: Path, srt: Path, dst: Path) -> bool:
 
 
 def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
-           only_key: bool = False, card_sec: float = 2.4) -> float:
+           only_key: bool = False, card_sec: float = 2.4,
+           subs: bool = True) -> float:
     """자르고, 빨리 감고, 이어 붙이고, 자막을 태운다. 최종 길이(초)를 돌려준다."""
     if work.exists():
         shutil.rmtree(work, ignore_errors=True)
@@ -410,9 +411,12 @@ def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
     joined = work / "joined.mp4"
     if not concat(files, joined, work):
         return 0.0
-    srt = write_srt(parts, work / "cap.srt", 3.0 if only_key else card_sec)
-    if not burn(joined, srt, dst):
-        return 0.0
+    if subs:
+        srt = write_srt(parts, work / "cap.srt", 3.0 if only_key else card_sec)
+        if not burn(joined, srt, dst):
+            return 0.0
+    else:
+        joined.replace(dst)
     sped = [pt for pt in parts if pt["fast"] != 1.0]
     if sped:
         print("  배속 구간: "
@@ -452,9 +456,13 @@ def main() -> int:
         print("편집 생략 (ffmpeg 없음 또는 --no-edit)")
         return 0
 
-    for name, only_key in (("시연_전체.mp4", False), ("시연_핵심.mp4", True)):
+    # 자막본은 그대로 틀 때, 무자막본은 발표자가 얹어 말할 때 쓴다.
+    for name, only_key, subs in (("시연_전체.mp4", False, True),
+                                 ("시연_핵심.mp4", True, True),
+                                 ("시연_핵심_무자막.mp4", True, False)):
         dst = out / name
-        secs = render(src, marks, end, dst, out / "_work", only_key=only_key)
+        secs = render(src, marks, end, dst, out / "_work",
+                      only_key=only_key, subs=subs)
         if secs:
             print(f"저장: {dst}  ({int(secs // 60)}분 {int(secs % 60)}초 · "
                   f"{dst.stat().st_size / 1e6:.1f} MB)")
