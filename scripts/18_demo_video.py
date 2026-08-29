@@ -109,6 +109,20 @@ class Recorder:
         self.beat(seconds, text, **kw)
         return True
 
+    def to_block(self, needle: str, seconds: float, text: str = "", **kw) -> bool:
+        """그 문구를 품은 가로 블록 전체를 화면에 올린다.
+
+        문구만 올리면 그 문구가 가운데로 오고 아래 그림이 잘린다.
+        전후 비교 지도가 실제로 그렇게 잘렸다.
+        """
+        try:
+            self.page.locator("[data-testid='stHorizontalBlock']").filter(
+                has_text=needle).first.scroll_into_view_if_needed(timeout=20_000)
+        except Exception:                                 # noqa: BLE001
+            return self.to(needle, seconds, text, **kw)
+        self.beat(seconds, text, **kw)
+        return True
+
     def settle(self, extra: float = 0.0, text: str = "", **kw) -> None:
         """Streamlit 이 다 그릴 때까지 기다린 뒤 지도에 시간을 더 준다.
 
@@ -168,7 +182,7 @@ def play(page, pace: float) -> list:
         r.mark(f"{label}로 바꾸면 대상 구역도 시간대도 다시 계산됩니다", fast=3.0)
         # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다. 기다린다.
         r.settle(6, "다시 계산한 결과입니다")
-        if r.to("바꾸기 전", 4):
+        if r.to_block("바꾸기 전", 4):
             r.settle(12, "바꾸기 전과 바꾼 뒤를 같은 범위·같은 배율로 남깁니다")
         r.to("가장 먼 순찰조", 8, "빠진 구역과 새로 들어온 구역까지 적어 둡니다")
     except Exception as exc:                              # noqa: BLE001
@@ -262,7 +276,7 @@ def _style() -> str:
     """자막 모양. 발표장 뒷자리에서 읽혀야 하므로 크고 두껍게."""
     return ("FontName=Noto Sans CJK KR,FontSize=21,Bold=1,"
             "PrimaryColour=&H00FFFFFF,OutlineColour=&HC0000000,"
-            "BorderStyle=3,Outline=3,Shadow=0,MarginV=34")
+            "BorderStyle=3,Outline=3,Shadow=0,MarginV=16")
 
 
 def plan(marks: list, end: float, only_key: bool) -> list:

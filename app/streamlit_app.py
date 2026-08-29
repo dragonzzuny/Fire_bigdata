@@ -268,7 +268,7 @@ TIP_GRID = {"text": "격자 {grid_id} · {시군구}\n"
 TIP_PLAIN = {"text": "격자 {grid_id}"}
 
 
-def deck(layers, df, zoom=None, tooltip=TIP_GRID):
+def deck(layers, df, zoom=None, tooltip=TIP_GRID, pad=1.12):
     """데이터가 놓인 범위에 맞춰 화면을 잡는다.
 
     한 개 읍면동만 골랐는데 시 전체가 보이면 정작 봐야 할 동선이 점으로
@@ -288,7 +288,9 @@ def deck(layers, df, zoom=None, tooltip=TIP_GRID):
                       float(lon_s.max() - lon_s.min()) * 111.0
                       * math.cos(math.radians(lat)),
                       0.8)
-        span_km *= 1.12                       # 가장자리가 잘리지 않을 만큼만
+        # 반쪽 폭에 나란히 놓는 지도는 pad 를 키워 더 넓게 잡는다.
+        # 같은 배율로 두면 좌우가 잘려 무엇이 달라졌는지 보이지 않는다.
+        span_km *= pad
         zoom = float(np.clip(math.log2(360.0 * 111.0 / span_km) - 1.2, 8.0, 14.0))
     return pdk.Deck(layers=layers, map_style=None, tooltip=tooltip,
                     initial_view_state=pdk.ViewState(latitude=lat, longitude=lon,
@@ -300,7 +302,21 @@ PALETTE = [[227, 74, 51], [43, 108, 176], [47, 158, 110], [200, 120, 20],
            [230, 160, 40], [70, 70, 200], [160, 40, 40], [40, 160, 90]]
 
 
-def route_layers(routes, *, width=45, radius=180):
+def pydeck(deck_obj, height: int | None = None):
+    """st.pydeck_chart 를 부른다. height 는 최신 판에만 있다.
+
+    발표장 노트북에 옛 판이 깔려 있으면 TypeError 로 화면이 통째로 죽는다.
+    높이는 있으면 좋고 없어도 그만이므로, 실패하면 없이 다시 부른다.
+    """
+    if height is not None:
+        try:
+            return st.pydeck_chart(deck_obj, height=height)
+        except TypeError:
+            pass
+    return st.pydeck_chart(deck_obj)
+
+
+def route_layers(routes, *, width=45, radius=180, min_px=3):
     """관서별 동선을 지도 층으로 만든다. 현재 계획과 직전 계획에 같이 쓴다."""
     layers, depots = [], []
     for i, r in enumerate(routes):
@@ -310,10 +326,13 @@ def route_layers(routes, *, width=45, radius=180):
             + r[["lon", "lat"]].astype(float).values.tolist() \
             + ([[dep.get("lon"), dep.get("lat")]] if dep else [])
         layers.append(pdk.Layer("PathLayer", [{"path": path}], get_path="path",
-                                get_width=width, get_color=col, width_min_pixels=3))
+                                get_width=width, get_color=col,
+                                width_min_pixels=min_px))
         layers.append(pdk.Layer("ScatterplotLayer", r, get_position=["lon", "lat"],
                                 get_radius=radius, get_fill_color=col + [200],
-                                pickable=True))
+                                pickable=True,
+                                **({"radius_min_pixels": min_px}
+                                   if min_px > 3 else {})))
         if dep:
             depots.append({"lon": dep["lon"], "lat": dep["lat"],
                            "name": dep.get("name", "")})
@@ -461,7 +480,7 @@ inspectors = c1.number_input("점검관(명)", 1, 100, 4)
 per_day = c2.number_input("1일 건수", 1, 50, 8)
 days = st.sidebar.slider("점검 기간(일)", 5, 120, 20, step=5)
 capacity = OP.Capacity(int(inspectors), int(per_day), int(days))
-st.sidebar.caption(f"점검 가능 물량 **{capacity.total_visits:,}건**")
+st.sidebar.caption(f"점검 가능 물량 {capacity.total_visits:,}건")
 equity_share = st.sidebar.slider(
     "관할별 최소 배분", 0.0, 1.0,
     float(cfg.get("operations", {}).get("equity_min_share", 1.0)), step=0.25,
@@ -646,8 +665,8 @@ with tabs[1]:
                 if h["특이시간대"]:
                     span = P.block_hours(h["특이시간대"])
                     parts.append(
-                        f"**{h['특이시간대']}({span[0]:02d}–{span[1]:02d}시)가 "
-                        f"관내 평균보다 뚜렷하게 많습니다.** 순찰 시간을 여기에 둡니다.")
+                        f"<b>{h['특이시간대']}({span[0]:02d}–{span[1]:02d}시)에 "
+                        f"관내 평균보다 화재가 많습니다.</b> 순찰 시간을 여기에 둡니다.")
                 else:
                     parts.append("시간대 쏠림은 관내 평균과 다르지 않습니다.")
                 st.markdown("<div class='callout info'>" + "<br>".join(parts)
@@ -760,8 +779,8 @@ with tabs[2]:
                 span = P.block_hours(blk)
                 if span:
                     hint = (f"고른 {len(targets)}개 구역 중 {int(top.iloc[0])}곳이 "
-                            f"**{blk}({span[0]:02d}–{span[1]:02d}시)**에 관내 평균보다 "
-                            f"화재가 많습니다.")
+                            f"<b>{blk}({span[0]:02d}–{span[1]:02d}시)</b>에 "
+                            f"관내 평균보다 화재가 많습니다.")
 
         with st.spinner("관서 출발 동선 계산 중…"):
             plan = RT.plan_from_stations(targets, stations, level=level,
@@ -858,7 +877,14 @@ with tabs[2]:
                 d4.metric("겹치는 구역", f"{same}개",
                           f"이전 {bf['격자']}개 중", delta_color="off")
 
-                bl, bd = route_layers(before["routes"], width=38, radius=150)
+                # 반쪽 폭 지도에서는 선이 가늘어 무엇이 달라졌는지 안 보인다.
+                # 전후 비교에서만 굵게 그린다.
+                # 굵기는 미터 단위라 시 전체를 담은 배율에서는 최소 픽셀에 걸린다.
+                # 최소 픽셀 자체를 올려야 선이 보인다.
+                bl, bd = route_layers(before["routes"], width=95, radius=320,
+                                      min_px=6)
+                cmp_layers, _ = route_layers(plan["routes"], width=95, radius=320,
+                                             min_px=6)
                 bext = pd.concat(
                     [before["targets"][["lon", "lat"]]] +
                     ([pd.DataFrame(bd)[["lon", "lat"]]] if bd else []),
@@ -869,12 +895,13 @@ with tabs[2]:
                 b1, b2 = st.columns(2)
                 with b1:
                     st.markdown(f"**바꾸기 전: {bc['목적']}**")
-                    st.pydeck_chart(deck(bl, both, tooltip=TIP_PLAIN))
+                    pydeck(deck(bl, both, tooltip=TIP_PLAIN, pad=1.35), 430)
                     st.caption(f"{bf['격자']}격자 · {bf['관서']}개 관서 · "
                                f"총 {bf['총이동']:.1f} km")
                 with b2:
                     st.markdown(f"**바꾼 뒤: {cond['목적']}**")
-                    st.pydeck_chart(deck(layers, both, tooltip=TIP_PLAIN))
+                    pydeck(deck(cmp_layers, both, tooltip=TIP_PLAIN, pad=1.35),
+                           430)
                     st.caption(f"{facts['격자']}격자 · {facts['관서']}개 관서 · "
                                f"총 {facts['총이동']:.1f} km")
                 st.caption("같은 범위 · 같은 배율")
