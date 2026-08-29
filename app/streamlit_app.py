@@ -534,9 +534,9 @@ with tabs[0]:
         st.markdown(
             f"<div class='callout'><b>위험도 상위 {cfg.headline_k}% 안의 점검 대상은 "
             f"{t['cost_if_all']:,.0f}개소입니다.</b><br>"
-            + (f"위험 1위 구역 한 곳을 다 도는 데만 {top1_cost:,.0f}건이 듭니다. "
-               f"가용 물량이 {capacity.total_visits:,}건이니 그 한 곳도 끝내지 "
-               f"못합니다. 위험한 구역일수록 점검할 건물이 많기 때문입니다 — "
+            + (f"위험 1위 구역 한 곳의 소요가 {top1_cost:,.0f}건입니다. "
+               f"가용 물량은 {capacity.total_visits:,}건이므로 그 한 곳도 "
+               f"끝내지 못합니다. 위험한 구역일수록 점검할 건물이 많습니다. "
                f"위험한 순서대로 줄을 세우는 것만으로는 계획이 되지 않습니다."
                if t["n_grids_affordable"] == 0 else
                f"현재 가용 물량 {capacity.total_visits:,}건으로는 "
@@ -651,7 +651,7 @@ with tabs[1]:
                     span = P.block_hours(h["특이시간대"])
                     parts.append(
                         f"**{h['특이시간대']}({span[0]:02d}–{span[1]:02d}시)가 "
-                        f"관내 평균보다 뚜렷하게 많습니다** — 순찰 시간을 여기에 둡니다.")
+                        f"관내 평균보다 뚜렷하게 많습니다.** 순찰 시간을 여기에 둡니다.")
                 else:
                     parts.append("시간대 쏠림은 관내 평균과 다르지 않습니다.")
                 st.markdown("<div class='callout info'>" + "<br>".join(parts)
@@ -693,7 +693,7 @@ with tabs[1]:
             st.caption(f"이 구역의 업종·소방시설 구성에 맞춰 {checklist['n_items']}개 항목이 "
                        "자동으로 구성됩니다.")
             for i, sec in enumerate(checklist["sections"]):
-                with st.expander(f"{sec['구분']} — {sec['근거']}", expanded=(i == 0)):
+                with st.expander(f"{sec['구분']} · {sec['근거']}", expanded=(i == 0)):
                     for item in sec["항목"]:
                         st.checkbox(item, key=f"{done_key}_{item}")
 
@@ -1191,8 +1191,8 @@ with tabs[3]:
             st.markdown(
                 f"<div class='callout good'><b>{FM.FORM_NO} {FM.FORM_TITLE}</b>"
                 f" · {g_id} 구역 · <b>{n_f}/{n_t}칸</b> 자동 작성<br>"
-                + (f"연계하면 채워지는 칸 — {', '.join(linkable)}<br>" if linkable else "")
-                + (f"넣지 않는 칸 — {', '.join(private)} (개인정보)" if private else "")
+                + (f"연계하면 채워지는 칸: {', '.join(linkable)}<br>" if linkable else "")
+                + (f"넣지 않는 칸: {', '.join(private)} (개인정보)" if private else "")
                 + "</div>", unsafe_allow_html=True)
 
             g1, g2 = st.columns(2)

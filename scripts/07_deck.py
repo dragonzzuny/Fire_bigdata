@@ -383,28 +383,26 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             "국내 소방 정보화는 출동·신고 대응 중심이며,\n"
             "예방점검 대상 우선순위화 영역은 비어 있습니다.", size=15.5)
     textbox(s2, Inches(0.8), Inches(6.15), Inches(11.8), Inches(0.6),
-            "목적: 소방안전 빅데이터로 지역별 화재위험을 예측해, "
-            "한정된 인력을 가장 위험한 곳과 시기에 먼저 배치하도록 돕습니다.",
+            "목적: 지역별 화재위험을 예측해 한정된 인력을 "
+            "가장 위험한 곳과 시기에 먼저 배치",
             size=15, bold=True)
 
     # ---- 7 화면③ 계획서 ----
     screen_slide(
         prs, "2. 결과물", "저희가 내놓는 것은 이 문서입니다",
-        "순찰 동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 순찰 계획서 "
-        "— 아래는 그 첫머리입니다",
+        "순찰 동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 순찰 계획서",
         (figs / "shot_plan_result.png"
          if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
         [("일별 · 월별 · 연간",
-          "월별은 그 달의 화재위험을 반영해 순찰 횟수를 정하고, 연간은 "
-          "계절별 순찰 유형과 법정 이행사항을 배치합니다."),
+          "· 월별: 그 달 화재위험으로 순찰 횟수 산정\n"
+          "· 연간: 계절별 순찰 유형·법정 이행사항 배치"),
          ("공문 서식 그대로",
-          "기관·수신·시행일·관련 근거·붙임·결재란까지. 담당자가 다시 옮겨 "
-          "적을 필요가 없습니다."),
+          "· 기관·수신·시행일·관련 근거·붙임·결재란 포함\n"
+          "· 담당자가 옮겨 적을 항목 없음"),
          ("법정 서식 안내",
-          "조치가 필요하면 어느 별지 서식을 쓰는지 함께 알려 줍니다. "
-          "(예: 화재예방강화지구 관리대장)")],
-        note="화재위험 예측은 이 문서를 만들기 위한 중간 단계입니다. "
-             "지금부터 이 한 장이 어떤 자료와 어떤 계산을 거쳐 나오는지 보여드리겠습니다.",
+          "· 조치에 필요한 별지 서식을 함께 안내\n"
+          "· 예) 화재예방강화지구 관리대장")],
+        note="화재위험 예측은 이 문서를 만들기 위한 중간 단계입니다.",
         # 계획서 원본은 세로로 매우 길다. 장표 비율에 맞게 머리 부분만 쓴다.
         keep=0.26)
 
@@ -472,13 +470,13 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             pic.width, pic.height = Inches(width), Inches(width / ratio)
     cards = [
         ("색이 짙을수록 위험",
-         f"{grid_m}m 구역마다 화재위험을 예측합니다. 과거 화재, 주변 구역 확산, "
-         "대상물 용도, 업종 구성."),
+         f"· {grid_m}m 구역 단위 화재위험 예측\n"
+         "· 과거 화재 · 주변 구역 확산 · 대상물 용도 · 업종 구성"),
         ("검은 사각형이 출동 관서",
-         "119안전센터 출발·복귀. 선은 실제 도로 주행거리, 번호는 방문 순서."),
+         "· 119안전센터 출발·복귀\n"
+         "· 선: 실제 도로 주행거리 · 번호: 방문 순서"),
         ("계획서에 그대로 첨부",
-         "이 그림이 순찰계획서에 붙습니다. 표만 있는 계획서는 어디를 도는지 "
-         "머리에 그려지지 않습니다."),
+         "· 이 지도가 순찰계획서의 붙임으로 들어감"),
     ]
     y = 2.3
     for head, body in cards:
@@ -505,22 +503,24 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         "점검관 인원과 기간을 넣으면 그 인력으로 갈 수 있는 구역만 배분합니다",
         figs / "shot_allocation.png",
         [("인력을 먼저 넣습니다",
-          "점검관 몇 명, 하루 몇 건, 며칠. 바꾸면 배분이 즉시 다시 계산됩니다."),
+          "· 점검관 인원 · 1일 점검 건수 · 기간 입력\n"
+          "· 값을 바꾸면 배분 즉시 재계산"),
          ("위험한 곳일수록 점검할 건물이 많습니다",
-          f"위험도 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역, "
-          f"그 안의 점검 대상 {tk.get('cost_if_all', 0):,.0f}개소.\n"
-          f"위험 1위 구역 한 곳의 소요가 "
-          f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건, "
-          f"가용은 {alloc.get('budget_visits', 0):,}건입니다."),
-         ("‘한 곳당 몇 명이 드는가’를 함께 봅니다",
-          "위험도만 보지 않고 그 구역을 다 도는 데 드는 점검 건수를 같이 셉니다.\n"
-          "적은 인력으로 많이 잡히는 구역부터 갑니다.\n"
-          f"같은 인력으로 {shown_grids:,}개 구역, 실제 화재 "
+          f"· 위험도 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역\n"
+          f"· 그 안의 점검 대상 {tk.get('cost_if_all', 0):,.0f}개소\n"
+          f"· 1위 구역 한 곳 소요 "
+          f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
+          f"가용 {alloc.get('budget_visits', 0):,}건"),
+         ("소요와 효과를 함께 계산합니다",
+          "· 구역마다 점검 소요(건)와 잡히는 화재(건)를 함께 셈\n"
+          f"· 소요 합계가 {alloc.get('budget_visits', 0):,}건을 넘지 않는 "
+          "구역 묶음 중\n   잡히는 화재 합계가 가장 큰 묶음을 선택\n"
+          f"· 결과 {shown_grids:,}개 구역 · 실제 화재 "
           f"{pct(shown_cap)} 포착 "
-          f"({alloc.get('gain_pp', 0):+.1f}%p).")],
+          f"({alloc.get('gain_pp', 0):+.1f}%p)")],
         note=(f"관할별 최소 배분을 걸어 특정 구에 몰리지 않게 합니다. "
-              f"그 대가는 포착률 "
-              f"{(alloc.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p 입니다."))
+              f"대가는 포착률 "
+              f"{(alloc.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p."))
 
     # ---- 6 화면② 순찰 ----
     screen_slide(
@@ -529,15 +529,15 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         (figs / "shot_patrol_map.png"
          if (figs / "shot_patrol_map.png").exists() else figs / "shot_patrol.png"),
         [("출동 관서 기준",
-          f"소방서 {extra.get('n_station', 6)}개 · 119안전센터 "
-          f"{extra.get('n_center', 28)}개 · 읍면동 {extra.get('n_emd', 83)}개 단위로 "
-          "선택합니다."),
+          f"· 소방서 {extra.get('n_station', 6)}개 · 119안전센터 "
+          f"{extra.get('n_center', 28)}개 · 읍면동 {extra.get('n_emd', 83)}개 "
+          "가운데 선택"),
          ("목적별 순찰 6종",
           "일반예방 · 다중이용업소 야간 · 화재예방강화지구 · 피난약자시설 · "
           "소방용수 점검 · 건조기 특별경계"),
          ("근무시간 안에 들어오게",
-          "1회 순찰 시간을 넘으면 회차를 나눕니다. 실제 도로 주행거리와 "
-          "소요시간을 함께 제시합니다.")],
+          "· 1회 순찰 시간 초과 시 회차 분할\n"
+          "· 실제 도로 주행거리·소요시간 함께 제시")],
         note="검은 점 = 출동 관서 · 색 = 관서별 동선",
         keep=1.0)
 
@@ -548,15 +548,16 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         (figs / "fig_route_compare.png"
          if (figs / "fig_route_compare.png").exists()
          else figs / "shot_patrol_compare.png"),
-        [("무엇을 바꿨는지 남깁니다",
-          "목적 · 격자 수 · 1회 순찰 시간 · 지역 · 거리 기준 가운데 "
-          "무엇을 바꿨는지 문장으로 적힙니다."),
-         ("결과가 어떻게 달라졌는지",
-          "총 이동거리, 가장 먼 순찰조, 겹치는 구역 수를 전후로 비교합니다."),
-         ("빠진 구역·새 구역",
-          "구역 번호가 그대로 나옵니다. ‘왜 여기가 빠졌나’에 화면에서 답합니다.")],
-        note="두 지도는 같은 범위·같은 배율입니다. 축척이 다르면 "
-             "‘동선이 짧아졌다’가 그림에서 거짓말이 됩니다.",
+        [("바꾼 조건을 남깁니다",
+          "· 목적 · 구역 수 · 1회 순찰 시간 · 지역 · 거리 기준\n"
+          "· 무엇을 바꿨는지 문장으로 기록"),
+         ("달라진 결과",
+          "· 총 이동거리 · 가장 먼 순찰조 · 겹치는 구역 수\n"
+          "· 바꾸기 전후를 나란히 비교"),
+         ("빠진 구역 · 새 구역",
+          "· 구역 번호를 그대로 표시\n"
+          "· ‘왜 여기가 빠졌나’를 화면에서 확인")],
+        note="두 지도는 같은 범위·같은 배율입니다.",
         keep=1.0)
 
     # ---- 8 화면④ 업무 도우미 ----
@@ -564,19 +565,21 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             (figs / "shot_form_compare.png").exists():
         screen_slide(
             prs, "5. 서비스 화면 ④", "법정 서식을 데이터로 채웁니다",
-            "[별지 제11호서식] 화재예방강화지구 관리대장 — 괘선 하나까지 원본 그대로",
+            "[별지 제11호서식] 화재예방강화지구 관리대장, 괘선까지 법제처 원본 그대로",
             (figs / "fig_form_compare.png"
              if (figs / "fig_form_compare.png").exists()
              else figs / "shot_form_compare.png"),
             [("법에 정해진 서식 그대로",
-              "시행규칙 별지 제11호서식 화재예방강화지구 관리대장"),
-             ("채울 수 있는 칸만 채웁니다",
-              f"{extra.get('ledger_fields', 0)}개 칸 중 건물동수·점포수·"
-              "소방시설·관서거리·취약요소가 자동으로 들어갑니다."),
-             ("빈칸은 비워 둡니다",
-              "건축물대장·주민등록을 연계하면 채워지는 칸과, 개인정보라 "
-              "넣지 않는 칸을 구분해 밝힙니다.")],
-            note="서식 파일은 법제처에서 내려받은 원본 그대로입니다.",
+              "· 시행규칙 별지 제11호서식\n"
+              "· 화재예방강화지구 관리대장"),
+             ("채울 수 있는 칸만 채움",
+              f"· {extra.get('ledger_fields', 0)}개 칸 중 건물동수·점포수·"
+              "소방시설·\n   관서거리·취약요소 자동 입력"),
+             ("빈칸은 비워 둠",
+              "· 건축물대장·주민등록 연계 시 채워지는 칸\n"
+              "· 개인정보라 넣지 않는 칸\n"
+              "· 두 가지를 구분해 표시")],
+            note="",
             keep=1.0)
 
     # ---- 법령 검색 ----
@@ -587,15 +590,16 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         (figs / "shot_assistant_answer.png"
          if (figs / "shot_assistant_answer.png").exists() else figs / "shot_assistant.png"),
         [("소방 법령을 담았습니다",
-          f"{extra.get('n_law', 0)}종 {extra.get('n_article', 0)}개 조문과 "
-          f"별표·서식 {extra.get('n_annex_all', 0)}건에 "
-          "업종별 점검 항목·관할 위험 현황을 함께 검색합니다."),
+          f"· 법령 {extra.get('n_law', 0)}종 {extra.get('n_article', 0)}개 조문\n"
+          f"· 별표·서식 {extra.get('n_annex_all', 0)}건\n"
+          "· 업종별 점검 항목·관할 위험 현황을 함께 검색"),
          ("반드시 근거를 붙입니다",
-          "‘연 1회입니다’만 답하는 시스템은 행정에서 쓸 수 없습니다. "
-          "법령명과 조문 번호가 함께 나옵니다."),
+          "· 답변에 법령명과 조문 번호를 함께 제시\n"
+          "· 근거 없는 답변은 행정에서 쓸 수 없음"),
          ("신규 대원 업무 지원",
-          "새로 부임한 담당자가 ‘왜 여기가 위험한지’와 ‘무슨 근거로 하는지’를 "
-          "같은 화면에서 확인합니다.")],
+          "· ‘왜 여기가 위험한지’\n"
+          "· ‘무슨 근거로 하는지’\n"
+          "· 두 가지를 같은 화면에서 확인")],
         note="답변은 업무 참고용이며, 법령 원문은 국가법령정보센터에서 확인합니다.",
         keep=0.78)
 
@@ -607,7 +611,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     x = Inches(8.5)
     kpi(s9, x, Inches(2.3), Inches(4.0), pct(h["model_capture"]),
         f"위험 상위 {k}% 구역이 담은 실제 화재",
-        (f"95% 신뢰구간 {m_ci['lo']:.1%}–{m_ci['hi']:.1%}"
+        (f"95% 신뢰구간 {m_ci['lo']:.1%} ~ {m_ci['hi']:.1%}"
          if m_ci and m_ci.get("lo") == m_ci.get("lo")
          else f"단순 기준 {pct(h['baseline_capture'])}"))
     kpi(s9, x, Inches(4.0), Inches(4.0), f"{h['model_lift']:.2f}배",
@@ -702,7 +706,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         band(s_bt, Inches(0.8), Inches(4.85), Inches(11.8), Inches(0.55))
         textbox(s_bt, Inches(1.0), Inches(4.93), Inches(11.4), Inches(0.4),
                 f"작년 화재 순으로 같은 {bh.get('patrol_grids', 0)}곳을 골랐다면 "
-                f"{bh.get('baseline_fires', 0):.0f}건 — 차이 "
+                f"{bh.get('baseline_fires', 0):.0f}건, 차이 "
                 f"{bh.get('gain_over_baseline', 0):+.0f}건, 95% 신뢰구간 "
                 f"{_g.get('lo', 0):+.0f} ~ {_g.get('hi', 0):+.0f}건입니다.",
                 size=12.5)
@@ -720,31 +724,36 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                      "화재위험 예측 자체는 2016년 애틀랜타가 이미 했습니다. "
                      "저희가 더한 세 가지입니다")
     cards = [
-        ("① ‘위험한 순서’로는 안 됩니다",
-         "위험한 곳일수록 점검할 건물이 많습니다.\n"
-         f"상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역 · "
-         f"{tk.get('cost_if_all', 0):,.0f}개소.\n"
-         f"가용 {alloc.get('budget_visits', 0):,}곳으로는 1위 구역도 못 끝냅니다.\n\n"
-         "질문을 바꿨습니다.\n"
-         "‘가장 위험한 곳’이 아니라\n"
-         "‘이 인력으로 가장 많이 잡는 조합’.\n\n"
+        ("① 위험한 순서로는 안 됩니다",
+         "구역마다 점검 소요가 다릅니다.\n"
+         f"· 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역 · "
+         f"{tk.get('cost_if_all', 0):,.0f}개소\n"
+         f"· 1위 구역 소요 "
+         f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
+         f"가용 {alloc.get('budget_visits', 0):,}건\n\n"
+         "그래서 기준을 바꿨습니다.\n"
+         f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
+         "· 잡히는 화재 합계가 가장 큰\n"
+         "  구역 묶음을 선택\n\n"
          f"→ 같은 인력, {shown_grids:,}개 구역, "
          f"{alloc.get('gain_pp', 0):+.1f}%p",
          "국내외 위험예측 연구가 다루지 않은 지점입니다"),
         ("② 예측 결과가 결재 문서가 됩니다",
-         "일별·월별·연간 계획서를 일반기안문 배열로 만듭니다.\n"
-         "수신·경유·제목·붙임·끝.·발신명의까지.\n\n"
+         "일별·월별·연간 계획서를\n"
+         "일반기안문 배열로 만듭니다.\n"
+         "· 수신 · 경유 · 제목 · 붙임 · 끝. · 발신명의\n\n"
          "법정 서식([별지 제11호서식])은\n"
-         "괘선까지 원본 그대로 두고 값만 채웁니다.\n\n"
-         "담당자가 옮겨 적을 일이 없습니다.",
-         "위험점수에서 끝나지 않고 결재선까지 갑니다"),
+         "괘선까지 원본 그대로 두고\n"
+         "값만 채웁니다.\n\n"
+         "담당자가 옮겨 적을 항목이 없습니다.",
+         "위험점수에서 끝나지 않고 결재 문서까지 만듭니다"),
         ("③ AI 인용을 기계가 검증합니다",
          "공공이 생성형 AI 를 못 쓰는 이유는\n"
          "성능이 아니라 검증입니다.\n\n"
-         "· 계획서 — 원문에 없던 수·조문이\n"
-         "   하나라도 생기면 버립니다\n\n"
-         "· 업무 도우미 — 인용 조문을 원문과 대조,\n"
-         "   자료 밖이면 ‘확인 필요’ 표시",
+         "· 계획서: 원문에 없던 수·조문이\n"
+         "  하나라도 생기면 그 결과를 버림\n\n"
+         "· 업무 도우미: 인용 조문을 원문과 대조,\n"
+         "  자료 밖이면 ‘확인 필요’ 표시",
          "숫자·동선·조문은 시스템이 확정하고, AI 는 문장만 다듬습니다"),
     ]
     x0, w_card = 0.8, 3.87
@@ -758,8 +767,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         textbox(s_diff, x + Inches(0.22), Inches(5.72), Inches(w_card - 0.44),
                 Inches(0.5), foot, size=10.5, color=MUTED)
     textbox(s_diff, Inches(0.8), Inches(6.55), Inches(11.8), Inches(0.5),
-            "구역 단위 화재위험은 손해 예방·요율 산정에도 쓸 수 있습니다 "
-            "(후원 한국화재보험협회).", size=11.5, color=MUTED)
+            "구역 단위 화재위험은 손해 예방·요율 산정에도 활용 가능 "
+            "(후원 한국화재보험협회)", size=11.5, color=MUTED)
 
     # ---- 미국 사례 비교 ----
     s_us = section(prs, "7. 차별성 (계속)",
@@ -771,7 +780,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             ["자료", "8종 결합 (건물대장·화재·인구 등)", "소방안전 빅데이터 8종 + 기상 + 법령"],
             ["예측 성능", "상업용 화재 70% 이상 예측\n(오경보율 20% 기준)",
              f"위험 상위 20% 구역이 화재 {pct(h['model_capture'])} 포착\n"
-             f"(95% 신뢰구간 {m_ci.get('lo', 0):.0%}–{m_ci.get('hi', 0):.0%})"],
+             f"(95% 신뢰구간 {m_ci.get('lo', 0):.0%} ~ {m_ci.get('hi', 0):.0%})"],
             ["검증 방식", "시간분할 (학습 이후 화재로 검증)",
              "시간분할 + 관할제외 + 타 지역 + 주소 정밀도"],
             ["산출물", "위험점수 · 지도 시각화",
@@ -834,7 +843,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "과거 이력만으로도 검증해 함께 제시(" + pct(hist_cap) + ")",
          "연도별 이력 자료 확보"],
         ["건축물대장 노후도로 대체 시도",
-         f"읍면동 단위로 붙여 측정 — 개선 없음 "
+         f"읍면동 단위로 붙여 측정, 개선 없음 "
          f"({bld.get('delta_pp', 0):+.1f}%p, 신뢰구간 0 포함)",
          "격자 단위 주소 확보 시 재측정"],
         ["점검 이력을 붙일 수 없음",
