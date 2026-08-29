@@ -402,7 +402,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          ("법정 서식 안내",
           "· 조치에 필요한 별지 서식을 함께 안내\n"
           "· 예) 화재예방강화지구 관리대장")],
-        note="화재위험 예측은 이 문서를 만들기 위한 중간 단계입니다.",
+        note="",
         # 계획서 원본은 세로로 매우 길다. 장표 비율에 맞게 머리 부분만 쓴다.
         keep=0.26)
 
@@ -549,15 +549,17 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          if (figs / "fig_route_compare.png").exists()
          else figs / "shot_patrol_compare.png"),
         [("바꾼 조건을 남깁니다",
-          "· 목적 · 구역 수 · 1회 순찰 시간 · 지역 · 거리 기준\n"
+          "· 목적 · 구역 수 · 1회 순찰 시간\n"
+          "· 지역 · 거리 기준\n"
           "· 무엇을 바꿨는지 문장으로 기록"),
          ("달라진 결과",
-          "· 총 이동거리 · 가장 먼 순찰조 · 겹치는 구역 수\n"
+          "· 총 이동거리 · 가장 먼 순찰조\n"
+          "· 겹치는 구역 수\n"
           "· 바꾸기 전후를 나란히 비교"),
          ("빠진 구역 · 새 구역",
           "· 구역 번호를 그대로 표시\n"
           "· ‘왜 여기가 빠졌나’를 화면에서 확인")],
-        note="두 지도는 같은 범위·같은 배율입니다.",
+        note="",
         keep=1.0)
 
     # ---- 8 화면④ 업무 도우미 ----
@@ -577,8 +579,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
               "소방시설·\n   관서거리·취약요소 자동 입력"),
              ("빈칸은 비워 둠",
               "· 건축물대장·주민등록 연계 시 채워지는 칸\n"
-              "· 개인정보라 넣지 않는 칸\n"
-              "· 두 가지를 구분해 표시")],
+              "· 개인정보라 넣지 않는 칸")],
             note="",
             keep=1.0)
 
@@ -597,9 +598,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           "· 답변에 법령명과 조문 번호를 함께 제시\n"
           "· 근거 없는 답변은 행정에서 쓸 수 없음"),
          ("신규 대원 업무 지원",
-          "· ‘왜 여기가 위험한지’\n"
-          "· ‘무슨 근거로 하는지’\n"
-          "· 두 가지를 같은 화면에서 확인")],
+          "· ‘왜 여기가 위험한지’와 ‘무슨 근거로 하는지’를\n"
+          "  같은 화면에서 확인")],
         note="답변은 업무 참고용이며, 법령 원문은 국가법령정보센터에서 확인합니다.",
         keep=0.78)
 
@@ -698,10 +698,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                 "\n".join(lines_), size=13)
         band(s_bt, Inches(6.7), Inches(5.55), Inches(5.9), Inches(1.45))
         textbox(s_bt, Inches(6.95), Inches(5.68), Inches(5.4), Inches(1.2),
-                "e 는 저희가 측정할 수 없는 값입니다.\n"
-                "그래서 하나로 정하지 않고 세 경우를 나란히 둡니다.\n"
-                "저희가 잰 것은 ‘순찰 구역 안에서 난 화재 건수’뿐이고,\n"
-                "그 수는 세 해 모두 같은 방식으로 다시 나옵니다.", size=12.5)
+                "e 는 저희가 측정할 수 없어 세 경우를 나란히 둡니다.\n"
+                "잰 것은 ‘순찰 구역 안에서 난 화재 건수’까지입니다.", size=12.5)
         _g = bh.get("gain_ci", {})
         band(s_bt, Inches(0.8), Inches(4.85), Inches(11.8), Inches(0.55))
         textbox(s_bt, Inches(1.0), Inches(4.93), Inches(11.4), Inches(0.4),
@@ -737,7 +735,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "  구역 묶음을 선택\n\n"
          f"→ 같은 인력, {shown_grids:,}개 구역, "
          f"{alloc.get('gain_pp', 0):+.1f}%p",
-         "국내외 위험예측 연구가 다루지 않은 지점입니다"),
+         ""),
         ("② 예측 결과가 결재 문서가 됩니다",
          "일별·월별·연간 계획서를\n"
          "일반기안문 배열로 만듭니다.\n"
@@ -746,7 +744,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "괘선까지 원본 그대로 두고\n"
          "값만 채웁니다.\n\n"
          "담당자가 옮겨 적을 항목이 없습니다.",
-         "위험점수에서 끝나지 않고 결재 문서까지 만듭니다"),
+         ""),
         ("③ AI 인용을 기계가 검증합니다",
          "공공이 생성형 AI 를 못 쓰는 이유는\n"
          "성능이 아니라 검증입니다.\n\n"
@@ -754,21 +752,23 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "  하나라도 생기면 그 결과를 버림\n\n"
          "· 업무 도우미: 인용 조문을 원문과 대조,\n"
          "  자료 밖이면 ‘확인 필요’ 표시",
-         "숫자·동선·조문은 시스템이 확정하고, AI 는 문장만 다듬습니다"),
+         ""),
     ]
     x0, w_card = 0.8, 3.87
     for i, (head, body, foot) in enumerate(cards):
         x = Inches(x0 + i * (w_card + 0.16))
-        band(s_diff, x, Inches(2.35), Inches(w_card), Inches(4.0))
-        textbox(s_diff, x + Inches(0.22), Inches(2.55), Inches(w_card - 0.44),
+        # 카드가 짧아진 만큼 아래가 비어 위로 쏠려 보인다. 가운데로 내린다.
+        top = 2.75
+        band(s_diff, x, Inches(top), Inches(w_card), Inches(3.55))
+        textbox(s_diff, x + Inches(0.22), Inches(top + 0.2), Inches(w_card - 0.44),
                 Inches(0.7), head, size=14, bold=True, color=RED)
-        textbox(s_diff, x + Inches(0.22), Inches(3.3), Inches(w_card - 0.44),
-                Inches(2.3), body, size=11, color=INK, spacing=1.22)
-        textbox(s_diff, x + Inches(0.22), Inches(5.72), Inches(w_card - 0.44),
-                Inches(0.5), foot, size=10.5, color=MUTED)
-    textbox(s_diff, Inches(0.8), Inches(6.55), Inches(11.8), Inches(0.5),
-            "구역 단위 화재위험은 손해 예방·요율 산정에도 활용 가능 "
-            "(후원 한국화재보험협회)", size=11.5, color=MUTED)
+        textbox(s_diff, x + Inches(0.22), Inches(top + 0.85), Inches(w_card - 0.44),
+                Inches(2.4), body, size=11.5, color=INK, spacing=1.24)
+        if foot:
+            textbox(s_diff, x + Inches(0.22), Inches(top + 2.8),
+                    Inches(w_card - 0.44), Inches(0.5), foot, size=10.5,
+                    color=MUTED)
+
 
     # ---- 미국 사례 비교 ----
     s_us = section(prs, "7. 차별성 (계속)",
@@ -792,8 +792,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     band(s_us, Inches(0.8), Inches(6.35), Inches(11.8), Inches(0.75),
          RGBColor(0xEC, 0xF8, 0xF2))
     textbox(s_us, Inches(1.05), Inches(6.48), Inches(11.3), Inches(0.5),
-            "Firebird 논문도 “현 인력으로 감당할 수 없다”는 문제를 지적했으나 풀지는 않았습니다. "
-            "그 지점이 저희가 더한 부분입니다.", size=13, bold=True, color=GREEN)
+            "Firebird 논문도 “현 인력으로 감당할 수 없다”고 지적했으나 풀지는 "
+            "않았습니다.", size=13, bold=True, color=GREEN)
 
     # ---- 11 기대효과 ----
     s11 = section(prs, "8. 기대효과 및 활용방안",
@@ -858,7 +858,6 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     table(s12, Inches(0.8), Inches(2.35), Inches(11.8), Inches(3.5), rows,
           col_widths=[3.6, 4.8, 3.4], size=12.5)
     textbox(s12, Inches(0.8), Inches(6.15), Inches(11.8), Inches(0.7),
-            "전 과정 스크립트와 검증 절차를 공개합니다. "
             "같은 명령으로 오늘 보신 수치가 다시 만들어집니다.",
             size=14, color=MUTED)
 
