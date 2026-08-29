@@ -31,6 +31,16 @@ def expected(cfg) -> dict[str, str]:
     bt_path = out / f"backtest_patrol_{city}.json"
     bt = json.loads(bt_path.read_text(encoding="utf-8")) if bt_path.exists() else {}
 
+    # 법정 서식 자동 입력 칸 수. 대본이 17개라고 적어 두고 실제는 13개였다.
+    import importlib.util as _il
+    _sp = _il.spec_from_file_location("dk", Path(__file__).resolve().parent / "07_deck.py")
+    _dk = _il.module_from_spec(_sp)
+    try:
+        _sp.loader.exec_module(_dk)
+        _extra = _dk.collect_extra(cfg, city)
+    except Exception:                                     # noqa: BLE001
+        _extra = {}
+
     t, a = ev["temporal"], s["allocation"]
     h, ci = t["headline"], t["ci"][f"top{int(t['headline_k'])}"]
     tk, op = a["top_k_percent"], a["optimized"]
@@ -50,6 +60,7 @@ def expected(cfg) -> dict[str, str]:
         "순찰 회고 포착": f"{(bt.get('headline') or {}).get('capture_share', 0):.1%}",
         "순찰 회고 화재": f"{(bt.get('headline') or {}).get('model_fires', 0):,.0f}건",
         "순찰 회고 구역비중": f"{(bt.get('headline') or {}).get('share_of_city', 0):.1%}",
+        "법정 서식 자동 입력": f"{_extra.get('ledger_filled', 0)}개",
         "형평성 대가": f"{(a.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p",
         "1위 구역 점검비용": f"{(a.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건",
         "소화전 사각 구역": f"{s['n_blind_spots']}개",

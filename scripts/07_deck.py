@@ -403,7 +403,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 7 화면③ 계획서 ----
     screen_slide(
         prs, "2. 결과물", "일별·월별·연간 순찰 계획서",
-        "순찰 동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 순찰 계획서",
+        "순찰 동선 · 중점 확인사항 · 법령 근거 포함",
         (figs / "shot_plan_result.png"
          if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
         [("일별 · 월별 · 연간",
@@ -730,7 +730,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 8-2 차별성 ----
     s_diff = section(prs, "7. 차별성",
-                     "예측 이후 단계의 차별성",
+                     "예측 다음 단계: 배분 · 동선 · 문서",
                      "화재위험 예측은 2016년 애틀랜타 사례로 이미 존재. "
                      "그 다음 단계 세 가지")
     cards = [
