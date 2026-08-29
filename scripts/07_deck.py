@@ -377,8 +377,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 2 왜 (배경) ----
     s2 = section(prs, "1. 배경 및 문제점",
-                 "점검 대상은 늘고 인력은 그대로입니다",
-                 "무엇을 먼저 볼지는 아직 법정 주기와 담당자 경험으로 정합니다")
+                 "늘어나는 점검 대상, 정체된 인력",
+                 "법정 주기와 담당자 경험에 의존하는 현행 우선순위 결정")
     band(s2, Inches(0.8), Inches(2.4), Inches(5.6), Inches(3.5))
     textbox(s2, Inches(1.1), Inches(2.68), Inches(5.0), Inches(3.1),
             "· 소방공무원 증원 정체 (2024년 전년 대비 +5명 수준)\n"
@@ -402,7 +402,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 7 화면③ 계획서 ----
     screen_slide(
-        prs, "2. 결과물", "저희가 내놓는 것은 이 문서입니다",
+        prs, "2. 결과물", "일별·월별·연간 순찰 계획서",
         "순찰 동선·중점 확인사항·법령 근거를 담은 일별·월별·연간 순찰 계획서",
         (figs / "shot_plan_result.png"
          if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
@@ -441,7 +441,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 4 활용 데이터 (필수 요건) ----
     s4 = section(prs, "4. 활용 데이터",
                  "소방안전 빅데이터 플랫폼 데이터 상품 8종",
-                 "울산 4종으로 만들고, 세종 4종으로 타 지역 적용을 확인했습니다")
+                 "울산 4종으로 구축, 세종 4종으로 타 지역 적용 확인")
     rows = [["데이터셋", "제공", "역할", "적재 건수"]] + [list(r) for r in ds_rows]
     table(s4, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.1), rows,
           col_widths=[4.2, 2.4, 3.4, 1.8], size=11.5)
@@ -466,7 +466,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
     s_map = section(prs, "5. 서비스 화면 ①",
                     "화재위험 지도와 관서별 순찰 동선",
-                    "예측 결과와 실제 이동 경로를 한 장에서 봅니다")
+                    "예측 결과와 실제 이동 경로를 한 화면에")
     map_img = figs / "map_route.png"
     if map_img.exists():
         # 지도는 세로로 길다. 폭만 맞추면 장표 아래로 넘친다.
@@ -482,10 +482,10 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         if pic is not None:
             pic.width, pic.height = Inches(width), Inches(width / ratio)
     cards = [
-        ("색이 짙을수록 위험",
+        ("구역 단위 화재위험",
          f"· {grid_m}m 구역 단위 화재위험 예측\n"
          "· 과거 화재 · 주변 구역 확산 · 대상물 용도 · 업종 구성"),
-        ("검은 사각형이 출동 관서",
+        ("관서별 출발·복귀 동선",
          "· 119안전센터 출발·복귀\n"
          "· 선: 실제 도로 주행거리 · 번호: 방문 순서"),
         ("계획서에 그대로 첨부",
@@ -513,18 +513,18 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     tk = alloc.get("top_k_percent", {})
     screen_slide(
         prs, "5. 서비스 화면 ②", "인력에 맞춘 예방점검 배분",
-        "점검관 인원과 기간을 넣으면 그 인력으로 갈 수 있는 구역만 배분합니다",
+        "점검관 인원·기간 입력 시 가능한 구역만 배분",
         figs / "shot_allocation.png",
-        [("인력을 먼저 넣습니다",
+        [("가용 인력 입력",
           "· 점검관 인원 · 1일 점검 건수 · 기간 입력\n"
           "· 값을 바꾸면 배분 즉시 재계산"),
-         ("위험한 곳일수록 점검할 건물이 많습니다",
+         ("위험 구역일수록 큰 점검 부담",
           f"· 위험도 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역\n"
           f"· 그 안의 점검 대상 {tk.get('cost_if_all', 0):,.0f}개소\n"
           f"· 1위 구역 한 곳 소요 "
           f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
           f"가용 {alloc.get('budget_visits', 0):,}건"),
-         ("소요와 효과를 함께 계산합니다",
+         ("소요와 효과의 동시 계산",
           "· 구역마다 점검 소요와 잡히는 화재를 함께 셈\n"
           f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
           "  잡히는 화재가 가장 큰 묶음 선택\n"
@@ -547,7 +547,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          ("목적별 순찰 6종",
           "일반예방 · 다중이용업소 야간 · 화재예방강화지구 · 피난약자시설 · "
           "소방용수 점검 · 건조기 특별경계"),
-         ("근무시간 안에 들어오게",
+         ("근무시간 내 편성",
           "· 1회 순찰 시간 초과 시 회차 분할\n"
           "· 실제 도로 주행거리·소요시간 함께 제시")],
         note="",
@@ -555,12 +555,12 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 6-2 조건을 바꾸면 계획이 달라진다 ----
     screen_slide(
-        prs, "5. 서비스 화면 ③-1", "조건을 바꾸면 계획이 다시 짜입니다",
-        "바꾼 조건과 그 결과를 나란히 남깁니다",
+        prs, "5. 서비스 화면 ③-1", "조건 변경에 따른 계획 재생성",
+        "바꾼 조건과 그 결과를 나란히 기록",
         (figs / "fig_route_compare.png"
          if (figs / "fig_route_compare.png").exists()
          else figs / "shot_patrol_compare.png"),
-        [("바꾼 조건을 남깁니다",
+        [("바꾼 조건 기록",
           "· 목적 · 구역 수 · 1회 순찰 시간\n"
           "· 지역 · 거리 기준\n"
           "· 무엇을 바꿨는지 문장으로 기록"),
@@ -578,7 +578,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     if (figs / "fig_form_compare.png").exists() or \
             (figs / "shot_form_compare.png").exists():
         screen_slide(
-            prs, "5. 서비스 화면 ④", "법정 서식을 데이터로 채웁니다",
+            prs, "5. 서비스 화면 ④", "법정 서식 자동 작성",
             "[별지 제11호서식] 화재예방강화지구 관리대장, 괘선까지 법제처 원본 그대로",
             (figs / "fig_form_compare.png"
              if (figs / "fig_form_compare.png").exists()
@@ -598,15 +598,15 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 법령 검색 ----
     screen_slide(
         prs, "5. 서비스 화면 ⑤", "소방 법령 검색 및 근거 제시",
-        f"법령 {extra.get('n_article', 0)}개 조문과 별표·서식 "
-        f"{extra.get('n_annex_all', 0)}건을 색인해 조문 번호와 함께 답합니다",
+        f"법령 {extra.get('n_article', 0)}개 조문·별표·서식 "
+        f"{extra.get('n_annex_all', 0)}건 색인, 조문 번호와 함께 제시",
         (figs / "shot_assistant_answer.png"
          if (figs / "shot_assistant_answer.png").exists() else figs / "shot_assistant.png"),
-        [("소방 법령을 담았습니다",
+        [("수록 범위",
           f"· 법령 {extra.get('n_law', 0)}종 {extra.get('n_article', 0)}개 조문\n"
           f"· 별표·서식 {extra.get('n_annex_all', 0)}건\n"
           "· 업종별 점검 항목·관할 위험 현황을 함께 검색"),
-         ("반드시 근거를 붙입니다",
+         ("근거 조문 동시 제시",
           "· 답변에 법령명과 조문 번호를 함께 제시\n"
           "· 근거 없는 답변은 행정에서 쓸 수 없음"),
          ("신규 대원 업무 지원",
@@ -618,7 +618,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 9 어떻게 믿나 (검증) ----
     s9 = section(prs, "6. 검증 결과",
                  f"{tr[0]}~{tr[-1]}년 학습, {year}년 예측",
-                 f"{year}년 자료는 학습에 한 건도 쓰지 않았습니다")
+                 f"{year}년 자료는 학습에 미사용")
     picture(s9, figs / "fig_capture_curve.png", Inches(0.8), Inches(2.25), Inches(7.3))
     x = Inches(8.5)
     kpi(s9, x, Inches(2.3), Inches(4.0), pct(h["model_capture"]),
@@ -680,9 +680,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     if bt:
         bh = bt.get("headline", {})
         s_bt = section(prs, "6. 검증 결과 (계속)",
-                       f"{bh.get('train_upto', 0)}년까지만 알고 "
-                       f"{bh.get('year', 0)}년 순찰을 짰다면",
-                       "그해 화재를 몇 건 만났는지 되돌려 세어 봤습니다")
+                       f"{bh.get('train_upto', 0)}년 자료 기준 "
+                       f"{bh.get('year', 0)}년 회고 검증",
+                       "그해 이전 자료만으로 계획했을 때의 포착 결과")
         rows = [["순찰 구역", "관내 비중", "우리 계획", "작년 화재 순", "무작위",
                  "그해 화재 중"]]
         for r in bt["years"][0]["by_patrol_size"]:
@@ -730,11 +730,11 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 8-2 차별성 ----
     s_diff = section(prs, "7. 차별성",
-                     "예측은 이미 있습니다. 없던 것은 그 다음입니다",
-                     "화재위험 예측 자체는 2016년 애틀랜타가 이미 했습니다. "
-                     "저희가 더한 세 가지입니다")
+                     "예측 이후 단계의 차별성",
+                     "화재위험 예측은 2016년 애틀랜타 사례로 이미 존재. "
+                     "그 다음 단계 세 가지")
     cards = [
-        ("① 위험한 순서로는 안 됩니다",
+        ("① 위험 순서 배열의 한계",
          "구역마다 점검 소요가 다릅니다.\n"
          f"· 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역 · "
          f"{tk.get('cost_if_all', 0):,.0f}개소\n"
@@ -748,7 +748,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          f"→ 같은 인력, {shown_grids:,}개 구역, "
          f"{alloc.get('gain_pp', 0):+.1f}%p",
          ""),
-        ("② 예측 결과가 결재 문서가 됩니다",
+        ("② 예측 결과의 문서화",
          "일별·월별·연간 계획서를\n"
          "일반기안문 배열로 만듭니다.\n"
          "· 수신 · 경유 · 제목 · 붙임 · 끝. · 발신명의\n\n"
@@ -757,7 +757,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "값만 채웁니다.\n\n"
          "담당자가 옮겨 적을 항목이 없습니다.",
          ""),
-        ("③ AI 인용을 기계가 검증합니다",
+        ("③ AI 인용의 기계 검증",
          "공공이 생성형 AI 를 못 쓰는 이유는\n"
          "성능이 아니라 검증입니다.\n\n"
          "· 계획서: 원문에 없던 수·조문이\n"
@@ -809,7 +809,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 11 기대효과 ----
     s11 = section(prs, "8. 기대효과 및 활용방안",
-                  "적은 순찰로 더 많이, 근거는 문서로", "")
+                  "순찰 효율 개선과 근거 기록", "")
     # 이 서비스의 결과물은 순찰 경로다. 머리 지표도 순찰에서 시작한다.
     _bh = (extra.get("backtest") or {}).get("headline", {})
     if _bh:
@@ -844,7 +844,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 12 한계 ----
     s12 = section(prs, "9. 한계와 향후 계획",
                   "확인된 한계와 대응 방안",
-                  "자료상 제약, 현재 대응, 개선 방향 순으로 정리했습니다")
+                  "")
     rows = [["한계", "현재 대응", "향후"]]
     rows += [
         ["공개 데이터에 건물번호·좌표가 없음",

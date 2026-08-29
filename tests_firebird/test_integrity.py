@@ -598,3 +598,38 @@ class TestDeckHasNoTrailingNotes(unittest.TestCase):
                 if rgb == muted:
                     leftovers.append((i, sh.text_frame.text.strip()[:60]))
         self.assertEqual(leftovers, [], f"장표 아래 회색 설명줄: {leftovers}")
+
+
+class TestDeckTitleStyle(unittest.TestCase):
+    """장표 제목이 말하듯 한 문장이 아니라 명사구인지 본다.
+
+    '저희가 내놓는 것은 이 문서입니다' 같은 제목이 섞여 있었다. 공모전
+    발표자료는 개조식 명사구가 관행이고, 문장형과 명사구가 섞이면 그것부터
+    눈에 띈다. 한 번 맞춘 문체가 다음 판에서 흐트러지지 않게 한다.
+    """
+
+    ENDINGS = ("니다", "습니다", "한다", "된다", "입니다", "짜입니다")
+
+    def test_제목이_문장형이_아니다(self):
+        from pathlib import Path
+        try:
+            from pptx import Presentation
+        except ImportError:                               # noqa: BLE001
+            self.skipTest("python-pptx 없음")
+        root = Path(__file__).resolve().parents[1]
+        found = list((root / "outputs").glob("불씨예보_발표자료_*.pptx"))
+        if not found:
+            self.skipTest("발표자료를 아직 만들지 않았다")
+        bad = []
+        for i, slide in enumerate(Presentation(found[0]).slides, 1):
+            for sh in slide.shapes:
+                if not sh.has_text_frame:
+                    continue
+                big = any(r.font.size and r.font.size.pt >= 26
+                          for para in sh.text_frame.paragraphs for r in para.runs)
+                if not big:
+                    continue
+                text = sh.text_frame.text.strip().replace("\n", " ")
+                if text.endswith(self.ENDINGS):
+                    bad.append((i, text[:50]))
+        self.assertEqual(bad, [], f"문장형 제목: {bad}")
