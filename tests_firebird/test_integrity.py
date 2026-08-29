@@ -559,3 +559,42 @@ class TestStreamlitWidgetState(unittest.TestCase):
 
     def test_질문_위젯_키가_그대로다(self):
         self.assertIn('key="qa_input"', self.src)
+
+
+class TestDeckHasNoTrailingNotes(unittest.TestCase):
+    """장표 아래에 회색 한 줄을 매달아 그림을 다시 설명하지 않는지 본다.
+
+    '검은 점 = 출동 관서', '두 지도는 같은 범위입니다' 처럼 그림을 보면 아는
+    것을 밑에 또 적어 두는 버릇이 있었다. 발표에서 말하면 되는 것이고,
+    장표에 있으면 AI 가 덧붙인 티가 난다. 한 번 걷어낸 뒤 다시 늘지 않게 한다.
+    """
+
+    def test_그림_아래_회색_설명줄이_없다(self):
+        from pathlib import Path
+        try:
+            from pptx import Presentation
+        except ImportError:                               # noqa: BLE001
+            self.skipTest("python-pptx 없음")
+        root = Path(__file__).resolve().parents[1]
+        found = list((root / "outputs").glob("불씨예보_발표자료_*.pptx"))
+        if not found:
+            self.skipTest("발표자료를 아직 만들지 않았다")
+        muted = (0x6B, 0x74, 0x84)
+        leftovers = []
+        for i, slide in enumerate(Presentation(found[0]).slides, 1):
+            for sh in slide.shapes:
+                if not sh.has_text_frame or not sh.text_frame.text.strip():
+                    continue
+                wide = bool(sh.width and sh.width.inches > 10)
+                low = bool(sh.top and sh.top.inches > 5.9)
+                runs = sh.text_frame.paragraphs[0].runs
+                if not (wide and low and runs):
+                    continue
+                col = runs[0].font.color
+                try:
+                    rgb = tuple(col.rgb) if col and col.type is not None else None
+                except Exception:                         # noqa: BLE001
+                    rgb = None
+                if rgb == muted:
+                    leftovers.append((i, sh.text_frame.text.strip()[:60]))
+        self.assertEqual(leftovers, [], f"장표 아래 회색 설명줄: {leftovers}")

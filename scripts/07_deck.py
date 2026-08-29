@@ -276,12 +276,25 @@ def screen_slide(prs, kicker: str, title: str, lead: str, shot: Path,
     # 설명이 잘린다. 그림과 무관하게 장표에서 쓸 수 있는 세로 공간을 나눠 쓴다.
     avail = min(4.9, 7.5 - 2.2 - 0.85)
     box_h = max(0.95, (avail - (len(bullets) - 1) * 0.18) / max(len(bullets), 1))
+    # 줄이 늘면 상자 밖으로 흘러나간다. 배치 검사(scripts/11)는 도형 좌표만
+    # 보므로 이 넘침을 못 잡는다. 넣기 전에 들어갈 만한 크기를 정한다.
+    def _lines(text: str, size_pt: float) -> int:
+        per = max(8, int((box_w - 0.4) * 72 / size_pt))   # 한 줄에 들어가는 글자 수
+        return sum(max(1, -(-len(ln) // per)) for ln in text.split("\n"))
+
+    size = 10.5
+    while size > 8.6:
+        room = int((box_h - 0.54) * 72 / (size * 1.25))
+        if all(_lines(b, size) <= room for _, b in bullets):
+            break
+        size -= 0.5
+
     for head, body in bullets:
         band(s, x, Inches(y), Inches(box_w), Inches(box_h))
         textbox(s, x + Inches(0.2), Inches(y + 0.11), Inches(box_w - 0.4),
                 Inches(0.32), head, size=13, bold=True, color=RED)
         textbox(s, x + Inches(0.2), Inches(y + 0.46), Inches(box_w - 0.4),
-                Inches(box_h - 0.54), body, size=10.5, color=MUTED, spacing=1.05)
+                Inches(box_h - 0.54), body, size=size, color=MUTED, spacing=1.05)
         y += box_h + 0.18
     if note:
         textbox(s, Inches(0.7), Inches(2.2 + height + 0.25), Inches(11.9),
@@ -512,15 +525,14 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
           f"가용 {alloc.get('budget_visits', 0):,}건"),
          ("소요와 효과를 함께 계산합니다",
-          "· 구역마다 점검 소요(건)와 잡히는 화재(건)를 함께 셈\n"
-          f"· 소요 합계가 {alloc.get('budget_visits', 0):,}건을 넘지 않는 "
-          "구역 묶음 중\n   잡히는 화재 합계가 가장 큰 묶음을 선택\n"
-          f"· 결과 {shown_grids:,}개 구역 · 실제 화재 "
-          f"{pct(shown_cap)} 포착 "
-          f"({alloc.get('gain_pp', 0):+.1f}%p)")],
-        note=(f"관할별 최소 배분을 걸어 특정 구에 몰리지 않게 합니다. "
-              f"대가는 포착률 "
-              f"{(alloc.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p."))
+          "· 구역마다 점검 소요와 잡히는 화재를 함께 셈\n"
+          f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
+          "  잡히는 화재가 가장 큰 묶음 선택\n"
+          f"· {shown_grids:,}개 구역 · 화재 {pct(shown_cap)} 포착 "
+          f"({alloc.get('gain_pp', 0):+.1f}%p)\n"
+          f"· 관할별 최소 배분을 걸어도 손해 "
+          f"{(alloc.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p")],
+        note="")
 
     # ---- 6 화면② 순찰 ----
     screen_slide(
@@ -600,7 +612,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          ("신규 대원 업무 지원",
           "· ‘왜 여기가 위험한지’와 ‘무슨 근거로 하는지’를\n"
           "  같은 화면에서 확인")],
-        note="답변은 업무 참고용이며, 법령 원문은 국가법령정보센터에서 확인합니다.",
+        note="",
         keep=0.78)
 
     # ---- 9 어떻게 믿나 (검증) ----
@@ -699,7 +711,12 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         band(s_bt, Inches(6.7), Inches(5.55), Inches(5.9), Inches(1.45))
         textbox(s_bt, Inches(6.95), Inches(5.68), Inches(5.4), Inches(1.2),
                 "e 는 저희가 측정할 수 없어 세 경우를 나란히 둡니다.\n"
-                "잰 것은 ‘순찰 구역 안에서 난 화재 건수’까지입니다.", size=12.5)
+                "잰 것은 ‘순찰 구역 안에서 난 화재 건수’까지입니다.\n\n"
+                + "같은 절차를 "
+                + " · ".join(f"{y['year']}년 "
+                             f"{y['by_patrol_size'][2]['capture_share']:.1%}"
+                             for y in bt["years"])
+                + " 로 반복했습니다.", size=12.5)
         _g = bh.get("gain_ci", {})
         band(s_bt, Inches(0.8), Inches(4.85), Inches(11.8), Inches(0.55))
         textbox(s_bt, Inches(1.0), Inches(4.93), Inches(11.4), Inches(0.4),
@@ -708,12 +725,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                 f"{bh.get('gain_over_baseline', 0):+.0f}건, 95% 신뢰구간 "
                 f"{_g.get('lo', 0):+.0f} ~ {_g.get('hi', 0):+.0f}건입니다.",
                 size=12.5)
-        s_bt_note = ("같은 절차를 "
-                     + " · ".join(f"{y['year']}년 {y['by_patrol_size'][2]['capture_share']:.1%}"
-                                  for y in bt["years"])
-                     + " 로 세 해 반복했습니다.")
-        textbox(s_bt, Inches(0.8), Inches(7.05), Inches(11.8), Inches(0.4),
-                s_bt_note, size=12, color=MUTED)
+
 
 
     # ---- 8-2 차별성 ----
@@ -855,10 +867,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          f"누적 화재만으로도 {pct(probe0.get('capture_top20'))}임을 먼저 공개",
          "가치는 설명·확장·인력배분에 있음"],
     ]
-    table(s12, Inches(0.8), Inches(2.35), Inches(11.8), Inches(3.5), rows,
+    table(s12, Inches(0.8), Inches(2.6), Inches(11.8), Inches(4.0), rows,
           col_widths=[3.6, 4.8, 3.4], size=12.5)
-    textbox(s12, Inches(0.8), Inches(6.15), Inches(11.8), Inches(0.7),
-            "같은 명령으로 오늘 보신 수치가 다시 만들어집니다.",
+    textbox(s12, Inches(0.8), Inches(6.9), Inches(11.8), Inches(0.4), "",
             size=14, color=MUTED)
 
     # ---- 13 마무리 ----
