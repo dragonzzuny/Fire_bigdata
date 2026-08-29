@@ -56,6 +56,8 @@ class Mark:
     text: str
     key: bool = False
     card: str = ""          # 핵심본에서 이 장면 앞에 세울 제목
+    fast: float = 1.0       # 이 장면부터 다음 장면까지의 배속
+    endkey: bool = False    # 여기서부터는 핵심본에 넣지 않는다
 
 
 @dataclass
@@ -69,10 +71,12 @@ class Recorder:
     def now(self) -> float:
         return time.monotonic() - self.t0
 
-    def mark(self, text: str, key: bool = False, card: str = "") -> None:
+    def mark(self, text: str, key: bool = False, card: str = "",
+             fast: float = 1.0, endkey: bool = False) -> None:
         t = self.now()
-        self.marks.append(Mark(t, text.strip(), key, card))
-        print(f"  [{int(t // 60)}:{int(t % 60):02d}] {text}")
+        self.marks.append(Mark(t, text.strip(), key, card, fast, endkey))
+        tag = f"  ({fast:g}배속)" if fast != 1.0 else ""
+        print(f"  [{int(t // 60)}:{int(t % 60):02d}] {text}{tag}")
 
     def beat(self, seconds: float, text: str = "", **kw) -> None:
         self.page.wait_for_timeout(int(seconds * self.pace * 1000))
@@ -129,7 +133,7 @@ def play(page, pace: float) -> list:
     r.tab("예방점검 배분", 6, "점검 가용 인력을 먼저 넣습니다",
           key=True, card="인력에 맞춘 예방점검 배분")
     r.to("위험도 상위", 8,
-         "위험한 곳일수록 점검할 건물이 많습니다 — 1위 구역 한 곳도 못 끝냅니다")
+         "위험한 곳일수록 점검할 건물이 많습니다. 1위 구역 한 곳도 못 끝냅니다")
     r.to("점검 순위표", 4,
          "그래서 갈 수 있는 조합 중 화재를 가장 많이 잡는 쪽을 고릅니다")
     r.settle(10, "같은 인력으로 186개 구역, 실제 화재 17.8% 포착")
@@ -138,7 +142,7 @@ def play(page, pace: float) -> list:
     r.tab("예방순찰 계획", 13, "119안전센터에서 출발해 관할을 돌고 복귀합니다",
           key=True, card="관서별 순찰 동선")
     if r.to("관서별 순찰 구역", 4):
-        r.settle(14, "색깔이 관서, 검은 점이 출동 관서 — 실제 도로 주행거리입니다")
+        r.settle(14, "색깔이 관서, 검은 점이 출동 관서. 선은 실제 도로 주행거리입니다")
     r.scroll(0.7, 3)
     r.beat(6, "관서마다 몇 구역을 몇 km 도는지 표로 나옵니다")
 
@@ -161,8 +165,9 @@ def play(page, pace: float) -> list:
             raise TimeoutError("순찰 목적 목록이 열리지 않았다")
         label = opts.nth(1).inner_text().strip()
         opts.nth(1).click()
+        r.mark(f"{label}로 바꾸면 대상 구역도 시간대도 다시 계산됩니다", fast=3.0)
         # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다. 기다린다.
-        r.settle(6, f"{label} — 대상 구역도 시간대도 다시 계산됩니다")
+        r.settle(6, "다시 계산한 결과입니다")
         if r.to("바꾸기 전", 4):
             r.settle(12, "바꾸기 전과 바꾼 뒤를 같은 범위·같은 배율로 남깁니다")
         r.to("가장 먼 순찰조", 8, "빠진 구역과 새로 들어온 구역까지 적어 둡니다")
@@ -179,17 +184,24 @@ def play(page, pace: float) -> list:
         pass
     r.to("계획서 생성", 3)
     page.get_by_role("button", name="계획서 생성").click(timeout=25_000)
-    r.settle(4, "생성에 약 25초가 걸립니다")
+    r.mark("계획서를 만드는 중입니다 (약 25초)", fast=5.0)
+    r.settle(4, "만들어진 문서입니다")
     try:
         page.locator(".docview").first.scroll_into_view_if_needed(timeout=25_000)
         r.beat(6, "기관·수신·경유·시행일·관련 근거까지 공문 서식 그대로입니다")
-        r.scroll(2.2, 9)
-        r.beat(5, "관서별 순찰 구역, 중점 확인사항, 근거 조문이 함께 들어갑니다")
+        # 많이 내리면 문서를 지나쳐 아래 입력 폼이 나온다. 문서 안에서만 움직인다.
+        r.mark("관서별 순찰 구역과 중점 확인사항이 이어집니다")
+        r.scroll(1.1, 7)
+        r.beat(3)
+        r.mark("끝에 붙임과 결재란까지 들어갑니다")
+        r.scroll(1.1, 7)
+        r.beat(4)
     except Exception as exc:                              # noqa: BLE001
         print(f"  문서 장면 건너뜀: {type(exc).__name__}")
 
     # --- 5. 대응취약 · 업무 도우미 (전체본에만) --------------------------
-    r.tab("대응취약 구역", 8, "고위험인데 소화전이 없는 구역을 따로 뽑습니다")
+    r.tab("대응취약 구역", 8, "고위험인데 소화전이 없는 구역을 따로 뽑습니다",
+          endkey=True)
     r.to("소방용수 사각지대", 10, "소화전 신설 우선순위의 객관적 근거가 됩니다")
     r.tab("업무 도우미", 6, "법령은 조문 번호와 함께 답합니다")
     try:
@@ -200,7 +212,7 @@ def play(page, pace: float) -> list:
             "button").filter(has_text="화재예방강화지구").first
         btn.click(timeout=15_000)
         # 답변은 15~40초 걸린다. 상태 표시만 보고 넘어가면 계산 중인 화면이 찍힌다.
-        r.beat(6, "자주 찾는 질문을 누르면 답변까지 이어집니다")
+        r.mark("법령을 찾아 답변을 만드는 중입니다 (15~40초)", fast=5.0)
         page.get_by_text("근거 자료").first.wait_for(state="visible", timeout=90_000)
         r.to("근거 자료", 10, "인용한 조문을 검색 원문과 대조해 표시합니다")
     except Exception as exc:                              # noqa: BLE001
@@ -236,23 +248,8 @@ def _ts(sec: float) -> str:
     ms = int(round(sec * 1000))
     h, ms = divmod(ms, 3_600_000)
     m, ms = divmod(ms, 60_000)
-    s, ms = divmod(ms, 1000)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-
-def write_srt(marks: list, end: float, path: Path) -> Path:
-    """자막 파일. 각 줄은 다음 줄이 나올 때까지 떠 있는다."""
-    lines, n = [], 0
-    for i, mk in enumerate(marks):
-        if not mk.text:
-            continue
-        stop = marks[i + 1].t if i + 1 < len(marks) else end
-        if stop - mk.t < 1.2:                # 너무 짧으면 읽히지 않는다
-            stop = mk.t + 1.2
-        n += 1
-        lines += [str(n), f"{_ts(mk.t)} --> {_ts(stop)}", mk.text, ""]
-    path.write_text("\n".join(lines), encoding="utf-8")
-    return path
+    sec_, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{sec_:02d},{ms:03d}"
 
 
 def _run(cmd: list) -> bool:
@@ -268,22 +265,58 @@ def _style() -> str:
             "BorderStyle=3,Outline=3,Shadow=0,MarginV=34")
 
 
-def burn(src: Path, srt: Path, dst: Path) -> bool:
-    esc = str(srt).replace("'", "")
-    vf = f"subtitles='{esc}':force_style='{_style()}'"
-    return _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
-                 "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "24",
-                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(dst)])
+def plan(marks: list, end: float, only_key: bool) -> list:
+    """장면을 (시작, 끝, 배속, 자막, 제목카드) 목록으로 편다.
+
+    배속을 건 구간은 길이가 줄어든다. 자막을 원본 시각으로 만들면 그만큼
+    어긋나므로, 자른 뒤의 시간표를 다시 계산해 자막을 붙인다.
+    """
+    out, keep = [], not only_key
+    for i, mk in enumerate(marks):
+        stop = marks[i + 1].t if i + 1 < len(marks) else end
+        if only_key:
+            if mk.key:
+                keep = True
+            elif mk.endkey:
+                keep = False
+                # tab() 은 눌러 놓고 다 그려진 뒤에 표시를 남긴다. 그래서 전환된
+                # 화면이 앞 구간 꼬리에 붙는다. 그 꼬리를 잘라 낸다.
+                if out:
+                    out[-1]["stop"] = max(out[-1]["start"] + 0.5,
+                                          out[-1]["stop"] - 3.0)
+        if stop - mk.t < 0.4:                 # 너무 짧은 조각은 버린다
+            continue
+        if keep:
+            out.append({"start": mk.t, "stop": stop, "fast": mk.fast,
+                        "text": mk.text,
+                        "card": mk.card if (only_key and mk.key) else ""})
+    return out
+
+
+def write_srt(parts: list, path: Path, card_sec: float) -> Path:
+    """자른 뒤의 시간표로 자막을 만든다."""
+    lines, n, now = [], 0, 0.0
+    for pt in parts:
+        if pt.get("card"):
+            now += card_sec
+        dur = (pt["stop"] - pt["start"]) / pt["fast"]
+        if pt["text"]:
+            n += 1
+            lines += [str(n), f"{_ts(now)} --> {_ts(now + max(dur, 1.2))}",
+                      pt["text"], ""]
+        now += dur
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
 
 
 def title_card(text: str, sub: str, png: Path) -> Path:
     """제목 카드. 영상 사이에 끼워 넣으면 '편집한 것'으로 읽힌다."""
     from PIL import Image, ImageDraw, ImageFont
-    img = Image.new("RGB", (W, H), "#12161C")
-    d = ImageDraw.Draw(img)
     font_path = next((f for f in FONT_CANDIDATES if Path(f).exists()), None)
     if font_path is None:                    # 글꼴이 없으면 카드는 포기한다
         raise FileNotFoundError("한글 글꼴을 찾지 못했다: " + str(FONT_CANDIDATES))
+    img = Image.new("RGB", (W, H), "#12161C")
+    d = ImageDraw.Draw(img)
     big = ImageFont.truetype(font_path, 62)
     small = ImageFont.truetype(font_path, 28)
     d.rectangle([0, 0, W, 10], fill="#E8452C")
@@ -296,72 +329,83 @@ def title_card(text: str, sub: str, png: Path) -> Path:
     return png
 
 
-def card_clip(png: Path, mp4: Path, seconds: float = 2.4) -> bool:
+def card_clip(png: Path, mp4: Path, seconds: float) -> bool:
     return _run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1",
-                 "-t", str(seconds), "-i", str(png), "-r", "25",
+                 "-t", f"{seconds}", "-i", str(png), "-r", "25",
                  "-c:v", "libx264", "-preset", "medium", "-crf", "24",
                  "-pix_fmt", "yuv420p", str(mp4)])
 
 
-def cut(src: Path, start: float, stop: float, dst: Path, srt: Path) -> bool:
-    """구간 하나를 자막까지 태워서 잘라 낸다."""
-    esc = str(srt).replace("'", "")
-    vf = f"subtitles='{esc}':force_style='{_style()}',setpts=PTS-STARTPTS"
+def cut(src: Path, start: float, stop: float, fast: float, dst: Path) -> bool:
+    """구간 하나를 잘라 내고, 필요하면 빨리 감는다."""
+    vf = "setpts=PTS-STARTPTS" if fast == 1.0 else f"setpts=(PTS-STARTPTS)/{fast}"
     return _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
                  "-ss", f"{start:.2f}", "-to", f"{stop:.2f}",
-                 "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "24",
-                 "-pix_fmt", "yuv420p", "-r", "25", str(dst)])
+                 "-vf", vf, "-r", "25",
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "24",
+                 "-pix_fmt", "yuv420p", str(dst)])
 
 
-def concat(parts: list, dst: Path, work: Path) -> bool:
+def concat(files: list, dst: Path, work: Path) -> bool:
+    # concat 목록의 상대 경로는 목록 파일이 있는 폴더 기준으로 풀린다.
+    # 절대 경로로 적지 않으면 _work/_work/... 를 찾다 실패한다.
     lst = work / "concat.txt"
-    lst.write_text("".join(f"file '{p}'\n" for p in parts), encoding="utf-8")
+    lst.write_text("".join(f"file '{Path(f).resolve()}'\n" for f in files),
+                   encoding="utf-8")
     return _run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat",
-                 "-safe", "0", "-i", str(lst), "-c", "copy",
-                 "-movflags", "+faststart", str(dst)])
+                 "-safe", "0", "-i", str(lst), "-c", "copy", str(dst)])
 
 
-def segments(marks: list, end: float) -> list:
-    """key 로 표시한 장면부터 다음 key 직전까지를 한 구간으로 묶는다."""
-    segs, cur = [], None
-    for i, mk in enumerate(marks):
-        stop = marks[i + 1].t if i + 1 < len(marks) else end
-        if mk.key:
-            if cur:
-                segs.append(cur)
-            cur = {"card": mk.card, "start": mk.t, "stop": stop}
-        elif cur:
-            cur["stop"] = stop
-    if cur:
-        segs.append(cur)
-    return segs
+def burn(src: Path, srt: Path, dst: Path) -> bool:
+    esc = str(srt).replace("'", "")
+    return _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+                 "-vf", f"subtitles='{esc}':force_style='{_style()}'",
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "24",
+                 "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(dst)])
 
 
-def highlight(src: Path, marks: list, end: float, srt: Path,
-              dst: Path, work: Path) -> bool:
-    """핵심 장면만 제목 카드와 함께 이어 붙인다."""
+def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
+           only_key: bool = False, card_sec: float = 2.4) -> float:
+    """자르고, 빨리 감고, 이어 붙이고, 자막을 태운다. 최종 길이(초)를 돌려준다."""
+    if work.exists():
+        shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True, exist_ok=True)
-    segs = segments(marks, end)
-    if not segs:
-        return False
+    parts = plan(marks, end, only_key)
+    if not parts:
+        return 0.0
 
-    parts = []
-    lead = work / "card_lead.mp4"
-    if card_clip(title_card(CARD_LEAD[0], CARD_LEAD[1],
-                            work / "card_lead.png"), lead, 3.0):
-        parts.append(lead)
-    for i, sg in enumerate(segs):
-        cp = work / f"card{i}.mp4"
-        if sg["card"] and card_clip(
-                title_card(sg["card"], "", work / f"card{i}.png"), cp):
-            parts.append(cp)
+    files, total = [], 0.0
+    if only_key:
+        lead = work / "lead.mp4"
+        if card_clip(title_card(CARD_LEAD[0], CARD_LEAD[1], work / "lead.png"),
+                     lead, 3.0):
+            files.append(lead)
+            total += 3.0
+    for i, pt in enumerate(parts):
+        if pt.get("card"):
+            cp = work / f"card{i}.mp4"
+            if card_clip(title_card(pt["card"], "", work / f"card{i}.png"),
+                         cp, card_sec):
+                files.append(cp)
+                total += card_sec
         vp = work / f"seg{i}.mp4"
-        if cut(src, sg["start"], sg["stop"], vp, srt):
-            parts.append(vp)
-    ok = concat(parts, dst, work)
-    print("  핵심 구간 " + str(len(segs)) + "개: "
-          + " · ".join(f"{s['card']} {s['stop'] - s['start']:.0f}초" for s in segs))
-    return ok
+        if cut(src, pt["start"], pt["stop"], pt["fast"], vp):
+            files.append(vp)
+            total += (pt["stop"] - pt["start"]) / pt["fast"]
+
+    joined = work / "joined.mp4"
+    if not concat(files, joined, work):
+        return 0.0
+    srt = write_srt(parts, work / "cap.srt", 3.0 if only_key else card_sec)
+    if not burn(joined, srt, dst):
+        return 0.0
+    sped = [pt for pt in parts if pt["fast"] != 1.0]
+    if sped:
+        print("  배속 구간: "
+              + " · ".join(f"{pt['fast']:g}배 {pt['stop'] - pt['start']:.0f}→"
+                           f"{(pt['stop'] - pt['start']) / pt['fast']:.0f}초"
+                           for pt in sped))
+    return total
 
 
 def main() -> int:
@@ -385,7 +429,7 @@ def main() -> int:
         stale.unlink()
     print(f"\n  녹화 {int(end // 60)}분 {int(end % 60)}초 · 자막 {len(marks)}줄")
 
-    srt = write_srt(marks, end, out / "자막.srt")
+    write_srt(plan(marks, end, False), out / "자막_원본시각.srt", 0.0)
     (out / "장면.json").write_text(
         json.dumps([mk.__dict__ for mk in marks], ensure_ascii=False, indent=2),
         encoding="utf-8")
@@ -394,12 +438,12 @@ def main() -> int:
         print("편집 생략 (ffmpeg 없음 또는 --no-edit)")
         return 0
 
-    full = out / "시연_전체_자막.mp4"
-    if burn(src, srt, full):
-        print(f"저장: {full}  ({full.stat().st_size / 1e6:.1f} MB)")
-    key = out / "시연_핵심_자막.mp4"
-    if highlight(src, marks, end, srt, key, out / "_work"):
-        print(f"저장: {key}  ({key.stat().st_size / 1e6:.1f} MB)")
+    for name, only_key in (("시연_전체.mp4", False), ("시연_핵심.mp4", True)):
+        dst = out / name
+        secs = render(src, marks, end, dst, out / "_work", only_key=only_key)
+        if secs:
+            print(f"저장: {dst}  ({int(secs // 60)}분 {int(secs % 60)}초 · "
+                  f"{dst.stat().st_size / 1e6:.1f} MB)")
     shutil.rmtree(out / "_work", ignore_errors=True)
     return 0
 

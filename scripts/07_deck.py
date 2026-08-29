@@ -538,7 +538,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          ("근무시간 안에 들어오게",
           "· 1회 순찰 시간 초과 시 회차 분할\n"
           "· 실제 도로 주행거리·소요시간 함께 제시")],
-        note="검은 점 = 출동 관서 · 색 = 관서별 동선",
+        note="",
         keep=1.0)
 
     # ---- 6-2 조건을 바꾸면 계획이 달라진다 ----
@@ -858,8 +858,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     table(s12, Inches(0.8), Inches(2.35), Inches(11.8), Inches(3.5), rows,
           col_widths=[3.6, 4.8, 3.4], size=12.5)
     textbox(s12, Inches(0.8), Inches(6.15), Inches(11.8), Inches(0.7),
-            "전 과정을 다시 실행할 수 있는 스크립트와 검증 절차를 공개합니다. "
-            "같은 명령으로 오늘 보신 모든 수치가 다시 만들어집니다.",
+            "전 과정 스크립트와 검증 절차를 공개합니다. "
+            "같은 명령으로 오늘 보신 수치가 다시 만들어집니다.",
             size=14, color=MUTED)
 
     # ---- 13 마무리 ----

@@ -490,9 +490,7 @@ tabs = st.tabs(["예방점검 배분", "위험요인·점검계획서", "예방�
 # ================================================================== ① 배분
 with tabs[0]:
     st.subheader("가용 인력 기준 예방점검 배분")
-    st.caption("위험한 구역일수록 점검할 건물이 많습니다. 위험도 순으로만 자르면 "
-               "인력으로 감당할 수 없는 계획이 나오므로, "
-               "**갈 수 있는 곳 중 화재를 가장 많이 잡는 조합**을 고릅니다.")
+    st.caption("가용 인력 안에서 화재를 가장 많이 잡는 구역 묶음을 고릅니다.")
 
     cmp = OP.compare_to_topk(view, view["pred"], capacity, cfg.headline_k)
     alloc, eq_info = OP.allocate_with_equity(view, view["pred"], capacity,
@@ -580,8 +578,7 @@ with tabs[0]:
             with st.expander(f"관할별 배분 형평성 (최소 배분 {equity_share:.2f} 적용)"):
                 st.dataframe(pd.DataFrame(rows).sort_values("화재 비중", ascending=False),
                              hide_index=True, width='stretch')
-                st.caption("비율 1.0 = 화재 비중만큼 배분. 슬라이더를 0으로 내리면 "
-                           "효율만 고려하여 특정 관할에 쏠릴 수 있습니다.")
+                st.caption("비율 1.0 = 화재 비중만큼 배분")
                 # '형평성 때문에 성능을 깎은 것 아니냐'에 이 자리에서 답한다.
                 eff_only = OP.allocate(view, view["pred"], capacity)
                 eff_rate = OP.capture_rate(eff_only, view)
@@ -600,7 +597,6 @@ with tabs[0]:
 # ================================================================== ② 이유
 with tabs[1]:
     st.subheader("구역별 위험요인 및 점검계획서")
-    st.caption("위험을 끌어올린 요인과 현장 확인 항목.")
 
     if alloc.empty:
         st.markdown("<div class='callout info'>배분된 구역이 없습니다. "
@@ -682,7 +678,6 @@ with tabs[1]:
                         dd[["label", "value", "contribution"]].rename(columns={
                             "label": "요인", "value": "현재값", "contribution": "기여도"}),
                         hide_index=True, width='stretch')
-                    st.caption("기여도가 클수록 이 구역의 위험을 크게 끌어올린 요인")
                 else:
                     st.caption("표시할 요인이 없습니다.")
 
@@ -690,8 +685,7 @@ with tabs[1]:
             st.markdown("##### 현장 점검 항목")
             checklist = R.checklist_for_grid(row, cfg)
             done_key = f"chk_{gid}"
-            st.caption(f"이 구역의 업종·소방시설 구성에 맞춰 {checklist['n_items']}개 항목이 "
-                       "자동으로 구성됩니다.")
+            st.caption(f"업종·소방시설 구성에 맞춘 {checklist['n_items']}개 항목")
             for i, sec in enumerate(checklist["sections"]):
                 with st.expander(f"{sec['구분']} · {sec['근거']}", expanded=(i == 0)):
                     for item in sec["항목"]:
@@ -828,8 +822,6 @@ with tabs[2]:
             mp, tb = st.columns([3, 2])
             with mp:
                 st.pydeck_chart(deck(layers, extent, tooltip=TIP_PLAIN))
-                st.caption("검은 점 = 출동 관서 · 색깔 = 관서별 순찰 동선 "
-                           "· 관서에서 출발해 관서로 돌아옵니다.")
             with tb:
                 st.markdown("**관서별 순찰 구역**")
                 # 좁은 칸에 아홉 열을 넣으면 다 잘린다. 요약만 두고 나머지는 접는다.
@@ -902,7 +894,6 @@ with tabs[2]:
                 st.divider()
 
             with st.expander("계획서용 지도 (인쇄·첨부용)", expanded=False):
-                st.caption("계획서에 첨부되는 동선도")
                 if st.button("지도 만들기"):
                     with st.spinner("지도 생성 중…"):
                         fig = MV.route_map(
@@ -938,7 +929,6 @@ with tabs[2]:
                 if c in det:
                     det[c] = pd.to_numeric(det[c], errors="coerce").fillna(0).astype(int)
             st.dataframe(det, hide_index=True, width='stretch')
-            st.caption("관서 출발 → 순번대로 → 관서 복귀. 복귀 시간 포함.")
 
         with st.expander(f"{mode.label} 현장 중점 확인 항목", expanded=False):
             for chk in mode.checks:
@@ -993,8 +983,7 @@ with tabs[2]:
 # ================================================================== ④ 계획서
 with tabs[3]:
     st.subheader("순찰·점검 계획서")
-    st.caption("동선·중점 확인사항·법령 근거가 들어간 결재용 공문을 만듭니다. "
-               "숫자와 법령은 시스템이 확정하고, AI는 문장만 다듬습니다.")
+    st.caption("동선·중점 확인사항·법령 근거가 들어간 결재용 공문을 만듭니다.")
 
     plan = st.session_state.get("patrol_plan")
     targets = st.session_state.get("patrol_targets")
@@ -1125,8 +1114,7 @@ with tabs[3]:
     # ---------------- 법정 서식 채우기 --------------------------------
     st.divider()
     st.markdown("### 법정 서식으로 내보내기")
-    st.caption("법에 서식이 정해진 문서는 그 서식을 써야 결재가 됩니다. "
-               "법제처 배포 서식에 값만 채웁니다.")
+    st.caption("법제처 배포 서식에 값만 채웁니다.")
 
     blank_form = cfg.paths.processed / "forms" / "서식11_빈양식.png"
     form_pdf = next(iter(sorted(
@@ -1210,7 +1198,6 @@ with tabs[3]:
                 shot = st.session_state.get("ledger_png", "")
                 if shot and Path(shot).exists():
                     st.image(shot, width='stretch')
-                    st.caption("같은 서식 · 값만 채움")
                     with open(shot, "rb") as fh:
                         st.download_button("내려받기 (PNG)", fh.read(),
                                            file_name=f"화재예방강화지구_관리대장_{g_id}.png",
@@ -1220,9 +1207,7 @@ with tabs[3]:
 # ================================================================== ⑤ 대응취약
 with tabs[4]:
     st.subheader("소방용수 사각지대 및 화재 급증 구역")
-    st.caption("소화전이 없는 구역은 전체의 절반에 가깝습니다. 산지에도 소화전은 "
-               "없기 때문입니다. **위험 상위 구간과 교차한 구역**만 추려야 "
-               "신설 우선순위가 됩니다.")
+    st.caption("위험 상위 구간과 교차한 구역만 신설 우선순위가 됩니다.")
 
     cov = H.hydrant_coverage(cur)
     if not cov.get("available"):
@@ -1312,7 +1297,7 @@ with tabs[4]:
     if surge.empty:
         st.caption("해당 구역이 없습니다.")
     else:
-        st.caption(f"{len(surge)}개 구역. 같은 위험요인이 반복되는지 확인이 필요합니다.")
+        st.caption(f"{len(surge)}개 구역")
         sg = surge.rename(columns={
             "grid_id": "구역", "station": "소방서", "center": "119안전센터",
             "sgg": "시군구", "emd": "읍면동",
@@ -1482,9 +1467,8 @@ with tabs[6]:
     c1.metric("수록 법령", f"{arts['law'].nunique() if not arts.empty else 0}종")
     c2.metric("조문", f"{len(arts):,}개" if not arts.empty else "0개")
     c3.metric("별표·서식", f"{n_annex}건")
-    st.caption("국가법령정보센터 법령 + 업종별 점검 규칙 + "
-               f"{cfg.city(city)['label']} 분석 결과를 함께 찾습니다. "
-               "답변에는 반드시 근거 조문 또는 출처가 표시됩니다.")
+    st.caption(f"소방 법령 · 업종별 점검 규칙 · {cfg.city(city)['label']} 분석 결과를 "
+               "함께 찾고, 근거 조문을 함께 표시합니다.")
 
     if arts.empty:
         st.markdown("<div class='callout'>법령 자료를 불러오지 못했습니다. "
