@@ -155,11 +155,14 @@ def play(page, pace: float) -> list:
          "위험한 곳일수록 점검할 건물이 많습니다")
     r.to("점검 순위표", 4,
          "갈 수 있는 조합 중 가장 많이 잡는 쪽으로")
-    r.settle(10, "같은 인력으로 186개 구역 · 화재 17.8%")
+    r.mark("같은 인력으로 186개 구역 · 화재 17.8%")
+    r.beat(4)
+    r.settle(6, "점검 순위표와 지도로 확인합니다")
 
     # --- 2. 순찰 동선 (핵심) --------------------------------------------
     r.tab("예방순찰 계획", 13, "119안전센터 출발 · 관할 순회 · 복귀",
           key=True, card="관서별 순찰 동선")
+    r.mark("순찰 목적과 출동 단위를 고릅니다")
     if r.to("관서별 순찰 구역", 4):
         r.settle(14, "색깔이 관서 · 선은 실제 도로 주행거리")
     r.scroll(0.7, 3)
@@ -186,9 +189,10 @@ def play(page, pace: float) -> list:
         opts.nth(1).click()
         r.mark(f"{label}로 바꾸면 대상 구역도 시간대도 다시 계산됩니다", fast=3.0)
         # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다. 기다린다.
-        r.settle(6, "다시 계산한 결과입니다")
+        r.mark("바꾸기 전과 바꾼 뒤를 나란히", fast=2.2)
+        r.settle(6)
         if r.to_block("바꾸기 전", 4):
-            r.settle(12, "같은 범위 · 같은 배율로 남깁니다")
+            r.settle(12, "같은 범위 · 같은 배율입니다")
         r.to("가장 먼 순찰조", 8, "빠진 구역과 새 구역까지 기록")
     except Exception as exc:                              # noqa: BLE001
         print(f"  목적 변경 장면 건너뜀: {type(exc).__name__} — {str(exc)[:120]}")
@@ -204,7 +208,7 @@ def play(page, pace: float) -> list:
     r.to("계획서 생성", 3)
     page.get_by_role("button", name="계획서 생성").click(timeout=25_000)
     r.mark("생성 중 (약 25초)", fast=5.0)
-    r.settle(4, "만들어진 문서입니다")
+    r.settle(4)   # 문서는 아래에 있다. 스크롤한 뒤에 자막을 띄운다
     try:
         page.locator(".docview").first.scroll_into_view_if_needed(timeout=25_000)
         r.beat(6, "기관·수신·경유·시행일까지 공문 서식 그대로")
