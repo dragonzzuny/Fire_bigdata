@@ -76,6 +76,8 @@ step "10/10 발표자료 검증 (수치 출처 · 장표 배치 · 문서 수치
 "$PY" scripts/10_audit_numbers.py
 "$PY" scripts/11_audit_layout.py
 "$PY" scripts/12_audit_docs.py
+# 발표자료·대본·영상은 따로 고쳐진다. 서로 어긋나면 발표장에서야 드러난다.
+"$PY" scripts/19_audit_talk.py
 
 step "완료"
 echo "결과:   outputs/  (evaluation.json, allocation_*.csv, inspection_plans/, *.pptx)"
