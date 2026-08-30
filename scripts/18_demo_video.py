@@ -84,6 +84,11 @@ class Recorder:
             self.mark(text, **kw)
 
     def tab(self, name: str, settle: float, text: str, **kw) -> None:
+        # 표시는 화면이 다 그려진 뒤에 남긴다. 그래서 탭이 바뀐 화면이 앞
+        # 장면의 꼬리에 붙는다. 핵심본을 여기서 끊으려면 누르기 '전'에
+        # 경계를 찍어야 한다. 실제로 대응취약 화면이 딸려 들어갔었다.
+        if kw.pop("endkey", False):
+            self.marks.append(Mark(self.now(), "", endkey=True))
         self.page.get_by_role("tab", name=name).click(timeout=25_000)
         self.settle(settle, text, **kw)
 
@@ -147,18 +152,18 @@ def play(page, pace: float) -> list:
     r.tab("예방점검 배분", 6, "점검 가용 인력을 먼저 넣습니다",
           key=True, card="인력에 맞춘 예방점검 배분")
     r.to("위험도 상위", 8,
-         "위험한 곳일수록 점검할 건물이 많습니다. 1위 구역 한 곳도 못 끝냅니다")
+         "위험한 곳일수록 점검할 건물이 많습니다")
     r.to("점검 순위표", 4,
-         "그래서 갈 수 있는 조합 중 화재를 가장 많이 잡는 쪽을 고릅니다")
-    r.settle(10, "같은 인력으로 186개 구역, 실제 화재 17.8% 포착")
+         "갈 수 있는 조합 중 가장 많이 잡는 쪽으로")
+    r.settle(10, "같은 인력으로 186개 구역 · 화재 17.8%")
 
     # --- 2. 순찰 동선 (핵심) --------------------------------------------
-    r.tab("예방순찰 계획", 13, "119안전센터에서 출발해 관할을 돌고 복귀합니다",
+    r.tab("예방순찰 계획", 13, "119안전센터 출발 · 관할 순회 · 복귀",
           key=True, card="관서별 순찰 동선")
     if r.to("관서별 순찰 구역", 4):
-        r.settle(14, "색깔이 관서, 검은 점이 출동 관서. 선은 실제 도로 주행거리입니다")
+        r.settle(14, "색깔이 관서 · 선은 실제 도로 주행거리")
     r.scroll(0.7, 3)
-    r.beat(6, "관서마다 몇 구역을 몇 km 도는지 표로 나옵니다")
+    r.beat(6, "관서별 구역 수와 이동거리")
 
     # --- 3. 조건을 바꾸면 계획이 다시 짜인다 (핵심) ----------------------
     try:
@@ -183,28 +188,28 @@ def play(page, pace: float) -> list:
         # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다. 기다린다.
         r.settle(6, "다시 계산한 결과입니다")
         if r.to_block("바꾸기 전", 4):
-            r.settle(12, "바꾸기 전과 바꾼 뒤를 같은 범위·같은 배율로 남깁니다")
-        r.to("가장 먼 순찰조", 8, "빠진 구역과 새로 들어온 구역까지 적어 둡니다")
+            r.settle(12, "같은 범위 · 같은 배율로 남깁니다")
+        r.to("가장 먼 순찰조", 8, "빠진 구역과 새 구역까지 기록")
     except Exception as exc:                              # noqa: BLE001
         print(f"  목적 변경 장면 건너뜀: {type(exc).__name__} — {str(exc)[:120]}")
 
     # --- 4. 계획서 (핵심) ------------------------------------------------
-    r.tab("순찰·점검 계획서", 5, "이 동선을 그대로 계획서로 만듭니다",
+    r.tab("순찰·점검 계획서", 5, "이 동선을 계획서로",
           key=True, card="결재 올릴 순찰 계획서")
     try:
         page.get_by_text("AI로 문체 다듬기").click(timeout=10_000)
-        r.beat(2, "숫자와 법령은 시스템이 확정하고, AI는 문장만 다듬습니다")
+        r.beat(2, "숫자와 법령은 시스템이, AI는 문장만")
     except Exception:                                     # noqa: BLE001
         pass
     r.to("계획서 생성", 3)
     page.get_by_role("button", name="계획서 생성").click(timeout=25_000)
-    r.mark("계획서를 만드는 중입니다 (약 25초)", fast=5.0)
+    r.mark("생성 중 (약 25초)", fast=5.0)
     r.settle(4, "만들어진 문서입니다")
     try:
         page.locator(".docview").first.scroll_into_view_if_needed(timeout=25_000)
-        r.beat(6, "기관·수신·경유·시행일·관련 근거까지 공문 서식 그대로입니다")
+        r.beat(6, "기관·수신·경유·시행일까지 공문 서식 그대로")
         # 많이 내리면 문서를 지나쳐 아래 입력 폼이 나온다. 문서 안에서만 움직인다.
-        r.mark("관서별 순찰 구역과 중점 확인사항이 이어집니다")
+        r.mark("관서별 순찰 구역 · 중점 확인사항")
         r.scroll(1.1, 7)
         r.beat(3)
         r.mark("끝에 붙임과 결재란까지 들어갑니다")
@@ -214,9 +219,9 @@ def play(page, pace: float) -> list:
         print(f"  문서 장면 건너뜀: {type(exc).__name__}")
 
     # --- 5. 대응취약 · 업무 도우미 (전체본에만) --------------------------
-    r.tab("대응취약 구역", 8, "고위험인데 소화전이 없는 구역을 따로 뽑습니다",
+    r.tab("대응취약 구역", 8, "고위험 · 소화전 없는 구역",
           endkey=True)
-    r.to("소방용수 사각지대", 10, "소화전 신설 우선순위의 객관적 근거가 됩니다")
+    r.to("소방용수 사각지대", 10, "소화전 신설 우선순위의 근거")
     r.tab("업무 도우미", 6, "법령은 조문 번호와 함께 답합니다")
     try:
         page.get_by_text("자주 찾는 질문").first.scroll_into_view_if_needed(
@@ -226,9 +231,9 @@ def play(page, pace: float) -> list:
             "button").filter(has_text="화재예방강화지구").first
         btn.click(timeout=15_000)
         # 답변은 15~40초 걸린다. 상태 표시만 보고 넘어가면 계산 중인 화면이 찍힌다.
-        r.mark("법령을 찾아 답변을 만드는 중입니다 (15~40초)", fast=5.0)
+        r.mark("답변 생성 중 (15~40초)", fast=5.0)
         page.get_by_text("근거 자료").first.wait_for(state="visible", timeout=90_000)
-        r.to("근거 자료", 10, "인용한 조문을 검색 원문과 대조해 표시합니다")
+        r.to("근거 자료", 10, "인용 조문을 원문과 대조")
     except Exception as exc:                              # noqa: BLE001
         print(f"  질의응답 장면 건너뜀: {type(exc).__name__} — {str(exc)[:100]}")
         r.scroll(0.8, 3)
@@ -266,6 +271,17 @@ def _ts(sec: float) -> str:
     return f"{h:02d}:{m:02d}:{sec_:02d},{ms:03d}"
 
 
+def _duration(path: Path) -> float:
+    """만들어진 파일의 실제 길이(초). 계산값을 믿지 않기 위해 잰다."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                        "format=duration", "-of", "csv=p=0", str(path)],
+                       capture_output=True, text=True)
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
 def _run(cmd: list) -> bool:
     return subprocess.run(cmd, check=False,
                           stdout=subprocess.DEVNULL,
@@ -279,7 +295,7 @@ def _style() -> str:
             "BorderStyle=3,Outline=3,Shadow=0,MarginV=16")
 
 
-def plan(marks: list, end: float, only_key: bool) -> list:
+def plan(marks: list, end: float, only_key: bool, base: float = 1.0) -> list:
     """장면을 (시작, 끝, 배속, 자막, 제목카드) 목록으로 편다.
 
     배속을 건 구간은 길이가 줄어든다. 자막을 원본 시각으로 만들면 그만큼
@@ -293,15 +309,17 @@ def plan(marks: list, end: float, only_key: bool) -> list:
                 keep = True
             elif mk.endkey:
                 keep = False
-                # tab() 은 눌러 놓고 다 그려진 뒤에 표시를 남긴다. 그래서 전환된
-                # 화면이 앞 구간 꼬리에 붙는다. 그 꼬리를 잘라 낸다.
-                if out:
-                    out[-1]["stop"] = max(out[-1]["start"] + 0.5,
-                                          out[-1]["stop"] - 3.0)
         if stop - mk.t < 0.4:                 # 너무 짧은 조각은 버린다
             continue
         if keep:
-            out.append({"start": mk.t, "stop": stop, "fast": mk.fast,
+            fast = mk.fast if mk.fast != 1.0 else base
+            # 자막이 지나가 버리면 없느니만 못하다. 한국어는 초당 6자쯤
+            # 읽는다. 그만큼도 안 뜨면 그 구간만 천천히 돌린다.
+            if mk.text:
+                need = len(mk.text) / 6.0
+                if (stop - mk.t) / fast < need:
+                    fast = max(1.0, (stop - mk.t) / need)
+            out.append({"start": mk.t, "stop": stop, "fast": fast,
                         "text": mk.text,
                         "card": mk.card if (only_key and mk.key) else ""})
     return out
@@ -351,10 +369,14 @@ def card_clip(png: Path, mp4: Path, seconds: float) -> bool:
 
 
 def cut(src: Path, start: float, stop: float, fast: float, dst: Path) -> bool:
-    """구간 하나를 잘라 내고, 필요하면 빨리 감는다."""
+    """구간 하나를 잘라 내고, 필요하면 빨리 감는다.
+
+    -ss 를 -i 뒤에 두면 setpts 가 먹지 않는다. 20초 구간에 1.4배를 걸어도
+    20초가 그대로 나왔다. 입력 앞으로 옮겨야 한다.
+    """
     vf = "setpts=PTS-STARTPTS" if fast == 1.0 else f"setpts=(PTS-STARTPTS)/{fast}"
-    return _run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
-                 "-ss", f"{start:.2f}", "-to", f"{stop:.2f}",
+    return _run(["ffmpeg", "-y", "-loglevel", "error",
+                 "-ss", f"{start:.2f}", "-to", f"{stop:.2f}", "-i", str(src),
                  "-vf", vf, "-r", "25",
                  "-c:v", "libx264", "-preset", "medium", "-crf", "24",
                  "-pix_fmt", "yuv420p", str(dst)])
@@ -379,13 +401,13 @@ def burn(src: Path, srt: Path, dst: Path) -> bool:
 
 
 def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
-           only_key: bool = False, card_sec: float = 2.4,
-           subs: bool = True) -> float:
+           only_key: bool = False, card_sec: float = 2.0,
+           subs: bool = True, base: float = 1.0) -> float:
     """자르고, 빨리 감고, 이어 붙이고, 자막을 태운다. 최종 길이(초)를 돌려준다."""
     if work.exists():
         shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True, exist_ok=True)
-    parts = plan(marks, end, only_key)
+    parts = plan(marks, end, only_key, base)
     if not parts:
         return 0.0
 
@@ -393,9 +415,9 @@ def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
     if only_key:
         lead = work / "lead.mp4"
         if card_clip(title_card(CARD_LEAD[0], CARD_LEAD[1], work / "lead.png"),
-                     lead, 3.0):
+                     lead, 2.5):
             files.append(lead)
-            total += 3.0
+            total += 2.5
     for i, pt in enumerate(parts):
         if pt.get("card"):
             cp = work / f"card{i}.mp4"
@@ -412,11 +434,15 @@ def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
     if not concat(files, joined, work):
         return 0.0
     if subs:
-        srt = write_srt(parts, work / "cap.srt", 3.0 if only_key else card_sec)
+        srt = write_srt(parts, work / "cap.srt", 2.5 if only_key else card_sec)
         if not burn(joined, srt, dst):
             return 0.0
     else:
         joined.replace(dst)
+    real = _duration(dst)
+    if real and abs(real - total) > 3:
+        print(f"  ※ 계산 {total:.0f}초와 실제 {real:.0f}초가 다릅니다")
+    total = real or total
     sped = [pt for pt in parts if pt["fast"] != 1.0]
     if sped:
         print("  배속 구간: "
@@ -431,6 +457,8 @@ def main() -> int:
     ap.add_argument("--pace", type=float, default=DEFAULT_PACE,
                     help="1.0 = 실제 시연 속도, 0.4 = 빠르게 확인만")
     ap.add_argument("--no-edit", action="store_true", help="녹화만 하고 편집은 생략")
+    ap.add_argument("--speed", type=float, default=1.25,
+                    help="보통 구간 배속. 자막을 읽을 수 있는 한도가 1.4 근처다")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -462,7 +490,7 @@ def main() -> int:
                                  ("시연_핵심_무자막.mp4", True, False)):
         dst = out / name
         secs = render(src, marks, end, dst, out / "_work",
-                      only_key=only_key, subs=subs)
+                      only_key=only_key, subs=subs, base=args.speed)
         if secs:
             print(f"저장: {dst}  ({int(secs // 60)}분 {int(secs % 60)}초 · "
                   f"{dst.stat().st_size / 1e6:.1f} MB)")
