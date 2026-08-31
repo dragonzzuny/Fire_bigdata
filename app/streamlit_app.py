@@ -925,7 +925,7 @@ with tabs[2]:
                     with st.spinner("지도 생성 중…"):
                         fig = MV.route_map(
                             cur, plan["routes"], cfg,
-                            title=f"{cfg.city(city)['label']} {mode.label} — "
+                            title=f"{cfg.city(city)['label']} {mode.label} · "
                                   f"화재위험 및 순찰 동선",
                             top_n_outline=40)
                         path = cfg.paths.figures / f"map_{city}_{year}_{mode.key}.png"
@@ -1073,7 +1073,7 @@ with tabs[3]:
                     with st.spinner("지도 생성 중…"):
                         fig = MV.route_map(
                             cur, plan["routes"], cfg,
-                            title=f"{cfg.city(city)['label']} {mode.label} — "
+                            title=f"{cfg.city(city)['label']} {mode.label} · "
                                   f"화재위험 및 순찰 동선", top_n_outline=40)
                         path = cfg.paths.figures / f"map_{city}_{year}_{mode.key}.png"
                         MV.save(fig, path)
@@ -1217,7 +1217,7 @@ with tabs[3]:
                     st.image(str(blank_form), width='stretch')
                     st.caption(f"「{FM.FORM_LAW}」 법제처 배포본")
                 else:
-                    st.markdown("<div class='callout info'>`python scripts/09_forms.py` "
+                    st.markdown("<div class='callout info'><code>python scripts/09_forms.py</code> "
                                 "를 실행하면 원본 서식이 표시됩니다.</div>",
                                 unsafe_allow_html=True)
             with g2:
@@ -1342,7 +1342,7 @@ with tabs[5]:
     st.subheader("예측 성능 검증 결과")
     ev = get_evaluation()
     if not ev:
-        st.markdown("<div class='callout info'>`scripts/04_train_eval.py` 를 실행하면 "
+        st.markdown("<div class='callout info'><code>scripts/04_train_eval.py</code> 를 실행하면 "
                     "검증 결과가 표시됩니다.</div>", unsafe_allow_html=True)
     else:
         t = ev.get("temporal", {})
@@ -1386,7 +1386,7 @@ with tabs[5]:
                        else "신뢰구간이 0을 포함해, 개선으로 단정하기 어렵습니다")
             st.caption(f"전년 화재 순으로 갈 때({h.get('baseline_capture',0):.1%}) 대비 "
                        f"{d_ci['point_pp']:+.1f}%p (95% CI {d_ci['lo_pp']:+.1f}~"
-                       f"{d_ci['hi_pp']:+.1f}%p) — {verdict}.")
+                       f"{d_ci['hi_pp']:+.1f}%p) · {verdict}.")
 
         st.divider()
         g1, g2 = st.columns([3, 2])
@@ -1538,7 +1538,7 @@ with tabs[6]:
     if L.is_available(cfg):
         a3.caption("AI 답변 사용 가능 · 15~40초 소요")
     else:
-        a3.caption("AI 미연결 — 검색 결과만 제시")
+        a3.caption("AI 미연결 · 검색 결과만 제시")
 
     if (ask or st.session_state.pop("qa_run", False)) and question.strip():
         index = get_index(city, year)
@@ -1555,7 +1555,7 @@ with tabs[6]:
                         "질문을 다르게 표현해 보십시오.</div>", unsafe_allow_html=True)
         else:
             if res["source_backend"] == "search_only":
-                st.markdown("<div class='callout info'>AI 답변 생성 미연결 — "
+                st.markdown("<div class='callout info'>AI 답변 생성 미연결. "
                             "검색된 근거 자료만 제시합니다.</div>",
                             unsafe_allow_html=True)
             st.caption(f"질문: {st.session_state.get('qa_asked','')}")

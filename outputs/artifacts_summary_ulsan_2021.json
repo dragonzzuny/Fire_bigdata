@@ -6,11 +6,11 @@
     "capacity": "점검관 4명 × 1일 8건 × 20일 = 총 640건",
     "budget_visits": 640,
     "optimized": {
-      "n_grids": 155,
-      "cost_used": 613.6,
-      "expected_fires": 368.88825523068084,
-      "actual_fires_captured": 246.0,
-      "actual_capture_rate": 0.1781317885590152
+      "n_grids": 159,
+      "cost_used": 639.4,
+      "expected_fires": 373.56902288583234,
+      "actual_fires_captured": 250.0,
+      "actual_capture_rate": 0.18102824040550325
     },
     "top_k_percent": {
       "k": 20,
@@ -22,7 +22,7 @@
       "actual_fires_captured": 0.0,
       "actual_capture_rate": 0.0
     },
-    "gain_pp": 17.81317885590152,
+    "gain_pp": 18.102824040550324,
     "equity": {
       "equity_constrained": true,
       "min_share": 1.0,
@@ -65,8 +65,8 @@
       "n_grids": 186,
       "cost_used": 640.0,
       "actual_capture_rate": 0.1781317885590152,
-      "efficiency_only_capture_rate": 0.1781317885590152,
-      "equity_cost_pp": 0.0
+      "efficiency_only_capture_rate": 0.18102824040550325,
+      "equity_cost_pp": -0.28964518464880407
     },
     "top1_grid": {
       "grid_id": "2331_3456",

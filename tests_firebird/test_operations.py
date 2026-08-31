@@ -313,3 +313,58 @@ class TestAllocationColumnNames(unittest.TestCase):
         src = (ROOT / "app" / "streamlit_app.py").read_text(encoding="utf-8")
         self.assertIn("OP.capture_rate(alloc, view)", src)
         self.assertNotIn('alloc["실제화재"]', src)
+
+
+class TestAllocationQuality(unittest.TestCase):
+    """배분이 최적해에서 얼마나 떨어지는지 무차별 대입으로 잰다.
+
+    효율 순 누적합이 예산을 넘는 순간 뒤를 통째로 버리던 때가 있었다.
+    비싼 구역 하나 때문에 뒤의 싼 구역들을 못 담아, 최적 대비 0.20 까지
+    떨어졌다. '들어가면 담는' 방식으로 바꾼 뒤 최악이 0.74 로 올라왔다.
+    다시 나빠지면 여기서 걸린다.
+    """
+
+    def _brute(self, cost, val, budget):
+        import itertools
+        best = 0.0
+        n = len(val)
+        for r in range(n + 1):
+            for c in itertools.combinations(range(n), r):
+                if cost[list(c)].sum() <= budget:
+                    best = max(best, val[list(c)].sum())
+        return best
+
+    def test_최적해_대비_비율이_유지된다(self):
+        rng = np.random.default_rng(11)
+        ratios = []
+        for _ in range(120):
+            n = int(rng.integers(8, 12))
+            df = pd.DataFrame({
+                "grid_id": [f"g{i}" for i in range(n)],
+                "pred": rng.random(n) * 6,
+                "fires": rng.integers(0, 7, n),
+                "target_total": rng.integers(1, 9, n)})
+            cap = O.Capacity(1, int(rng.integers(3, 7)), 2)
+            cost = O.inspection_cost(df).to_numpy()
+            val = df["pred"].to_numpy()
+            best = self._brute(cost, val, cap.total_visits)
+            if best <= 0:
+                continue
+            got = O.allocate(df, df["pred"], cap)
+            mine = float(got["expected_fires"].sum()) if len(got) else 0.0
+            ratios.append(mine / best)
+        self.assertGreater(len(ratios), 50)
+        self.assertGreater(min(ratios), 0.5, "최악이 최적의 절반 아래로 떨어졌다")
+        self.assertGreater(sum(ratios) / len(ratios), 0.95, "평균이 0.95 아래다")
+
+    def test_비싼_구역_하나가_뒤를_막지_않는다(self):
+        """효율 1위가 예산을 넘어도 뒤의 싼 구역들을 담아야 한다."""
+        df = pd.DataFrame({
+            "grid_id": ["비쌈", "쌈1", "쌈2", "쌈3"],
+            "pred": [50.0, 3.0, 3.0, 3.0],
+            "fires": [0, 0, 0, 0],
+            "target_total": [100, 2, 2, 2]})
+        cap = O.Capacity(1, 6, 1)          # 예산 6건
+        got = O.allocate(df, df["pred"], cap)
+        self.assertEqual(len(got), 3, f"싼 구역 셋을 담아야 하는데 {len(got)}개")
+        self.assertNotIn("비쌈", set(got["grid_id"]))
