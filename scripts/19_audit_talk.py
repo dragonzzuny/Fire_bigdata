@@ -91,6 +91,23 @@ def main() -> int:
     else:
         print(f"장표 {n}장 · 영상 없음 · 대본 {len(script.splitlines())}줄\n")
 
+    # 문서가 가리키는 산출물 파일이 실제로 있는가.
+    # 리허설 카드가 이름이 바뀐 옛 파일(시연_불씨예보.mp4)을 가리키고 있었다.
+    import re as _re
+    for name, text in (("대본", script), ("리허설 카드", card)):
+        for m in _re.finditer(r"`?(outputs/[\w가-힣/_\.]+\.(?:mp4|json|pptx|pdf))`?", text):
+            if not (ROOT / m.group(1)).exists():
+                bad.append(f"{name}가 없는 파일을 가리킵니다: {m.group(1)}")
+        for m in _re.finditer(r"`(scripts/[\w_]+\.py)`", text):
+            if not (ROOT / m.group(1)).exists():
+                bad.append(f"{name}가 없는 스크립트를 가리킵니다: {m.group(1)}")
+
+    # 두 문서의 총 시간이 서로 다르면 하나는 낡은 것이다.
+    tt = [_re.search(r"총 (\d+)분 (\d+)초", t) for t in (script, card)]
+    got = [f"{m.group(1)}분 {m.group(2)}초" for m in tt if m]
+    if len(got) == 2 and got[0] != got[1]:
+        bad.append(f"대본과 리허설 카드의 총 시간이 다릅니다: {got[0]} vs {got[1]}")
+
     if bad:
         print(f"FAIL — 발표자료·대본·영상이 어긋납니다 ({len(bad)}건)")
         for b in bad:
