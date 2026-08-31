@@ -155,6 +155,7 @@ def play(page, pace: float) -> list:
          "위험한 곳일수록 점검할 건물이 많습니다")
     r.to("점검 순위표", 4,
          "갈 수 있는 조합 중 가장 많이 잡는 쪽으로")
+    r.beat(5)
     r.mark("같은 인력으로 186개 구역 · 화재 17.8%")
     r.beat(4)
     r.settle(6, "점검 순위표와 지도로 확인합니다")
@@ -162,7 +163,7 @@ def play(page, pace: float) -> list:
     # --- 2. 순찰 동선 (핵심) --------------------------------------------
     r.tab("예방순찰 계획", 13, "순찰 목적과 출동 단위를 고릅니다",
           key=True, card="관서별 순찰 동선")
-    r.mark("1회 순찰 시간과 지역 단위도 지정합니다")
+    r.beat(6, "1회 순찰 시간과 지역 단위도 지정합니다")
     if r.to("관서별 순찰 구역", 4):
         # 지도가 실제로 보이는 자리에서 동선 이야기를 한다.
         r.settle(7, "119안전센터 출발 · 관할 순회 · 복귀")
@@ -189,10 +190,15 @@ def play(page, pace: float) -> list:
             raise TimeoutError("순찰 목적 목록이 열리지 않았다")
         label = opts.nth(1).inner_text().strip()
         opts.nth(1).click()
-        r.mark(f"{label}로 바꾸면 대상 구역도 시간대도 다시 계산됩니다", fast=3.0)
-        # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다. 기다린다.
+        # 목적 이름이 길어 자막이 두 줄로 넘어간다. 짧게 쓴다.
+        # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다.
+        # settle 은 이미 멈춰 있으면 바로 돌아오므로 표시가 붙어 버린다.
+        # 눈에 보이는 시간을 확실히 주려면 beat 로 벌린다.
+        r.mark("야간순찰로 바꿔 다시 계산합니다", fast=3.0)
+        r.beat(4)
+        r.settle(0)
         r.mark("바꾸기 전과 바꾼 뒤를 나란히", fast=2.2)
-        r.settle(6)
+        r.beat(6)
         if r.to_block("바꾸기 전", 4):
             r.settle(12, "같은 범위 · 같은 배율입니다")
         r.to("가장 먼 순찰조", 8, "빠진 구역과 새 구역까지 기록")
@@ -214,6 +220,7 @@ def play(page, pace: float) -> list:
     try:
         page.locator(".docview").first.scroll_into_view_if_needed(timeout=25_000)
         r.beat(6, "기관·수신·경유·시행일까지 공문 서식 그대로")
+        r.beat(5)
         # 많이 내리면 문서를 지나쳐 아래 입력 폼이 나온다. 문서 안에서만 움직인다.
         r.mark("관서별 순찰 구역 · 중점 확인사항")
         r.scroll(1.1, 7)
@@ -316,6 +323,9 @@ def plan(marks: list, end: float, only_key: bool, base: float = 1.0) -> list:
             elif mk.endkey:
                 keep = False
         if stop - mk.t < 0.4:                 # 너무 짧은 조각은 버린다
+            if mk.text:
+                print(f"  ※ 자막이 너무 짧아 버립니다: '{mk.text[:30]}' "
+                      f"({stop - mk.t:.1f}초). 표시를 연달아 찍지 마십시오")
             continue
         if keep:
             fast = mk.fast if mk.fast != 1.0 else base
