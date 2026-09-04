@@ -465,8 +465,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
     s_map = section(prs, "5. 서비스 화면 ①",
-                    "화재위험 지도와 관서별 순찰 동선",
-                    "예측 결과와 실제 이동 경로를 한 화면에")
+                    "구역별 화재위험 지도",
+                    f"{grid_m}m 구역마다 예측한 위험도. 관서별 동선을 함께 얹습니다")
     map_img = figs / "map_route.png"
     if map_img.exists():
         # 지도는 세로로 길다. 폭만 맞추면 장표 아래로 넘친다.
