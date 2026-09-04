@@ -71,13 +71,17 @@ step "8/10 법정 서식 원본·대조 이미지"
 step "9/10 발표자료(PPTX)"
 "$PY" scripts/07_deck.py
 
-step "10/10 발표자료 검증 (수치 출처 · 장표 배치 · 문서 수치)"
+step "10/11 발표자료 검증 (수치 출처 · 장표 배치 · 문서 수치)"
 # 장표에 근거 없는 숫자가 들어가면 발표장에서 고칠 수 없다. 만들 때 잡는다.
 "$PY" scripts/10_audit_numbers.py
 "$PY" scripts/11_audit_layout.py
 "$PY" scripts/12_audit_docs.py
 # 발표자료·대본·영상은 따로 고쳐진다. 서로 어긋나면 발표장에서야 드러난다.
 "$PY" scripts/19_audit_talk.py
+
+step "11/11 제출·발표 묶음"
+# 손으로 모으면 옛 파일이 섞인다. 스크립트가 그때그때 있는 것을 모은다.
+"$PY" scripts/20_bundle.py
 
 step "완료"
 echo "결과:   outputs/  (evaluation.json, allocation_*.csv, inspection_plans/, *.pptx)"
