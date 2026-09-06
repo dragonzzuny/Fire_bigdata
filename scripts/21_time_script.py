@@ -61,6 +61,8 @@ def spoken_seconds(lines: list[str]) -> tuple[float, int, dict]:
         if '"' not in body and not re.search(r"(?<!\S)/{1,3}(?!\S)", body):
             continue                      # 지시문·주석 덩어리는 말이 아니다
         for s in g:
+            if re.fullmatch(r"─+[^─]*─+", s.strip()):
+                continue                  # ── 여기서 넘긴다 ── 는 지시문이다
             s = re.sub(r"〈[^〉]*〉", "", s)   # 동작·시선은 소리를 내지 않는다
             for mark in ("///", "//", "/"):
                 pauses[mark] += len(re.findall(r"(?<!/)" + re.escape(mark) + r"(?!/)", s))

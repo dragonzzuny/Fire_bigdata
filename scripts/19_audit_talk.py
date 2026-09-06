@@ -81,6 +81,13 @@ def main() -> int:
     if missing:
         bad.append(f"발표에서 언급되지 않는 장표: {missing}")
 
+    prs = Presentation(str(decks[0]))
+    empty = [i for i, sl in enumerate(prs.slides, 1)
+             if not sl.notes_slide.notes_text_frame.text.strip()]
+    if empty:
+        bad.append(f"슬라이드 노트가 빈 장표: {empty} "
+                   f"(scripts/23_notes.py 를 돌려라)")
+
     if video.exists():
         sec = duration(video)
         mm, ss = int(sec // 60), int(sec % 60)
@@ -88,7 +95,7 @@ def main() -> int:
             if text and f"{mm}분 {ss}초" not in text:
                 bad.append(f"{name}의 영상 길이 표기가 실제({mm}분 {ss}초)와 다릅니다")
         try:
-            ov = script[script.index("〈재생 ·"):script.index("나머지 구간은")]
+            ov = script[script.index("▶ 하는 일 — 재생"):script.index("나머지 구간은")]
             for m in re.finditer(r"\*\*(\d):(\d\d)\*\*", ov):
                 t = int(m.group(1)) * 60 + int(m.group(2))
                 if t > sec:
@@ -103,7 +110,7 @@ def main() -> int:
             # 발표자가 얹어 말할 문장이 자막과 같은 말이면 말이 잉여가 된다.
             # 심사위원은 발표자가 입을 열기 전에 이미 그 문장을 읽고 있다.
             try:
-                ov = script[script.index("〈재생 ·"):script.index("나머지 구간은")]
+                ov = script[script.index("▶ 하는 일 — 재생"):script.index("나머지 구간은")]
             except ValueError:
                 ov = ""
             for m in re.finditer(r'"([^"]{6,})"', ov):
