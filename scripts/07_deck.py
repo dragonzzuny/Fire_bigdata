@@ -398,22 +398,23 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             "소방안전 빅데이터 기반 화재예방 점검·순찰 의사결정 시스템\n"
             "한정된 인력을 가장 위험한 곳에, 실행 가능한 계획으로",
             size=18, color=MUTED)
-    band(s1, Inches(0.9), Inches(4.25), Inches(6.5), Inches(2.0),
+    band(s1, Inches(0.9), Inches(4.15), Inches(6.5), Inches(2.15),
          RGBColor(0xFD, 0xF0, 0xEC))
-    textbox(s1, Inches(1.2), Inches(4.45), Inches(5.9), Inches(0.4),
-            "이름의 뜻", size=14, bold=True, color=RED)
-    textbox(s1, Inches(1.2), Inches(4.9), Inches(5.9), Inches(1.3),
-            "· Firebird: 애틀랜타 소방의 화재위험 예측 시스템.\n"
-            "  미국 NFPA 모범사례로 선정된 예방점검 우선순위 모델\n"
-            "· K-: 국내 공개 데이터와 소방 법령 체계에 맞춘 한국형\n"
-            "· 불씨예보: 일기예보처럼, 불씨를 미리 알린다", size=13.5)
-    band(s1, Inches(7.8), Inches(4.25), Inches(4.6), Inches(2.0))
-    textbox(s1, Inches(8.1), Inches(4.45), Inches(4.0), Inches(0.4),
+    textbox(s1, Inches(1.2), Inches(4.33), Inches(5.9), Inches(0.4),
+            "이름", size=14, bold=True, color=RED)
+    textbox(s1, Inches(1.2), Inches(4.8), Inches(5.9), Inches(1.3),
+            "**불씨예보** — 일기예보가 내일 비를 알리듯,\n"
+            "   다음 달 불씨가 어디서 커질지 미리 알립니다.\n"
+            "**K-FIREBIRD** — 이름은 NFPA 모범사례 Firebird 에서 따왔고,\n"
+            "   그 사례가 멈춘 자리부터가 저희 몫입니다.",
+            size=13, spacing=1.55)
+    band(s1, Inches(7.8), Inches(4.15), Inches(4.6), Inches(2.15))
+    textbox(s1, Inches(8.1), Inches(4.33), Inches(4.0), Inches(0.4),
             "발표자", size=14, bold=True, color=RED)
-    textbox(s1, Inches(8.1), Inches(4.92), Inches(4.0), Inches(0.8),
+    textbox(s1, Inches(8.1), Inches(4.82), Inches(4.0), Inches(0.8),
             "박용준\n아주대학교 산업공학과 석사과정", size=16, bold=True)
     _p1 = manifest.get("panel", {})
-    textbox(s1, Inches(8.1), Inches(5.72), Inches(4.0), Inches(0.4),
+    textbox(s1, Inches(8.1), Inches(5.68), Inches(4.0), Inches(0.4),
             f"울산 {_p1.get('grids', 0):,}개 구역 · "
             f"화재 {_p1.get('total_fires', 0):,.0f}건으로 검증",
             size=12.5, color=MUTED)

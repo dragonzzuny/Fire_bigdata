@@ -41,6 +41,7 @@ def _name(sh) -> str:
 #: 한글은 1.0em 이 맞지만 공백·숫자·문장부호를 모두 0.52em 로 두면 11% 쯤
 #: 넓게 나와, 한 줄에 들어가는 문장을 두 줄로 세었다.
 _W_SPACE, _W_LATIN, _W_PUNCT, _W_CJK = 0.28, 0.55, 0.5, 1.0
+_LINE_PAD = 1.08            # 글꼴 위아래 여유(측정으로 맞춘 값)
 _PUNCT = set("·—–…‘’“”()[]{}<>:;,.!?/|+-=%")
 
 
@@ -109,7 +110,8 @@ def _needed_in(sh) -> float:
                 break
         spacing = float(para.line_spacing or 1.15)
         txt = "".join(r.text for r in para.runs)
-        need += _wrapped_lines(txt, size, box_w_in) * size * spacing / 72.0
+        need += (_wrapped_lines(txt, size, box_w_in)
+                 * size * spacing * _LINE_PAD / 72.0)
     return need
 
 
@@ -145,9 +147,9 @@ def _spill_out_of_band(slide) -> list[tuple[str, str]]:
             continue
         bottom_in = Emu(int(y0)).inches + _needed_in(sh)
         host_bottom_in = Emu(int(host[3])).inches
-        # 어림이라 딱 맞출 수 없다. 0.3in(약 한 줄) 넘게 벗어날 때만 알린다 —
-        # 그 아래는 눈으로 봐도 티가 안 난다.
-        if bottom_in > host_bottom_in + 0.3:
+        # 어림이라 딱 맞출 수 없다. 표지 상자가 한 줄 잘렸는데 0.3in 허용으로는
+        # 통과시켰다. 줄 높이 보정을 넣고 허용치를 좁혀 그 정도는 잡는다.
+        if bottom_in > host_bottom_in + 0.15:
             out.append((_name(sh),
                         f"글 끝 {bottom_in:.2f}in > 띠 끝 {host_bottom_in:.2f}in"))
     return out
