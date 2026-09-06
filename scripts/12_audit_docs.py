@@ -31,15 +31,8 @@ def expected(cfg) -> dict[str, str]:
     bt_path = out / f"backtest_patrol_{city}.json"
     bt = json.loads(bt_path.read_text(encoding="utf-8")) if bt_path.exists() else {}
 
-    # 법정 서식 자동 입력 칸 수. 대본이 17개라고 적어 두고 실제는 13개였다.
-    import importlib.util as _il
-    _sp = _il.spec_from_file_location("dk", Path(__file__).resolve().parent / "07_deck.py")
-    _dk = _il.module_from_spec(_sp)
-    try:
-        _sp.loader.exec_module(_dk)
-        _extra = _dk.collect_extra(cfg, city)
-    except Exception:                                     # noqa: BLE001
-        _extra = {}
+    _lp = out / f"form_ledger_{city}_{cfg.holdout_year}.json"
+    _ledger = json.loads(_lp.read_text(encoding="utf-8")) if _lp.exists() else {}
 
     t, a = ev["temporal"], s["allocation"]
     h, ci = t["headline"], t["ci"][f"top{int(t['headline_k'])}"]
@@ -60,7 +53,7 @@ def expected(cfg) -> dict[str, str]:
         "순찰 회고 포착": f"{(bt.get('headline') or {}).get('capture_share', 0):.1%}",
         "순찰 회고 화재": f"{(bt.get('headline') or {}).get('model_fires', 0):,.0f}건",
         "순찰 회고 구역비중": f"{(bt.get('headline') or {}).get('share_of_city', 0):.1%}",
-        "법정 서식 자동 입력": f"{_extra.get('ledger_filled', 0)}개",
+        "법정 서식 자동 입력": f"{_ledger.get('n_filled', 0)}개",
         "형평성 대가": f"{(a.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p",
         "1위 구역 점검비용": f"{(a.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건",
         "소화전 사각 구역": f"{s['n_blind_spots']}개",
@@ -77,6 +70,35 @@ def extra_expected(cfg) -> dict:
         out["노후도 실측(전체)"] = f"{b['with_buildings_capture']:.1%}"
         out["노후도 차이"] = f"{b['delta_pp']:.1f}%p".lstrip("+")
     return out
+
+
+#: (설명, 문장 꼴, 산출물 값을 꺼내는 함수).
+#: '값이 어딘가 한 번 있으면 통과' 하는 검사로는 모순을 못 잡는다. 짧은 대본이
+#: 13개, 상세 대본이 17개로 갈라져 있어도 '17개' 가 어딘가 있으니 통과했다.
+#: 여기서는 문장 꼴에 걸리는 숫자를 **전부** 꺼내 산출물 값과 대조한다.
+CONTRADICTIONS = [
+    ("법정 서식 채운 칸",
+     r"(\d+)개\s*칸\s*(?:중|가운데)\s*\**(\d+)개",
+     lambda cfg, led: (str(led.get("n_fields", "")), str(led.get("n_filled", "")))),
+]
+
+
+def contradictions(cfg, texts: dict, ledger: dict) -> list:
+    """문장 꼴에 걸리는 숫자가 산출물과 다른 곳을 모두 찾는다."""
+    import re as _re
+    bad = []
+    for label, pat, pick in CONTRADICTIONS:
+        want = pick(cfg, ledger)
+        if not all(want):
+            continue
+        for doc, text in texts.items():
+            for m in _re.finditer(pat, text):
+                got = m.groups()
+                if got != want:
+                    line = text[:m.start()].count("\n") + 1
+                    bad.append((label, f"{doc}:{line}",
+                                "/".join(got), "/".join(want)))
+    return bad
 
 
 def main() -> int:
@@ -100,6 +122,10 @@ def main() -> int:
         같은 값을 표기 차이로 불일치라고 말하면 검사가 무뎌진다."""
         return t.replace("\u2212", "-").replace("\u2013", "-")
 
+    _lp = cfg.paths.outputs / f"form_ledger_ulsan_{cfg.holdout_year}.json"
+    _led = json.loads(_lp.read_text(encoding="utf-8")) if _lp.exists() else {}
+    clash = contradictions(cfg, texts, _led)
+
     missing = []
     for label, value in want.items():
         v = norm(value)
@@ -117,9 +143,14 @@ def main() -> int:
         for label, value in missing:
             print(f"  - {label:22s} 산출물 값 '{value}'")
         print()
-    print("FAIL — 문서와 산출물이 어긋납니다." if missing
+    if clash:
+        print(f"산출물과 다른 값이 적힌 곳 {len(clash)}군데")
+        for label, where, got, want_v in clash:
+            print(f"  - {label:20s} {where}  문서 '{got}' ≠ 산출물 '{want_v}'")
+        print()
+    print("FAIL — 문서와 산출물이 어긋납니다." if (missing or clash)
           else "PASS — 문서의 수치가 모두 산출물과 일치합니다.")
-    return 1 if missing else 0
+    return 1 if (missing or clash) else 0
 
 
 if __name__ == "__main__":

@@ -142,6 +142,15 @@ def _compare_image(cfg) -> None:
     d.text((pad + a.width + gap, 16),
            f"{led['grid_id']} 구역  ·  {led['n_filled']}/{led['n_fields']}칸 자동 작성",
            fill=(192, 73, 47), font=font)
+    import json as _json
+    (cfg.paths.outputs / f"form_ledger_{city}_{year}.json").write_text(
+        _json.dumps({"grid_id": led["grid_id"],
+                     "n_fields": int(led["n_fields"]),
+                     "n_filled": int(led["n_filled"]),
+                     "fill_rate": float(led["fill_rate"]),
+                     "building_linked": bool(bd),
+                     "form_no": FM.FORM_NO, "form_title": FM.FORM_TITLE},
+                    ensure_ascii=False, indent=2), encoding="utf-8")
     dest = cfg.paths.figures / "fig_form_compare.png"
     out.save(dest)
     print(f"  채운 양식 → {filled}")

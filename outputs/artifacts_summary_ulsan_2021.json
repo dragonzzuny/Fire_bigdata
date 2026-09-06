@@ -29,10 +29,14 @@
       "cost_used": 0.0,
       "next_grid_progress": 0.8978675645342311,
       "top1_cost": 712.8000000000001,
+      "skip_n_grids": 7,
+      "skip_cost_used": 639.5,
       "fires_whole": 0.0,
       "fires_partial": 25.140291806958473,
+      "skip_fires": 40.0,
       "capture_rate_whole": 0.0,
-      "capture_rate_partial": 0.01820441115637833
+      "capture_rate_partial": 0.01820441115637833,
+      "capture_rate_skip": 0.02896451846488052
     },
     "gain_pp": 18.102824040550324,
     "equity": {

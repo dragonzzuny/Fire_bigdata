@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -43,12 +44,16 @@ def textbox(slide, x, y, w, h, text, *, size=18, bold=False, color=INK,
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.alignment = align
         p.line_spacing = spacing
-        run = p.add_run()
-        run.text = line
-        run.font.size = Pt(size)
-        run.font.bold = bold
-        run.font.color.rgb = color
-        run.font.name = FONT
+        parts = re.split(r"\*\*(.+?)\*\*", line)
+        for j, piece in enumerate(parts):
+            if not piece:
+                continue
+            run = p.add_run()
+            run.text = piece
+            run.font.size = Pt(size)
+            run.font.bold = bold or (j % 2 == 1)
+            run.font.color.rgb = color
+            run.font.name = FONT
         # 불릿 줄이 길어 넘어가면 둘째 줄이 불릿 밑으로 파고들어 문장이
         # 끊겨 보인다. 내어쓰기를 걸어 글머리표 오른쪽에 맞춰 떨어뜨린다.
         if line.lstrip().startswith(("·", "-", "•")):
@@ -673,12 +678,15 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             [("법에 정해진 서식 그대로",
               "· 시행규칙 별지 제11호서식\n"
               "· 화재예방강화지구 관리대장"),
-             ("채울 수 있는 칸만 채움",
-              f"· {extra.get('ledger_fields', 0)}개 칸 중 건물동수·점포수·"
-              "소방시설·\n   관서거리·취약요소 자동 입력"),
-             ("빈칸은 비워 둠",
-              "· 건축물대장·주민등록 연계 시 채워지는 칸\n"
-              "· 개인정보라 넣지 않는 칸")],
+             ("채운 칸",
+              f"· {extra.get('ledger_fields', 0)}개 칸 중 "
+              f"**{extra.get('ledger_filled', 0)}개** 자동 입력\n"
+              "· 건물동수·점포수·소방시설·관서거리·취약요소\n"
+              "· 연면적·건축면적·건축연도는 건축물대장에서"),
+             ("비워 둔 칸",
+              "· 주민등록 등 다른 자료와 연계해야 채워지는 칸\n"
+              "· 대표자·전화번호는 공개 데이터로 채울 수 있어도\n"
+              "   개인정보라 넣지 않음")],
             note="",
             keep=1.0)
 
@@ -865,10 +873,13 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          f"· 1위 구역 소요 "
          f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
          f"가용 {alloc.get('budget_visits', 0):,}건\n"
-         f"· 위험 순서대로 — 구역을 통째로 도는 기준 "
-         f"{(alloc.get('risk_order') or {}).get('capture_rate_whole', 0):.0%}\n"
-         f"  부분까지 세도 "
-         f"{(alloc.get('risk_order') or {}).get('capture_rate_partial', 0):.1%}\n\n"
+         f"· 위험 순서대로: 통째 "
+         f"{(alloc.get('risk_order') or {}).get('capture_rate_whole', 0):.0%}"
+         f" · 부분 인정 "
+         f"{(alloc.get('risk_order') or {}).get('capture_rate_partial', 0):.1%}\n"
+         f"  건너뛰어도 "
+         f"{(alloc.get('risk_order') or {}).get('skip_n_grids', 0)}개 구역 · "
+         f"{(alloc.get('risk_order') or {}).get('capture_rate_skip', 0):.1%}\n\n"
          "그래서 기준을 바꿨습니다.\n"
          f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
          "· 담기는 화재 합계가 가장 큰\n"
@@ -1060,9 +1071,10 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     facts = [
         (f"{_al.get('actual_capture_rate', 0):.1%}",
          "같은 인력으로 담는 화재\n"
-         "위험 순서대로 — 구역을 통째로 도는 기준 "
-         f"{_ro.get('capture_rate_whole', 0):.0%} · 부분까지 세도 "
-         f"{_ro.get('capture_rate_partial', 0):.1%}"),
+         "위험 순서대로는 어떻게 세어도 3% 미만 — 통째 "
+         f"{_ro.get('capture_rate_whole', 0):.0%} · 부분 인정 "
+         f"{_ro.get('capture_rate_partial', 0):.1%} · 건너뛰어도 "
+         f"{_ro.get('capture_rate_skip', 0):.1%}"),
         (pct(h["model_capture"]), f"위험 상위 {k}% 구역이 담은 실제 화재"),
         (f"{_bh2.get('capture_share', 0):.1%}",
          f"관내 {_bh2.get('share_of_city', 0):.1%}만 순찰한 "
@@ -1146,6 +1158,18 @@ def collect_extra(cfg, city: str) -> dict:
                                  grid_m=int(cfg.grid_size_m))
             out["ledger_fields"] = int(led["n_fields"])
             out["ledger_filled"] = int(led["n_filled"])
+    except Exception:                                    # noqa: BLE001
+        pass
+
+    # 서식 값은 scripts/09 가 낸 파일이 정본이다. 위에서 다시 계산한 값은
+    # 건축물대장 연계가 빠져 그림 캡션(17/27)과 어긋났다(13/27).
+    try:
+        import json as _json
+        _fl = cfg.paths.outputs / f"form_ledger_{city}_{cfg.holdout_year}.json"
+        if _fl.exists():
+            _d = _json.loads(_fl.read_text(encoding="utf-8"))
+            out["ledger_fields"] = int(_d["n_fields"])
+            out["ledger_filled"] = int(_d["n_filled"])
     except Exception:                                    # noqa: BLE001
         pass
 

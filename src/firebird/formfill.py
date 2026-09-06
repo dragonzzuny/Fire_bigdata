@@ -146,11 +146,15 @@ def render_page(pdf: Path, out: Path, dpi: int = 200, page: int = 1) -> Path:
 
 
 def fill(pdf: Path, values: dict[str, str], bullets: dict[str, list[str]],
-         out_png: Path, *, dpi: int = 200, page: int = 1) -> Path:
+         out_png: Path, *, dpi: int = 200, page: int = 1,
+         highlight: bool = True) -> Path:
     """원본 서식 위에 값을 얹어 그림으로 만든다.
 
     values : 칸 이름 -> 적을 값 (LEDGER_SLOTS 에 있는 이름만 쓰인다)
     bullets: 서술 칸 이름 -> 줄 목록 (가운뎃점 옆에 한 줄씩)
+    highlight: 채운 값 뒤에 옅은 바탕을 깐다. 원본과 나란히 축소해 놓으면
+        두 장이 거의 똑같아 보여 '무엇이 채워졌는지' 가 3초 안에 안 보인다.
+        인쇄하면 회색조로 빠지고 괘선은 가리지 않는다.
     """
     from PIL import Image, ImageDraw, ImageFont
 
@@ -171,7 +175,9 @@ def fill(pdf: Path, values: dict[str, str], bullets: dict[str, list[str]],
         nxt = [r for r in rules_at(im, y_pt) if r > x_after + 1.0]
         return (nxt[0] if nxt else x_after) + 5.0
 
-    def put(text, x, y_top, y_bot, fnt, align="left"):
+    HL = (255, 244, 196)                     # 옅은 노랑. 괘선(검정)은 덮지 않는다.
+
+    def put(text, x, y_top, y_bot, fnt, align="left", mark=False):
         if not text:
             return
         box = d.textbbox((0, 0), text, font=fnt)
@@ -179,6 +185,11 @@ def fill(pdf: Path, values: dict[str, str], bullets: dict[str, list[str]],
         cy = (y_top + y_bot) / 2 * s
         py = cy - h / 2 - box[1]
         px = x * s if align == "left" else x * s - (box[2] - box[0])
+        if mark and highlight:
+            pad_x, pad_y = 3 * s / 2.0, 2.0 * s / 2.0
+            d.rectangle([px - pad_x, py + box[1] - pad_y,
+                         px + (box[2] - box[0]) + pad_x,
+                         py + box[3] + pad_y], fill=HL)
         d.text((px, py), text, font=fnt, fill=ink)
 
     for key, slot in LEDGER_SLOTS.items():
@@ -191,9 +202,10 @@ def fill(pdf: Path, values: dict[str, str], bullets: dict[str, list[str]],
         x0, y0, x1, y1, _ = a
         if slot.align == "left":
             put(val, cell_start(x1, (y0 + y1) / 2), y0 + slot.dy,
-                y1 + slot.dy, font, "left")
+                y1 + slot.dy, font, "left", mark=True)
         else:
-            put(val, x0 - slot.dx, y0 + slot.dy, y1 + slot.dy, font, "right")
+            put(val, x0 - slot.dx, y0 + slot.dy, y1 + slot.dy, font, "right",
+                mark=True)
 
     dots = sorted((w for w in words if w[4] == "ㆍ"), key=lambda w: w[1])
     for name in BULLET_FIELDS:
@@ -204,7 +216,7 @@ def fill(pdf: Path, values: dict[str, str], bullets: dict[str, list[str]],
         near = sorted(dots, key=lambda w: abs((w[1] + w[3]) / 2 - (lab[1] + lab[3]) / 2))[:2]
         near = sorted(near, key=lambda w: w[1])
         for line, dot in zip(bullets.get(name, []), near):
-            put(line, dot[2] + 4.0, dot[1], dot[3], small, "left")
+            put(line, dot[2] + 4.0, dot[1], dot[3], small, "left", mark=True)
 
     im.save(out_png)
     Path(bg).unlink(missing_ok=True)

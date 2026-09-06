@@ -165,11 +165,21 @@ def compare_to_topk(panel_year: pd.DataFrame, risk, capacity: Capacity,
     spent = float(cum[n_whole - 1]) if n_whole else 0.0
     frac = ((capacity.total_visits - spent) / c[n_whole]
             if n_whole < len(c) and c[n_whole] > 0 else 0.0)
+    spent2, keep2 = 0.0, []
+    for pos, cc in enumerate(c):
+        if spent2 + cc <= capacity.total_visits + 1e-9:
+            keep2.append(pos)
+            spent2 += cc
+    skip = order.iloc[keep2]
+
     out["risk_order"] = {
         "n_grids_whole": n_whole,
         "cost_used": spent,
         "next_grid_progress": float(frac),
         "top1_cost": float(c[0]) if len(c) else 0.0,
+        # 건너뛰기를 허용한 읽기
+        "skip_n_grids": int(len(skip)),
+        "skip_cost_used": float(skip["cost"].sum()),
     }
 
     if actual_col:
@@ -178,6 +188,7 @@ def compare_to_topk(panel_year: pd.DataFrame, risk, capacity: Capacity,
         part_fires = float(f[n_whole]) * frac if n_whole < len(f) else 0.0
         out["risk_order"]["fires_whole"] = whole_fires
         out["risk_order"]["fires_partial"] = whole_fires + part_fires
+        out["risk_order"]["skip_fires"] = float(skip[actual_col].sum())
         out["optimized"]["actual_fires_captured"] = float(alloc[actual_col].sum())
         out["top_k_percent"]["actual_fires_captured"] = float(within[actual_col].sum())
         total = float(df[actual_col].sum())
@@ -190,6 +201,8 @@ def compare_to_topk(panel_year: pd.DataFrame, risk, capacity: Capacity,
                 out["risk_order"]["fires_whole"] / total)
             out["risk_order"]["capture_rate_partial"] = (
                 out["risk_order"]["fires_partial"] / total)
+            out["risk_order"]["capture_rate_skip"] = (
+                out["risk_order"]["skip_fires"] / total)
     return out
 
 

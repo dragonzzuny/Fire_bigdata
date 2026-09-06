@@ -195,12 +195,13 @@ def play(page, pace: float) -> list:
         # 재계산이 끝나기 전에는 지도가 세계 지도로 돌아가 있다.
         # settle 은 이미 멈춰 있으면 바로 돌아오므로 표시가 붙어 버린다.
         # 눈에 보이는 시간을 확실히 주려면 beat 로 벌린다.
-        r.mark("야간순찰로 바꿔 다시 계산합니다", fast=3.0)
+        r.mark("야간순찰로 바꿔 다시 계산합니다", fast=8.0)
         r.beat(4)
         r.settle(0)
-        r.mark("바꾸기 전과 바꾼 뒤를 나란히", fast=2.2)
+        r.mark("", fast=8.0)          # 계산이 끝날 때까지는 자막 없이 지나간다
         r.beat(6)
         if r.to_block("바꾸기 전", 4):
+            r.mark("바꾸기 전과 바꾼 뒤를 나란히")
             r.settle(12, "같은 범위 · 같은 배율입니다")
         r.to("가장 먼 순찰조", 8, "빠진 구역과 새 구역까지 기록")
     except Exception as exc:                              # noqa: BLE001
@@ -216,7 +217,7 @@ def play(page, pace: float) -> list:
         pass
     r.to("계획서 생성", 3)
     page.get_by_role("button", name="계획서 생성").click(timeout=25_000)
-    r.mark("생성 중 (약 25초)", fast=5.0)
+    r.mark("", fast=12.0)             # 생성 대기는 보여 주지 않는다
     r.settle(4)   # 문서는 아래에 있다. 스크롤한 뒤에 자막을 띄운다
     try:
         page.locator(".docview").first.scroll_into_view_if_needed(timeout=25_000)
@@ -227,8 +228,11 @@ def play(page, pace: float) -> list:
         r.scroll(1.1, 7)
         r.beat(3)
         r.mark("끝에 붙임과 결재란까지 들어갑니다")
-        r.scroll(1.1, 7)
+        r.scroll(0.55, 5)
         r.beat(4)
+        r.mark("이대로 결재에 올립니다")
+        page.locator(".docview").first.scroll_into_view_if_needed(timeout=15_000)
+        r.beat(5)
     except Exception as exc:                              # noqa: BLE001
         print(f"  문서 장면 건너뜀: {type(exc).__name__}")
 
@@ -245,7 +249,7 @@ def play(page, pace: float) -> list:
             "button").filter(has_text="화재예방강화지구").first
         btn.click(timeout=15_000)
         # 답변은 15~40초 걸린다. 상태 표시만 보고 넘어가면 계산 중인 화면이 찍힌다.
-        r.mark("답변 생성 중 (15~40초)", fast=5.0)
+        r.mark("", fast=12.0)         # 답변 대기도 보여 주지 않는다
         page.get_by_text("근거 자료").first.wait_for(state="visible", timeout=90_000)
         r.to("근거 자료", 10, "인용 조문을 원문과 대조")
     except Exception as exc:                              # noqa: BLE001
