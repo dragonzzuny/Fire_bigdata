@@ -102,7 +102,9 @@ def bold_density(path: Path) -> tuple[int, int]:
     paras = []
     for para in text.split("\n\n"):
         body = [ln for ln in para.splitlines()
-                if ln.strip() and not ln.lstrip().startswith((">", "|", "#"))]
+                if ln.strip()
+                and not ln.lstrip().startswith((">", "|", "#", "-", "*", "·"))
+                and not re.match(r"\s*\d+[.)]\s", ln)]
         if body:
             paras.append("\n".join(body))
     heavy = sum(1 for p in paras if len(re.findall(r"\*\*[^*]+\*\*", p)) >= 3)

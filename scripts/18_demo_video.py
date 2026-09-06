@@ -612,13 +612,10 @@ def main() -> int:
             print(f"저장: {dst}  ({int(secs // 60)}분 {int(secs % 60)}초 · "
                   f"{dst.stat().st_size / 1e6:.1f} MB)")
 
-    # 제출본. 발표장에서 트는 것과 성격이 다르다 — 심사위원이 혼자, 설명
-    # 없이, 자기 PC 로 본다. 그래서 16:9 로 맞춰 좌우 띠를 없애고, 파일
-    # 이름을 제출물 이름으로 둔다.
-    if "시연_전체.mp4" in made:
+    if "시연_핵심.mp4" in made:
         sub_dst = out / "불씨예보_시연영상_박용준.mp4"
-        if to_169(out / "시연_전체.mp4", sub_dst):
-            print(f"저장: {sub_dst}  (제출용 · 16:9)")
+        if to_169(out / "시연_핵심.mp4", sub_dst):
+            print(f"저장: {sub_dst}  (제출용 · 발표와 같은 영상 · 16:9)")
 
     shutil.rmtree(out / "_work", ignore_errors=True)
     return 0

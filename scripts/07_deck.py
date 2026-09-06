@@ -552,7 +552,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 시연 영상 ----
     # 발표 중에 다른 프로그램으로 넘어가지 않도록 영상을 장표에 심는다.
     # 창을 바꾸는 순간이 이 발표에서 유일하게 손이 미끄러질 수 있는 자리다.
-    vid = cfg.paths.outputs / "demo_video" / "시연_핵심.mp4"
+    vid = cfg.paths.outputs / "demo_video" / "불씨예보_시연영상_박용준.mp4"
+    if not vid.exists():
+        vid = cfg.paths.outputs / "demo_video" / "시연_핵심.mp4"
     s_vid = section(prs, "5. 시연", "실제로 도는 화면",
                     "배분 · 순찰 동선 · 조건 변경 · 계획서 생성")
     if vid.exists():
