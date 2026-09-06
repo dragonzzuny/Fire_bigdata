@@ -556,7 +556,7 @@ tabs = st.tabs(["예방점검 배분", "위험요인·점검계획서", "예방�
 # ================================================================== ① 배분
 with tabs[0]:
     st.subheader("가용 인력 기준 예방점검 배분")
-    st.caption("가용 인력 안에서 화재를 가장 많이 잡는 구역 묶음을 고릅니다.")
+    st.caption("가용 인력 안에서 화재가 가장 많이 담기는 구역 묶음을 고릅니다.")
 
     cmp = OP.compare_to_topk(view, view["pred"], capacity, cfg.headline_k)
     alloc, eq_info = OP.allocate_with_equity(view, view["pred"], capacity,

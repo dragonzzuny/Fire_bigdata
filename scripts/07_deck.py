@@ -196,7 +196,7 @@ def pct(v, digits=1):
 
 #: 활용 데이터 장표에 들어갈 데이터셋 목록. 건수는 실제 적재 결과에서 읽는다.
 DATASET_ROLES = [
-    ("fire",     "화재발생현황",       "학습 라벨 (격자·연도별 화재 건수)"),
+    ("fire",     "화재발생현황",       "학습 라벨 (구역·연도별 화재 건수)"),
     ("target",   "특정소방대상물 현황", "용도·소방시설 구성 피처"),
     ("business", "다중이용업소 현황",   "업종 구성 피처, 점검 항목 근거"),
     ("hydrant",  "소방용수시설 운영현황", "대응취약(소화전 사각지대) 분석"),
@@ -487,7 +487,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                  "위험 예측 → 인력 기준 배분 → 관서별 순찰 동선 → 공문 서식 계획서")
     picture(s3, figs / "fig_pipeline.png", Inches(1.35), Inches(2.15), Inches(10.6))
     for i, (num, ttl, body) in enumerate([
-            ("1", "예방점검 배분", "가용 인력 안에서\n가장 많이 잡히도록 배분"),
+            ("1", "예방점검 배분", "가용 인력 안에서\n화재가 가장 많이 담기도록 배분"),
             ("2", "관서별 순찰", "119안전센터에서 출발해\n관할 돌고 복귀"),
             ("3", "계획서 자동 생성", "공문 서식 · 법령 근거\n일별 · 월별 · 연간"),
             ("4", "업무 도우미", "소방 법령을 조문 근거와\n함께 찾아 줌")]):
@@ -504,26 +504,30 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     s4 = section(prs, "4. 활용 데이터",
                  "소방안전 빅데이터 플랫폼 데이터 상품 8종",
                  "울산 4종으로 구축, 세종 4종으로 타 지역 적용 확인")
+    # 8행 표가 화면을 다 차지하면 심사위원은 표를 읽고 말은 안 듣는다.
+    # 결론을 위에 크게 두고 표는 근거로 아래에 둔다.
+    _pn = manifest.get("panel", {})
+    band(s4, Inches(0.8), Inches(2.25), Inches(11.8), Inches(0.9),
+         RGBColor(0x2B, 0x33, 0x40))
+    textbox(s4, Inches(1.1), Inches(2.5), Inches(11.2), Inches(0.45),
+            f"8종을 하나의 표로 합쳤습니다  ·  {_pn.get('grids', 0):,}개 구역 × "
+            f"{len(_pn.get('years', []))}개 연도  ·  화재 "
+            f"{_pn.get('total_fires', 0):,.0f}건",
+            size=18, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF))
+
     rows = [["데이터셋", "제공", "역할", "적재 건수"]] + [list(r) for r in ds_rows]
-    table(s4, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.1), rows,
-          col_widths=[4.2, 2.4, 3.4, 1.8], size=11.5)
-    textbox(s4, Inches(0.8), Inches(5.6), Inches(7.4), Inches(1.3),
-            "· 카카오 로컬 API: 주소를 좌표로 변환 (좌표 확보 "
-            + pct(manifest.get("coverage", {}).get("fire", {}).get("rate")) + ")\n"
-            "· 기상청 API 허브: 일자료 8년치로 건조 정도 산출\n"
-            f"· 국가법령정보센터: 소방 법령 {extra.get('n_law', 0)}종 "
-            f"{extra.get('n_article', 0)}개 조문 · 별표 {extra.get('n_annex', 0)}건 "
-            f"· 법정 서식 {extra.get('n_form', 0)}종\n"
-            "· 개인정보를 다루지 않으며, 집계 단위 공공데이터만 사용",
-            size=12.5, color=MUTED)
-    band(s4, Inches(8.4), Inches(5.6), Inches(4.2), Inches(1.2),
-         RGBColor(0xF4, 0xF6, 0xF8))
-    textbox(s4, Inches(8.65), Inches(5.75), Inches(3.7), Inches(1.0),
-            f"흩어진 자료를 하나의 표로 통합\n"
-            f"→ {manifest.get('panel', {}).get('grids', 0):,}개 구역 × "
-            f"{len(manifest.get('panel', {}).get('years', []))}개 연도 · "
-            f"화재 {manifest.get('panel', {}).get('total_fires', 0):,.0f}건",
-            size=12.5, bold=True)
+    table(s4, Inches(0.8), Inches(3.4), Inches(11.8), Inches(2.6), rows,
+          col_widths=[4.2, 2.4, 3.4, 1.8], size=10.5)
+    band(s4, Inches(0.8), Inches(6.2), Inches(11.8), Inches(0.95))
+    textbox(s4, Inches(1.05), Inches(6.32), Inches(3.0), Inches(0.3),
+            "여기에 더한 공개 자료", size=12.5, bold=True, color=RED)
+    textbox(s4, Inches(1.05), Inches(6.66), Inches(11.3), Inches(0.35),
+            "카카오 로컬 API 주소→좌표 (확보 "
+            + pct(manifest.get("coverage", {}).get("fire", {}).get("rate")) + ")"
+            "   ·   기상청 API 허브 일자료 8년치   ·   국가법령정보센터 소방 법령 "
+            f"{extra.get('n_law', 0)}종 {extra.get('n_article', 0)}개 조문 · "
+            f"별표 {extra.get('n_annex', 0)}건 · 법정 서식 "
+            f"{extra.get('n_form', 0)}종", size=12.5)
 
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
     s_map = section(prs, "5. 서비스 화면 ①",
@@ -609,7 +613,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
           f"가용 {alloc.get('budget_visits', 0):,}건"),
          ("소요와 효과의 동시 계산",
-          "· 구역마다 점검 소요와 잡히는 화재를 함께 셈\n"
+          "· 구역마다 점검 소요와 구역 안 화재를 함께 셈\n"
           f"· {alloc.get('budget_visits', 0):,}건 안에서 화재가 가장 큰 묶음 선택\n"
           f"· {shown_grids:,}개 구역 · 화재 {pct(shown_cap)} 포착 "
           f"({(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p)\n"
@@ -711,7 +715,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          else f"단순 기준 {pct(h['baseline_capture'])}"))
     kpi(s9, x, Inches(4.0), Inches(4.0), f"{h['model_lift']:.2f}배",
         "아무 데나 갔을 때 대비",
-        f"위험 1등급 대비 10등급이 격자당 화재 "
+        f"위험 1등급 대비 10등급이 구역당 화재 "
         f"{extra.get('decile_hi', 0):.1f}건", color=BLUE)
     kpi(s9, x, Inches(5.7), Inches(4.0),
         (f"{d['point_pp']:+.1f}%p" if d else f"{h['delta_pp']:+.1f}%p"),
@@ -761,15 +765,17 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         if road:
             rows.append(["주소 정밀도", "주소가 거칠어 성능이 부풀려진 것은 아닌가",
                          pct(road.get("모델포착@20%")), "부풀림 없음"])
-    table(s10, Inches(0.8), Inches(2.3), Inches(11.8), Inches(2.2), rows,
-          col_widths=[2.8, 5.0, 2.4, 3.0], size=12.5)
+    table(s10, Inches(0.8), Inches(2.3), Inches(11.8), Inches(2.4), rows,
+          col_widths=[2.8, 5.0, 2.4, 3.0], size=13.5)
     if logo_line:
-        textbox(s10, Inches(0.85), Inches(4.72), Inches(11.7), Inches(0.35),
-                logo_line, size=12, color=BLUE)
-    picture(s10, figs / "fig_monthly_risk.png", Inches(0.9), Inches(5.25),
-            Inches(6.2), max_h=Inches(2.0))
-    band(s10, Inches(7.7), Inches(5.25), Inches(4.9), Inches(2.0))
-    textbox(s10, Inches(7.95), Inches(5.42), Inches(4.4), Inches(1.7),
+        band(s10, Inches(0.8), Inches(4.78), Inches(11.8), Inches(0.6),
+             RGBColor(0xED, 0xF2, 0xF7))
+        textbox(s10, Inches(1.05), Inches(4.94), Inches(11.3), Inches(0.35),
+                logo_line, size=13, bold=True, color=BLUE)
+    picture(s10, figs / "fig_monthly_risk.png", Inches(0.9), Inches(5.6),
+            Inches(5.3), max_h=Inches(1.65))
+    band(s10, Inches(6.8), Inches(5.6), Inches(5.8), Inches(1.65))
+    textbox(s10, Inches(7.05), Inches(5.74), Inches(5.3), Inches(1.45),
             "‘언제’도 검증했습니다\n\n"
             "월별 화재위험 = 계절 패턴 × 기상(습도·건조일수).\n"
             f"{extra.get('season_hi_month', 0)}월이 연평균의 "
@@ -859,13 +865,13 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          f"· 1위 구역 소요 "
          f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
          f"가용 {alloc.get('budget_visits', 0):,}건\n"
-         f"· 위험 순서대로 가면 화재 "
-         f"{(alloc.get('risk_order') or {}).get('capture_rate_whole', 0):.0%}"
-         f" · 쪼개 가도 "
+         f"· 위험 순서대로 — 구역을 통째로 도는 기준 "
+         f"{(alloc.get('risk_order') or {}).get('capture_rate_whole', 0):.0%}\n"
+         f"  부분까지 세도 "
          f"{(alloc.get('risk_order') or {}).get('capture_rate_partial', 0):.1%}\n\n"
          "그래서 기준을 바꿨습니다.\n"
          f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
-         "· 잡히는 화재 합계가 가장 큰\n"
+         "· 담기는 화재 합계가 가장 큰\n"
          "  구역 묶음을 선택\n\n"
          f"→ 같은 인력, {shown_grids:,}개 구역, "
          f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p",
@@ -1018,7 +1024,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         ["건축물대장 노후도로 대체 시도",
          f"읍면동 단위로 붙여 측정, 개선 없음 "
          f"({bld.get('delta_pp', 0):+.1f}%p, 신뢰구간 0 포함)",
-         "격자 단위 주소 확보 시 재측정"],
+         "구역 단위 주소 확보 시 재측정"],
         ["점검 이력을 붙일 수 없음",
          "결합할 키가 없다는 것을 실제로 확인해 기록", "대상물 관리번호 포함 자료 요청"],
         ["순찰 횟수를 근무편성과 잇지 못함",
@@ -1053,21 +1059,24 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     _ro = alloc.get("risk_order") or {}
     facts = [
         (f"{_al.get('actual_capture_rate', 0):.1%}",
-         "같은 인력으로 잡는 화재  ·  위험 순서대로 가면 "
-         f"{_ro.get('capture_rate_whole', 0):.0%}"
-         f"(쪼개 가도 {_ro.get('capture_rate_partial', 0):.1%})"),
+         "같은 인력으로 담는 화재\n"
+         "위험 순서대로 — 구역을 통째로 도는 기준 "
+         f"{_ro.get('capture_rate_whole', 0):.0%} · 부분까지 세도 "
+         f"{_ro.get('capture_rate_partial', 0):.1%}"),
         (pct(h["model_capture"]), f"위험 상위 {k}% 구역이 담은 실제 화재"),
         (f"{_bh2.get('capture_share', 0):.1%}",
          f"관내 {_bh2.get('share_of_city', 0):.1%}만 순찰한 "
          f"{_bh2.get('year', 0)}년 회고 검증"),
     ]
-    y = 1.35
+    y = 1.25
     for value, label in facts:
-        textbox(s13, Inches(7.5), Inches(y), Inches(5.1), Inches(0.75),
+        rows = label.count("\n") + 1
+        textbox(s13, Inches(7.4), Inches(y), Inches(5.6), Inches(0.75),
                 value, size=40, bold=True, color=RED)
-        textbox(s13, Inches(7.5), Inches(y + 0.82), Inches(5.1), Inches(0.5),
-                label, size=13, color=MUTED)
-        y += 1.62
+        textbox(s13, Inches(7.4), Inches(y + 0.8), Inches(5.6),
+                Inches(0.26 * rows + 0.1), label, size=13, color=MUTED,
+                spacing=1.2)
+        y += 1.45 + 0.24 * rows
 
     return prs
 
