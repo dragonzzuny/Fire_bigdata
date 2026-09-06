@@ -368,3 +368,48 @@ class TestAllocationQuality(unittest.TestCase):
         got = O.allocate(df, df["pred"], cap)
         self.assertEqual(len(got), 3, f"싼 구역 셋을 담아야 하는데 {len(got)}개")
         self.assertNotIn("비쌈", set(got["grid_id"]))
+
+
+class TestRiskOrderGreedy(unittest.TestCase):
+    """'위험한 순서대로 예산 소진까지' 값이 산출물로 나오는가.
+
+    이 숫자는 발표에서 배분(17.8%)의 대비값으로 쓴다. 손으로 역산한 추정치를
+    무대에 올릴 수 없어 코드가 내도록 했다.
+    """
+
+    def _panel(self):
+        return pd.DataFrame({
+            "grid_id": ["a", "b", "c", "d"],
+            "fires": [10.0, 5.0, 4.0, 1.0],
+            "target_total": [100.0, 3.0, 2.0, 1.0],
+        })
+
+    def test_top1_alone_exceeds_budget(self):
+        """1위 구역 하나가 예산을 넘으면 온전한 구역은 0개, 포착도 0이다."""
+        df = self._panel()
+        cap = O.Capacity(inspectors=1, per_day=10, days=5)      # 50건
+        out = O.compare_to_topk(df, df["fires"], cap, 20.0)
+        ro = out["risk_order"]
+        self.assertEqual(ro["n_grids_whole"], 0)
+        self.assertEqual(ro["capture_rate_whole"], 0.0)
+        self.assertGreater(ro["top1_cost"], cap.total_visits)
+
+    def test_partial_credit_is_prorated(self):
+        """부분 인정은 간 만큼의 비율만큼만 쳐 준다."""
+        df = self._panel()
+        cap = O.Capacity(inspectors=1, per_day=10, days=5)      # 50건
+        ro = O.compare_to_topk(df, df["fires"], cap, 20.0)["risk_order"]
+        # 1위 구역 소요 100건 중 50건 → 절반
+        self.assertAlmostEqual(ro["next_grid_progress"], 0.5, places=6)
+        self.assertAlmostEqual(ro["fires_partial"], 5.0, places=6)
+        self.assertAlmostEqual(ro["capture_rate_partial"], 5.0 / 20.0, places=6)
+
+    def test_partial_never_below_whole(self):
+        """부분 인정이 온전 인정보다 작을 수는 없다."""
+        df = self._panel()
+        for days in (1, 5, 20, 100):
+            ro = O.compare_to_topk(
+                df, df["fires"], O.Capacity(1, 10, days), 20.0)["risk_order"]
+            self.assertGreaterEqual(ro["capture_rate_partial"],
+                                    ro["capture_rate_whole"],
+                                    f"days={days}")

@@ -259,13 +259,15 @@ def crop_top(shot: Path, keep: float = 0.66) -> Path:
         return shot
 
 
-def crop_to(src: Path, dst: Path, top: float, bottom: float) -> Path | None:
-    """세로 비율로 잘라 새 파일로 낸다. 장표에서 확대해 보여 줄 조각을 만든다."""
+def crop_to(src: Path, dst: Path, top: float, bottom: float,
+            left: float = 0.0, right: float = 1.0) -> Path | None:
+    """비율로 잘라 새 파일로 낸다. 장표에서 확대해 보여 줄 조각을 만든다."""
     if not src.exists():
         return None
     from PIL import Image
     im = Image.open(src)
-    box = (0, int(im.height * top), im.width, int(im.height * bottom))
+    box = (int(im.width * left), int(im.height * top),
+           int(im.width * right), int(im.height * bottom))
     if box[3] - box[1] < 8:
         return None
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -454,9 +456,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     head = figs / "shot_plan_head.png"
     callouts = [
-        (crop_to(head, figs / "fig_plan_c1.png", 0.19, 0.47),
+        (crop_to(head, figs / "fig_plan_c1.png", 0.19, 0.47, 0.0, 0.52),
          "기관 · 수신 · 제목 · 시행일"),
-        (crop_to(head, figs / "fig_plan_c2.png", 0.47, 0.73),
+        (crop_to(head, figs / "fig_plan_c2.png", 0.47, 0.72, 0.0, 0.52),
          "「관련」 근거 조문"),
         (figs / "shot_plan_approval.png" if (figs / "shot_plan_approval.png").exists()
          else None, "결재란"),
@@ -526,7 +528,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
     s_map = section(prs, "5. 서비스 화면 ①",
                     "구역별 화재위험 지도",
-                    f"{grid_m}m 구역마다 예측한 위험도")
+                    f"울산 전체 {t['model']['n_grids']:,}개 구역 · "
+                    f"한 칸이 {grid_m}m")
     # 위험도 지도 한 장만 크게 둔다. 동선 지도를 나란히 줄이면 선이 사라져
     # 두 장 다 못 읽는 그림이 된다. 동선은 순찰 화면 장표와 영상이 맡는다.
     map_img = figs / "map_risk.png"
@@ -538,30 +541,48 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         except Exception:                                # noqa: BLE001
             ratio = 0.85
         max_h = 4.5
-        width = min(6.3, max_h * ratio)
+        width = min(5.5, max_h * ratio)
         pic = picture(s_map, map_img, Inches(0.7), Inches(2.15), Inches(width))
         if pic is not None:
             pic.width, pic.height = Inches(width), Inches(width / ratio)
     # 카드가 화면에 없는 것(동선)을 설명하고 있었다. 지도에 보이는 것만 쓴다.
-    cards = [
-        ("무엇을 그린 것인가",
-         f"· {grid_m}m 정사각형 구역마다 그해 화재위험을 예측한 값\n"
-         "· 색이 짙을수록 위험이 높습니다"),
-        ("무엇을 보고 정하는가",
-         "· 과거 화재 · 주변 구역 확산 · 대상물 용도\n"
-         "· 업소 업종 구성 · 소방용수 접근성"),
-        ("이 지도가 어디로 가는가",
-         "· 점검 배분과 순찰 동선의 입력이 됩니다\n"
-         "· 순찰계획서의 붙임으로 그대로 들어갑니다"),
-    ]
-    y = 2.3
-    for head, body in cards:
-        band(s_map, Inches(7.6), Inches(y), Inches(5.0), Inches(1.35))
-        textbox(s_map, Inches(7.85), Inches(y + 0.16), Inches(4.5), Inches(0.38),
-                head, size=14.5, bold=True, color=RED)
-        textbox(s_map, Inches(7.85), Inches(y + 0.6), Inches(4.5), Inches(0.7),
-                body, size=12, color=MUTED, spacing=1.25)
-        y += 1.52
+    # 가운데 자리에는 '무엇을 보고 정하는가' 를 글로 나열하는 대신, 그것을
+    # 화면이 실제로 보여 주는 요인 표를 넣는다. 방어 논리 셋 중 1번
+    # ('왜 위험한지 설명이 된다')의 유일한 시각 증거다.
+    reason = crop_to(figs / "shot_reason.png", figs / "fig_reason_crop.png",
+                     0.586, 0.734, 0.025, 0.495)
+    x_card, w_card = 6.6, 6.0
+    y = 2.15
+    band(s_map, Inches(x_card), Inches(y), Inches(w_card), Inches(1.2))
+    textbox(s_map, Inches(x_card + 0.28), Inches(y + 0.14), Inches(5.4),
+            Inches(0.38), "무엇을 그린 것인가", size=14.5, bold=True, color=RED)
+    textbox(s_map, Inches(x_card + 0.28), Inches(y + 0.55), Inches(5.4),
+            Inches(0.55),
+            f"· {grid_m}m 정사각형 구역마다 그해 화재위험을 예측한 값\n"
+            "· 색이 짙을수록 위험이 높습니다", size=12, color=MUTED, spacing=1.25)
+
+    y = 3.5
+    band(s_map, Inches(x_card), Inches(y), Inches(w_card), Inches(2.2))
+    textbox(s_map, Inches(x_card + 0.28), Inches(y + 0.14), Inches(5.4),
+            Inches(0.38), "왜 이 구역이 위험한가", size=14.5, bold=True, color=RED)
+    if reason:
+        picture(s_map, Path(reason), Inches(x_card + 0.25), Inches(y + 0.58),
+                Inches(5.4), max_h=Inches(1.5))
+    else:
+        textbox(s_map, Inches(x_card + 0.28), Inches(y + 0.55), Inches(5.4),
+                Inches(1.4), "· 과거 화재 · 주변 구역 확산 · 대상물 용도\n"
+                "· 업소 업종 구성 · 소방용수 접근성",
+                size=12, color=MUTED, spacing=1.25)
+
+    y = 5.88
+    band(s_map, Inches(x_card), Inches(y), Inches(w_card), Inches(1.1))
+    textbox(s_map, Inches(x_card + 0.28), Inches(y + 0.14), Inches(5.4),
+            Inches(0.38), "이 지도가 어디로 가는가", size=14.5, bold=True, color=RED)
+    textbox(s_map, Inches(x_card + 0.28), Inches(y + 0.55), Inches(5.4),
+            Inches(0.5),
+            "· 점검 배분과 순찰 동선의 입력이 됩니다\n"
+            "· 순찰계획서의 붙임으로 그대로 들어갑니다",
+            size=12, color=MUTED, spacing=1.25)
 
     # ---- 6 화면② 배분 ----
     op = alloc.get("optimized", {})
@@ -837,7 +858,11 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          f"{tk.get('cost_if_all', 0):,.0f}건 소요\n"
          f"· 1위 구역 소요 "
          f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
-         f"가용 {alloc.get('budget_visits', 0):,}건\n\n"
+         f"가용 {alloc.get('budget_visits', 0):,}건\n"
+         f"· 위험 순서대로 가면 화재 "
+         f"{(alloc.get('risk_order') or {}).get('capture_rate_whole', 0):.0%}"
+         f" · 쪼개 가도 "
+         f"{(alloc.get('risk_order') or {}).get('capture_rate_partial', 0):.1%}\n\n"
          "그래서 기준을 바꿨습니다.\n"
          f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
          "· 잡히는 화재 합계가 가장 큰\n"
@@ -901,11 +926,14 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
              "시간분할 + 관할제외 + 타 지역 + 주소 정밀도"],
             ["산출물", "위험점수 · 지도 시각화",
              "위험지도 · 인력 제약 배분 · 관서별 동선 ·\n공문 계획서 · 법령 질의응답"],
-            ["점검 대상", "기존 2,573개소 + 새로 찾은 후보 19,397개소\n(추려서 6,096개소 권고)",
-             f"{tk.get('n_grids_selected', 0):,}개 구역 · 점검 소요 "
-             f"{tk.get('cost_if_all', 0):,.0f}건"],
-            ["인력 제약", "**미해결**: 연 점검을 6,096건(237%) 늘리는 것은\n"
-                          "조직·조례·증원 없이는 불가능하다고 논문이 적음",
+            ["점검 대상", "기존 2,573개소 + 새로 찾은 후보 19,397개소\n"
+                          "(추려서 6,096개소 권고)",
+             f"{tk.get('n_grids_selected', 0):,}개 구역 · 대상물 "
+             f"{tk.get('targets_if_all', 0):,.0f}개소\n"
+             f"점검 소요 {tk.get('cost_if_all', 0):,.0f}건"],
+            ["인력 제약", "**미해결**: 연 점검을 6,096건 늘리려면\n"
+                          "지금(2,573건)의 2.37배 — 조직·조례·증원\n"
+                          "없이는 불가능하다고 논문이 적음",
              f"**해결**: 가용 인력 안에서 배분,\n동일 인력 대비 "
              f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p 개선"]]
     table(s_us, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.9), rows,
@@ -1022,9 +1050,12 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # 그동안 근거가 심사위원 눈앞에 없다.
     _al = (alloc.get("equity") or alloc)
     _bh2 = (extra.get("backtest") or {}).get("headline", {})
+    _ro = alloc.get("risk_order") or {}
     facts = [
         (f"{_al.get('actual_capture_rate', 0):.1%}",
-         f"같은 인력으로 잡는 화재 (위험 순서대로는 0%)"),
+         "같은 인력으로 잡는 화재  ·  위험 순서대로 가면 "
+         f"{_ro.get('capture_rate_whole', 0):.0%}"
+         f"(쪼개 가도 {_ro.get('capture_rate_partial', 0):.1%})"),
         (pct(h["model_capture"]), f"위험 상위 {k}% 구역이 담은 실제 화재"),
         (f"{_bh2.get('capture_share', 0):.1%}",
          f"관내 {_bh2.get('share_of_city', 0):.1%}만 순찰한 "

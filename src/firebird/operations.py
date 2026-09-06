@@ -148,11 +148,36 @@ def compare_to_topk(panel_year: pd.DataFrame, risk, capacity: Capacity,
             "n_grids_selected": int(len(topk)),
             "n_grids_affordable": int(len(within)),
             "cost_if_all": float(topk["cost"].sum()),
+            "targets_if_all": float(topk.get("target_total", pd.Series(dtype=float)).sum()),
+            "biz_if_all": float(topk.get("biz_total", pd.Series(dtype=float)).sum()),
             "cost_used": float(within["cost"].sum()),
             "expected_fires": float(within["expected_fires"].sum()),
         },
     }
+    # '위험한 순서대로 예산이 떨어질 때까지' 갔을 때의 결과.
+    # 발표에서 배분의 대비값으로 쓰는 숫자라, 손으로 역산하지 않고 여기서 낸다.
+    #   whole   — 온전히 끝낸 구역만 인정. 1위 구역 소요가 예산보다 크면 0이다.
+    #   partial — 마지막 구역을 간 만큼 비례로 쳐 준다. '쪼개서 가면?' 에 대한 답.
+    order = df.sort_values("expected_fires", ascending=False)
+    c = order["cost"].to_numpy(dtype=float)
+    cum = c.cumsum()
+    n_whole = int((cum <= capacity.total_visits + 1e-9).sum())
+    spent = float(cum[n_whole - 1]) if n_whole else 0.0
+    frac = ((capacity.total_visits - spent) / c[n_whole]
+            if n_whole < len(c) and c[n_whole] > 0 else 0.0)
+    out["risk_order"] = {
+        "n_grids_whole": n_whole,
+        "cost_used": spent,
+        "next_grid_progress": float(frac),
+        "top1_cost": float(c[0]) if len(c) else 0.0,
+    }
+
     if actual_col:
+        f = order[actual_col].to_numpy(dtype=float)
+        whole_fires = float(f[:n_whole].sum())
+        part_fires = float(f[n_whole]) * frac if n_whole < len(f) else 0.0
+        out["risk_order"]["fires_whole"] = whole_fires
+        out["risk_order"]["fires_partial"] = whole_fires + part_fires
         out["optimized"]["actual_fires_captured"] = float(alloc[actual_col].sum())
         out["top_k_percent"]["actual_fires_captured"] = float(within[actual_col].sum())
         total = float(df[actual_col].sum())
@@ -161,6 +186,10 @@ def compare_to_topk(panel_year: pd.DataFrame, risk, capacity: Capacity,
             out["top_k_percent"]["actual_capture_rate"] = out["top_k_percent"]["actual_fires_captured"] / total
             out["gain_pp"] = ((out["optimized"]["actual_capture_rate"]
                                - out["top_k_percent"]["actual_capture_rate"]) * 100)
+            out["risk_order"]["capture_rate_whole"] = (
+                out["risk_order"]["fires_whole"] / total)
+            out["risk_order"]["capture_rate_partial"] = (
+                out["risk_order"]["fires_partial"] / total)
     return out
 
 

@@ -17,10 +17,22 @@
       "n_grids_selected": 292,
       "n_grids_affordable": 0,
       "cost_if_all": 28817.700000000004,
+      "targets_if_all": 22263.0,
+      "biz_if_all": 4638.0,
       "cost_used": 0.0,
       "expected_fires": 0.0,
       "actual_fires_captured": 0.0,
       "actual_capture_rate": 0.0
+    },
+    "risk_order": {
+      "n_grids_whole": 0,
+      "cost_used": 0.0,
+      "next_grid_progress": 0.8978675645342311,
+      "top1_cost": 712.8000000000001,
+      "fires_whole": 0.0,
+      "fires_partial": 25.140291806958473,
+      "capture_rate_whole": 0.0,
+      "capture_rate_partial": 0.01820441115637833
     },
     "gain_pp": 18.102824040550324,
     "equity": {

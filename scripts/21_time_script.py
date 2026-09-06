@@ -55,7 +55,10 @@ def spoken_seconds(lines: list[str]) -> tuple[float, int, dict]:
     chars, pauses = 0, {"/": 0, "//": 0, "///": 0}
     for g in _groups(lines):
         body = " ".join(g)
-        if '"' not in body:
+        # 말인지 아닌지를 따옴표 하나로만 판단하면, 한 문단 가운데에 지시문을
+        # 끼워 넣어 쪼개지는 순간 따옴표 없는 쪽이 통째로 안 세어진다.
+        # 읽기 표시(/ // ///)가 있으면 그것도 읽는 말이다.
+        if '"' not in body and not re.search(r"(?<!\S)/{1,3}(?!\S)", body):
             continue                      # 지시문·주석 덩어리는 말이 아니다
         for s in g:
             s = re.sub(r"〈[^〉]*〉", "", s)   # 동작·시선은 소리를 내지 않는다
@@ -211,6 +214,37 @@ def write_back(bs: list[dict], total: float) -> None:
                  f"> **분당 {int(CPM)}자로 {int(round(total))//60}분 "
                  f"{int(round(total))%60}초.** {600 - int(round(total))}초가 남습니다.",
                  txt, count=1)
+
+    # 「밀릴 때 버리는 순서」의 초 값도 손으로 적혀 있었다. 무대에서 그 표를
+    # 보고 무엇을 버릴지 정하는데, 값이 틀리면 잘못 버린다. 여기서 잰다.
+    #   (뺄 것, 블록, 그 블록의 몇 번째 조각, 빼도 되는 이유)
+    DROPS = [
+        ("장표 11 업무 도우미", "⑥", 2, "핵심(순찰 경로·문서)에서 가장 멀다"),
+        ("장표 13 타 지역 검증", "⑦", 1, "장표 12·14가 검증을 이미 지고 있다"),
+        ("장표 16 해외 비교", "⑧", 1, "장표 15 부제가 같은 말을 한다"),
+    ]
+    drop_rows = ["| 순서 | 뺄 것 | 아끼는 시간 | 빼도 되는 이유 |", "|---|---|---|---|"]
+    saved, running = [], 0.0
+    for j, (what, no, idx, why) in enumerate(DROPS, 1):
+        parts = by_no.get(no, {}).get("parts", [])
+        secs = parts[idx] if idx < len(parts) else 0.0
+        running += secs
+        saved.append(secs)
+        drop_rows.append(f"| {j} | {what} | **{secs:.0f}초** | {why} |")
+    a3 = txt.index("| 순서 | 뺄 것 | 아끼는 시간 | 빼도 되는 이유 |")
+    b3 = txt.index("\n\n", a3)
+    txt = txt[:a3] + "\n".join(drop_rows) + txt[b3:]
+    txt = re.sub(
+        r"> 1번만 빼도[^\n]*\n>[^\n]*\n",
+        f"> 1번만 빼도 여유가 {600 - total + saved[0]:.0f}초, "
+        f"셋을 다 빼면 {600 - total + running:.0f}초입니다.\n"
+        f"> **장표 10(법정 서식)은 빼지 마십시오.** 차별성 ②의 유일한 근거입니다.\n",
+        txt, count=1)
+
+    # 리허설 속도 판정도 ① 인사의 잰 값으로.
+    _in = by_no.get("①", {}).get("secs", 0.0)
+    txt = re.sub(r"리허설에서 ① 인사를 재어 \d+초 안에",
+                 f"리허설에서 ① 인사를 재어 {_in:.0f}초 안에", txt, count=1)
 
     # 블록 머리의 '· 20초 ·' 도 손으로 적힌 값이라 같이 어긋난다. 함께 고친다.
     for b in bs:

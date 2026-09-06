@@ -57,6 +57,8 @@ LITERALS = {
     "19397": "KDD 2016 §4 — 기존 2,573개소에 더해 새로 찾아낸 점검 후보 "
              "19,397개소(‘점검 대상 총수’가 아니다)",
     "6096": "KDD 2016 §4 — 위 19,397개를 추려 권고한 6,096개소",
+    "2.37": "KDD 2016 §6.3 — 6,096 ÷ 2,573 = 2.37배. 논문의 237% 를 "
+            "심사위원이 암산하지 않도록 배수로 함께 적었다",
     "237": "KDD 2016 §6.3 — “Increasing the number of annual inspections by "
            "6,096 (237%) overnight was not feasible without significant changes "
            "in organizational processes, local ordinances, or increased staffing.”",
