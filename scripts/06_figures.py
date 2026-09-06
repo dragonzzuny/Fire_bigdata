@@ -325,6 +325,34 @@ def fig_pipeline(out: Path) -> None:
     save(fig, out / "fig_pipeline.png")
 
 
+def fig_risk_map(cfg, city: str, year: int, out: Path) -> None:
+    """구역별 화재위험 지도.
+
+    장표 6이 쓰는 그림인데 이걸 만드는 스크립트가 없었다 — 08-27 에 한 번
+    만들어 두고 그 파일을 계속 쓰고 있었다. 재현이 안 되는 그림은 발표에
+    올릴 수 없다. 여기서 만든다.
+    """
+    from firebird import dataset as D, features as F, mapviz as MV, model as M
+    try:
+        panel = D.load_panel(cfg, city)
+    except Exception as exc:                             # noqa: BLE001
+        print(f"  map_risk 건너뜀 ({type(exc).__name__}: {exc})")
+        return
+    years = sorted(int(y) for y in panel["year"].unique())
+    cur = panel[panel["year"] == int(year)].reset_index(drop=True).copy()
+    if cur.empty:
+        print("  map_risk 건너뜀 (해당 연도 없음)")
+        return
+    model = M.fit(panel, F.feature_columns(panel), cfg,
+                  [y for y in years if y < int(year)])
+    cur["pred"] = model.predict(cur)
+    # 제목은 장표가 이미 달고 있다. 그림에 또 달면 같은 말이 두 번 나온다.
+    fig = MV.risk_map(cur, cfg, title="")
+    if fig is not None:
+        MV.save(fig, out / "map_risk.png")
+        print("  map_risk.png")
+
+
 def main() -> int:
     cfg = load_config()
     out = cfg.paths.figures
@@ -343,6 +371,7 @@ def main() -> int:
     manifest = json.loads(man_path.read_text(encoding="utf-8")) if man_path.exists() else {}
 
     print(f"그림 생성 -> {out}")
+    fig_risk_map(cfg, city, year, out)
     fig_capture_curve(ev, out, k)
     fig_pei(ev, out, k)
     fig_decile(ev, out)

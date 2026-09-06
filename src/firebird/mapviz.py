@@ -126,7 +126,6 @@ def risk_map(panel_year: pd.DataFrame, cfg, *, risk_col: str = "pred",
     cb.set_ticklabels(["낮음", "보통", "높음"])
     cb.ax.tick_params(labelsize=9, colors=MUTED)
     cb.outline.set_visible(False)
-    cb.set_label("화재위험", fontsize=10, color=INK)
     fig.tight_layout()
     return fig
 

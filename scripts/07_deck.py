@@ -49,6 +49,13 @@ def textbox(slide, x, y, w, h, text, *, size=18, bold=False, color=INK,
         run.font.bold = bold
         run.font.color.rgb = color
         run.font.name = FONT
+        # 불릿 줄이 길어 넘어가면 둘째 줄이 불릿 밑으로 파고들어 문장이
+        # 끊겨 보인다. 내어쓰기를 걸어 글머리표 오른쪽에 맞춰 떨어뜨린다.
+        if line.lstrip().startswith(("·", "-", "•")):
+            hang = Pt(size * 0.95)
+            pPr = p._p.get_or_add_pPr()
+            pPr.set("marL", str(int(hang)))
+            pPr.set("indent", str(int(-hang)))
     return tb
 
 
@@ -236,9 +243,17 @@ def crop_top(shot: Path, keep: float = 0.66) -> Path:
 
     out = shot.with_name(shot.stem + "_crop.png")
     try:
+        import numpy as np
         im = Image.open(shot)
         h = int(im.size[1] * keep)
-        im.crop((0, 0, im.size[0], h)).save(out)
+        im = im.crop((0, 0, im.size[0], h))
+        # 자른 뒤에도 아래쪽이 빈 화면인 경우가 많다. 그 여백을 그대로 넣으면
+        # 장표에서 그림만 커지고 글씨는 작아진다 — 읽으라고 넣은 화면인데.
+        a = np.asarray(im.convert("L"))
+        ink = np.nonzero((a < 245).sum(axis=1) > 2)[0]
+        if len(ink) and ink[-1] < a.shape[0] - 40:
+            im = im.crop((0, 0, im.size[0], min(a.shape[0], int(ink[-1]) + 30)))
+        im.save(out)
         return out
     except Exception:                                    # noqa: BLE001
         return shot
@@ -393,30 +408,34 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     s2 = section(prs, "1. 배경 및 문제점",
                  "늘어나는 점검 대상, 정체된 인력",
                  "법정 주기와 담당자 경험에 의존하는 현행 우선순위 결정")
-    band(s2, Inches(0.8), Inches(2.4), Inches(5.6), Inches(3.5))
-    textbox(s2, Inches(1.1), Inches(2.68), Inches(5.0), Inches(0.45),
+    # 상자 높이를 내용에 맞춘다. 3.5in 로 두었더니 아래 4분의 1이 비고,
+    # 그 아래 목적 문장이 허공에 떠 있었다.
+    TOP, BOXH = 2.35, 3.0
+    band(s2, Inches(0.8), Inches(TOP), Inches(5.6), Inches(BOXH))
+    textbox(s2, Inches(1.1), Inches(TOP + 0.26), Inches(5.0), Inches(0.45),
             "국내는 이 자리가 비어 있습니다", size=16.5, bold=True)
-    # 줄바꿈된 항목의 둘째 줄이 불릿 아래로 들어가면 문장이 끊겨 보인다.
-    # 짧게 끊어 한 줄에 담는다.
-    textbox(s2, Inches(1.1), Inches(3.2), Inches(5.0), Inches(2.6),
-            "· 소방공무원 정원 4년째 제자리 (2022년 이후 첫 증원이 2026년)\n"
-            "· 점검 대상은 계속 증가 — 30층 이상 고층 +484개소(8%)\n"
+    textbox(s2, Inches(1.1), Inches(TOP + 0.85), Inches(5.0), Inches(2.0),
+            "· 소방공무원 정원 4년째 제자리 — 첫 증원이 2026년\n"
+            "· 점검 대상 증가 — 30층 이상 고층 +484개소(8%)\n"
             "· 같은 법정 대상 안에서도 실제 위험은 크게 다름\n"
-            "· 그 차이로 우선순위를 정하는 체계가 없음", size=15.5)
-    band(s2, Inches(6.9), Inches(2.4), Inches(5.7), Inches(3.5),
+            "· 그 차이로 우선순위를 정하는 체계가 없음", size=15.5, spacing=1.55)
+    band(s2, Inches(6.9), Inches(TOP), Inches(5.7), Inches(BOXH),
          RGBColor(0xFD, 0xF0, 0xEC))
-    textbox(s2, Inches(7.2), Inches(2.68), Inches(5.1), Inches(0.45),
+    textbox(s2, Inches(7.2), Inches(TOP + 0.26), Inches(5.1), Inches(0.45),
             "해외는 데이터로 해결하고 있습니다", size=16.5, bold=True, color=RED)
-    textbox(s2, Inches(7.2), Inches(3.2), Inches(5.1), Inches(2.6),
-            "· 애틀랜타 소방 ‘Firebird’: 위험점수로 점검\n"
-            "  우선순위 결정, 미국 NFPA 모범사례 선정\n"
-            "· 뉴욕 FDNY: 위험기반 점검(RBIS) 운영\n\n"
-            "국내 소방 정보화는 출동·신고 대응 중심이며,\n"
-            "예방점검 대상 우선순위화 영역은 비어 있습니다.", size=15.5)
-    textbox(s2, Inches(0.8), Inches(6.15), Inches(11.8), Inches(0.6),
-            "목적: 지역별 화재위험을 예측해 한정된 인력을 "
-            "가장 위험한 곳과 시기에 먼저 배치",
-            size=15, bold=True)
+    textbox(s2, Inches(7.2), Inches(TOP + 0.85), Inches(5.1), Inches(2.0),
+            "· 애틀랜타 ‘Firebird’ — 위험점수로 점검 우선순위 결정\n"
+            "· 미국 NFPA 가 모범사례로 선정\n"
+            "· 뉴욕 FDNY — 위험기반 점검(RBIS) 운영\n"
+            "· 국내 소방 정보화는 출동·신고 대응 중심", size=15.5, spacing=1.55)
+
+    # 목적은 이 장표의 결론이다. 띄워 두지 말고 띠로 받친다.
+    band(s2, Inches(0.8), Inches(5.75), Inches(11.8), Inches(0.95),
+         RGBColor(0x2B, 0x33, 0x40))
+    textbox(s2, Inches(1.1), Inches(6.02), Inches(11.2), Inches(0.5),
+            "지역별 화재위험을 예측해 한정된 인력을 "
+            "가장 위험한 곳과 시기에 먼저 배치합니다",
+            size=17, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF))
 
     # ---- 7 화면③ 계획서 ----
     # 이 장표의 주장은 '옮겨 적을 것이 없습니다' 다. 그런데 계획서를 통째로
@@ -431,7 +450,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # 왼쪽에는 뒷부분 — 세부 근거 · 유의사항 · 붙임 · 끝. · 발신명의 · 결재란
     # 이 이어지는 대목을 둔다. 공문으로 보이는지가 여기서 판가름 난다.
     picture(s_doc, doc_img, Inches(0.8), Inches(2.15), Inches(4.4),
-            max_h=Inches(4.45))
+            max_h=Inches(4.0))
 
     head = figs / "shot_plan_head.png"
     callouts = [
@@ -442,17 +461,23 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         (figs / "shot_plan_approval.png" if (figs / "shot_plan_approval.png").exists()
          else None, "결재란"),
     ]
+    # 흰 바탕에 그냥 얹으면 조각들이 떠 보인다. 다른 장표처럼 띠로 받친다.
     y = 2.15
     for img, label in callouts:
         if img is None or not Path(img).exists():
             continue
-        textbox(s_doc, Inches(6.5), Inches(y), Inches(6.1), Inches(0.3),
+        band(s_doc, Inches(5.55), Inches(y), Inches(7.05), Inches(1.28))
+        textbox(s_doc, Inches(5.85), Inches(y + 0.12), Inches(6.5), Inches(0.3),
                 label, size=12.5, bold=True, color=RED)
-        picture(s_doc, Path(img), Inches(6.5), Inches(y + 0.34), Inches(6.05),
-                max_h=Inches(1.15))
-        y += 1.62
-    textbox(s_doc, Inches(0.8), Inches(6.85), Inches(11.8), Inches(0.4),
-            "담당자가 옮겨 적을 항목이 없습니다.", size=15, bold=True)
+        picture(s_doc, Path(img), Inches(5.85), Inches(y + 0.5), Inches(6.45),
+                max_h=Inches(0.68))
+        y += 1.40
+
+    band(s_doc, Inches(0.8), Inches(6.4), Inches(11.8), Inches(0.75),
+         RGBColor(0x2B, 0x33, 0x40))
+    textbox(s_doc, Inches(1.1), Inches(6.58), Inches(11.2), Inches(0.45),
+            "담당자가 옮겨 적을 항목이 없습니다. 그대로 결재에 올립니다.",
+            size=16, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF))
 
     # ---- 3 무엇을 (구성) ----
     s3 = section(prs, "3. 제안 내용",
@@ -517,24 +542,26 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         pic = picture(s_map, map_img, Inches(0.7), Inches(2.15), Inches(width))
         if pic is not None:
             pic.width, pic.height = Inches(width), Inches(width / ratio)
+    # 카드가 화면에 없는 것(동선)을 설명하고 있었다. 지도에 보이는 것만 쓴다.
     cards = [
-        ("구역 단위 화재위험",
-         f"· {grid_m}m 구역 단위 화재위험 예측\n"
-         "· 과거 화재 · 주변 구역 확산 · 대상물 용도 · 업종 구성"),
-        ("관서별 출발·복귀 동선",
-         "· 119안전센터 출발·복귀\n"
-         "· 선: 실제 도로 주행거리 · 번호: 방문 순서"),
-        ("계획서에 그대로 첨부",
-         "· 이 지도가 순찰계획서의 붙임으로 들어감"),
+        ("무엇을 그린 것인가",
+         f"· {grid_m}m 정사각형 구역마다 그해 화재위험을 예측한 값\n"
+         "· 색이 짙을수록 위험이 높습니다"),
+        ("무엇을 보고 정하는가",
+         "· 과거 화재 · 주변 구역 확산 · 대상물 용도\n"
+         "· 업소 업종 구성 · 소방용수 접근성"),
+        ("이 지도가 어디로 가는가",
+         "· 점검 배분과 순찰 동선의 입력이 됩니다\n"
+         "· 순찰계획서의 붙임으로 그대로 들어갑니다"),
     ]
     y = 2.3
     for head, body in cards:
-        band(s_map, Inches(7.6), Inches(y), Inches(5.0), Inches(1.45))
-        textbox(s_map, Inches(7.85), Inches(y + 0.14), Inches(4.5), Inches(0.38),
+        band(s_map, Inches(7.6), Inches(y), Inches(5.0), Inches(1.35))
+        textbox(s_map, Inches(7.85), Inches(y + 0.16), Inches(4.5), Inches(0.38),
                 head, size=14.5, bold=True, color=RED)
-        textbox(s_map, Inches(7.85), Inches(y + 0.58), Inches(4.5), Inches(0.8),
-                body, size=12, color=MUTED, spacing=1.1)
-        y += 1.62
+        textbox(s_map, Inches(7.85), Inches(y + 0.6), Inches(4.5), Inches(0.7),
+                body, size=12, color=MUTED, spacing=1.25)
+        y += 1.52
 
     # ---- 6 화면② 배분 ----
     op = alloc.get("optimized", {})
@@ -562,8 +589,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           f"가용 {alloc.get('budget_visits', 0):,}건"),
          ("소요와 효과의 동시 계산",
           "· 구역마다 점검 소요와 잡히는 화재를 함께 셈\n"
-          f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
-          "  잡히는 화재가 가장 큰 묶음 선택\n"
+          f"· {alloc.get('budget_visits', 0):,}건 안에서 화재가 가장 큰 묶음 선택\n"
           f"· {shown_grids:,}개 구역 · 화재 {pct(shown_cap)} 포착 "
           f"({(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p)\n"
           f"· 관할별 최소 배분을 걸어도 손해 "
@@ -714,14 +740,15 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         if road:
             rows.append(["주소 정밀도", "주소가 거칠어 성능이 부풀려진 것은 아닌가",
                          pct(road.get("모델포착@20%")), "부풀림 없음"])
-    table(s10, Inches(0.8), Inches(2.35), Inches(11.8), Inches(2.5), rows,
-          col_widths=[2.8, 5.0, 2.4, 3.0], size=13.5)
+    table(s10, Inches(0.8), Inches(2.3), Inches(11.8), Inches(2.2), rows,
+          col_widths=[2.8, 5.0, 2.4, 3.0], size=12.5)
     if logo_line:
-        textbox(s10, Inches(0.85), Inches(4.55), Inches(11.7), Inches(0.35),
-                logo_line, size=12.5, color=BLUE)
-    picture(s10, figs / "fig_monthly_risk.png", Inches(0.9), Inches(5.0), Inches(6.4))
-    band(s10, Inches(7.7), Inches(5.0), Inches(4.9), Inches(1.9))
-    textbox(s10, Inches(7.95), Inches(5.2), Inches(4.4), Inches(1.6),
+        textbox(s10, Inches(0.85), Inches(4.72), Inches(11.7), Inches(0.35),
+                logo_line, size=12, color=BLUE)
+    picture(s10, figs / "fig_monthly_risk.png", Inches(0.9), Inches(5.25),
+            Inches(6.2), max_h=Inches(2.0))
+    band(s10, Inches(7.7), Inches(5.25), Inches(4.9), Inches(2.0))
+    textbox(s10, Inches(7.95), Inches(5.42), Inches(4.4), Inches(1.7),
             "‘언제’도 검증했습니다\n\n"
             "월별 화재위험 = 계절 패턴 × 기상(습도·건조일수).\n"
             f"{extra.get('season_hi_month', 0)}월이 연평균의 "
@@ -834,24 +861,27 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "  하나라도 생기면 그 결과를 버림\n\n"
          "· 업무 도우미: 인용 조문을 원문과 대조,\n"
          "  자료 밖이면 ‘확인 필요’ 표시\n\n"
-         "폐쇄망: 기관 내부 로컬 모델(Ollama)\n"
-         "또는 규칙기반으로 같은 문서가 나옵니다.\n"
-         "외부 호출 없이 동작하며, 어느 경로로\n"
-         "만들었는지가 산출물에 기록됩니다.",
+         "폐쇄망: 로컬 모델(Ollama) 또는 규칙기반으로\n"
+         "외부 호출 없이 같은 문서를 만듭니다.\n"
+         "생성 경로는 산출물에 기록됩니다.",
          ""),
     ]
-    x0, w_card = 0.8, 3.87
+    x0, w_card, top, card_h = 0.8, 3.87, 2.55, 3.95
+    body_h = card_h - 1.1                       # 제목·여백을 뺀 본문 높이(in)
+    longest = max(len(b.split("\n")) for _, b, _ in cards)
+    size_body, spacing = 11.5, 1.24
+    # 줄 높이(pt) × 줄 수가 본문 높이를 넘으면 글자를 줄인다.
+    while longest * size_body * spacing / 72.0 > body_h and size_body > 9.0:
+        size_body -= 0.25
     for i, (head, body, foot) in enumerate(cards):
         x = Inches(x0 + i * (w_card + 0.16))
-        # 카드가 짧아진 만큼 아래가 비어 위로 쏠려 보인다. 가운데로 내린다.
-        top = 2.75
-        band(s_diff, x, Inches(top), Inches(w_card), Inches(3.55))
+        band(s_diff, x, Inches(top), Inches(w_card), Inches(card_h))
         textbox(s_diff, x + Inches(0.22), Inches(top + 0.2), Inches(w_card - 0.44),
                 Inches(0.7), head, size=14, bold=True, color=RED)
         textbox(s_diff, x + Inches(0.22), Inches(top + 0.85), Inches(w_card - 0.44),
-                Inches(2.4), body, size=11.5, color=INK, spacing=1.24)
+                Inches(body_h), body, size=size_body, color=INK, spacing=spacing)
         if foot:
-            textbox(s_diff, x + Inches(0.22), Inches(top + 2.8),
+            textbox(s_diff, x + Inches(0.22), Inches(top + card_h - 0.7),
                     Inches(w_card - 0.44), Inches(0.5), foot, size=10.5,
                     color=MUTED)
 
@@ -889,7 +919,8 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
 
     # ---- 11 기대효과 ----
     s11 = section(prs, "8. 기대효과 및 활용방안",
-                  "순찰 효율 개선과 근거 기록", "")
+                  "순찰 효율 개선과 근거 기록",
+                  "곱하지 않고 잰 값만 적었습니다")
     # 이 서비스의 결과물은 순찰 경로다. 머리 지표도 순찰에서 시작한다.
     _bh = (extra.get("backtest") or {}).get("headline", {})
     if _bh:
@@ -900,12 +931,14 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             f"{_bh.get('year', 0)}년 회고")
     elif alloc and "gain_pp" in alloc:
         kpi(s11, Inches(0.8), Inches(2.4), Inches(3.8),
-            f"{alloc['gain_pp']:+.1f}%p", "같은 인력 기준 포착률 개선",
+            f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p",
+            "같은 인력 기준 포착률 개선",
             f"인력에 맞춘 배분 vs 상위 {k}% 방식")
     if alloc and "gain_pp" in alloc:
         kpi(s11, Inches(4.85), Inches(2.4), Inches(3.8),
-            f"{alloc['gain_pp']:+.1f}%p", "같은 인력 기준 점검 포착률",
-            f"인력에 맞춘 배분 vs 상위 {k}% 방식 · "
+            f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p",
+            "같은 인력 기준 점검 포착률",
+            f"{shown_grids:,}개 구역 · 관할별 최소 배분 적용 · "
             f"무작위 대비 {h['model_lift']:.2f}배", color=BLUE)
     hc = summary.get("hydrant_coverage", {})
     bp = summary.get("blind_spot_population") or {}
@@ -926,14 +959,14 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                       if x["patrol_grids"] == _op), None)
             if r:
                 g = r.get("gain_ci", {})
-                _yy.append(f"{y['year']}년 {r['gain_over_baseline']:+.0f}건 "
-                           f"[{g.get('lo', 0):+.0f}, {g.get('hi', 0):+.0f}]")
-        textbox(s11, Inches(0.8), Inches(3.95), Inches(11.8), Inches(0.35),
-                f"{_op}개 구역 회고 검증 · 작년 화재 순 대비   "
-                + "   ·   ".join(_yy)
-                + "   — 세 해 모두 신뢰구간이 0을 넘습니다.",
-                size=12.5, color=MUTED)
-    textbox(s11, Inches(0.8), Inches(4.3), Inches(11.8), Inches(2.4),
+                _yy.append(f"{y['year']} {r['gain_over_baseline']:+.0f} "
+                           f"[{g.get('lo', 0):+.0f},{g.get('hi', 0):+.0f}]")
+        band(s11, Inches(0.8), Inches(4.0), Inches(11.8), Inches(0.6))
+        textbox(s11, Inches(1.05), Inches(4.16), Inches(11.3), Inches(0.35),
+                f"회고 검증 {_op}개 구역 · 작년 화재 순 대비   "
+                + " · ".join(_yy)
+                + "건 — 세 해 모두 0 초과", size=12, color=MUTED)
+    textbox(s11, Inches(0.8), Inches(4.9), Inches(11.8), Inches(2.4),
             "· 예방순찰   119안전센터별 출동 계획, 목적별 순찰 6종, 월별 순찰 강도\n"
             "· 예방점검   화재안전조사 대상 우선순위를 자동으로 정하고, 공문 서식 계획서로 바로 결재\n"
             "· 소방용수 정책   고위험인데 소화전이 없는 구역을 신설 우선순위의 객관적 근거로\n"
