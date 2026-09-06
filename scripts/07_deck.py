@@ -520,7 +520,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           "· 값을 바꾸면 배분 즉시 재계산"),
          ("위험 구역일수록 큰 점검 부담",
           f"· 위험도 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역\n"
-          f"· 그 안의 점검 대상 {tk.get('cost_if_all', 0):,.0f}개소\n"
+          f"· 점검 소요 {tk.get('cost_if_all', 0):,.0f}건\n"
           f"· 1위 구역 한 곳 소요 "
           f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
           f"가용 {alloc.get('budget_visits', 0):,}건"),
@@ -529,7 +529,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
           f"· 소요 합계 {alloc.get('budget_visits', 0):,}건 이내에서\n"
           "  잡히는 화재가 가장 큰 묶음 선택\n"
           f"· {shown_grids:,}개 구역 · 화재 {pct(shown_cap)} 포착 "
-          f"({alloc.get('gain_pp', 0):+.1f}%p)\n"
+          f"({(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p)\n"
           f"· 관할별 최소 배분을 걸어도 손해 "
           f"{(alloc.get('equity') or {}).get('equity_cost_pp', 0):.1f}%p")],
         note="")
@@ -737,7 +737,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         ("① 위험 순서 배열의 한계",
          "구역마다 점검 소요가 다릅니다.\n"
          f"· 상위 {k}% = {tk.get('n_grids_selected', 0):,}개 구역 · "
-         f"{tk.get('cost_if_all', 0):,.0f}개소\n"
+         f"{tk.get('cost_if_all', 0):,.0f}건 소요\n"
          f"· 1위 구역 소요 "
          f"{(alloc.get('top1_grid') or {}).get('inspection_cost', 0):,.0f}건 > "
          f"가용 {alloc.get('budget_visits', 0):,}건\n\n"
@@ -746,7 +746,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "· 잡히는 화재 합계가 가장 큰\n"
          "  구역 묶음을 선택\n\n"
          f"→ 같은 인력, {shown_grids:,}개 구역, "
-         f"{alloc.get('gain_pp', 0):+.1f}%p",
+         f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p",
          ""),
         ("② 예측 결과의 문서화",
          "일별·월별·연간 계획서를\n"

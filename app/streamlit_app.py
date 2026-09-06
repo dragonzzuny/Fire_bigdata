@@ -549,8 +549,8 @@ with tabs[0]:
 
     if t["n_grids_affordable"] < t["n_grids_selected"]:
         st.markdown(
-            f"<div class='callout'><b>위험도 상위 {cfg.headline_k}% 안의 점검 대상은 "
-            f"{t['cost_if_all']:,.0f}개소입니다.</b><br>"
+            f"<div class='callout'><b>위험도 상위 {cfg.headline_k}% 를 다 돌려면 점검 소요가 "
+            f"{t['cost_if_all']:,.0f}건입니다.</b><br>"
             + (f"위험 1위 구역 한 곳의 소요가 {top1_cost:,.0f}건입니다. "
                f"가용 물량은 {capacity.total_visits:,}건이므로 그 한 곳도 "
                f"끝내지 못합니다. 위험한 구역일수록 점검할 건물이 많습니다. "

@@ -145,6 +145,11 @@ def main() -> int:
         if eff_rate is not None:
             eq_info["efficiency_only_capture_rate"] = float(eff_rate)
             eq_info["equity_cost_pp"] = float((got - eff_rate) * 100)
+        # 화면·장표에 뜨는 것은 형평성을 적용한 배분이다. 그 배분의 개선폭을
+        # 따로 적어 둔다. 효율 전용 값(gain_pp)을 186구역 옆에 붙이면
+        # 다른 배분의 수치를 한 문장에 섞게 된다.
+        base_rate = alloc_cmp["top_k_percent"]["actual_capture_rate"]
+        eq_info["gain_pp"] = float((got - base_rate) * 100)
         alloc_cmp["equity"] = eq_info
 
     # '위험한 순서대로 가면 1위 구역 하나도 못 끝낸다' 는 이 서비스의 출발점이다.

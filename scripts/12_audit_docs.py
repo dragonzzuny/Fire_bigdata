@@ -52,10 +52,10 @@ def expected(cfg) -> dict[str, str]:
         "세종 이식": f"{ev['transfer']['headline']['model_capture']:.0%}",
         "누적화재 단일피처": f"{ev['single_feature_probe'][0]['capture_top20']:.1%}",
         "상위 20% 구역 수": f"{tk['n_grids_selected']}개",
-        "상위 20% 점검 대상": f"{tk['cost_if_all']:,.0f}개소",
+        "상위 20% 점검 소요": f"{tk['cost_if_all']:,.0f}건",
         # 화면·CSV 에 나가는 배분(관할별 최소 배분 적용)이 문서에 적히는 수다.
         "배분 구역 수": f"{(a.get('equity') or {}).get('n_grids', op['n_grids'])}개",
-        "배분 개선폭": f"{a['gain_pp']:+.1f}%p",
+        "배분 개선폭": f"{(a.get('equity') or a)['gain_pp']:+.1f}%p",
         "순찰 회고 기준선": f"{(bt.get('headline') or {}).get('baseline_fires', 0):,.0f}건",
         "순찰 회고 포착": f"{(bt.get('headline') or {}).get('capture_share', 0):.1%}",
         "순찰 회고 화재": f"{(bt.get('headline') or {}).get('model_fires', 0):,.0f}건",

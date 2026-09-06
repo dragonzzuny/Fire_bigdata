@@ -66,7 +66,8 @@
       "cost_used": 640.0,
       "actual_capture_rate": 0.1781317885590152,
       "efficiency_only_capture_rate": 0.18102824040550325,
-      "equity_cost_pp": -0.28964518464880407
+      "equity_cost_pp": -0.28964518464880407,
+      "gain_pp": 17.81317885590152
     },
     "top1_grid": {
       "grid_id": "2331_3456",
