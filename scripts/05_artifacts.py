@@ -209,6 +209,24 @@ def main() -> int:
               f"{len(blind)}개 격자")
         blind.to_csv(out / f"hydrant_blindspots_{args.city}_{year}.csv",
                      index=False, encoding="utf-8-sig")
+    # 이 90개 구역이 걸친 읍면동에 몇 명이 사는가. 예산을 요구할 때 필요한
+    # 문장이라 대본에는 있었는데 산출물에는 없었다 — 손으로 적힌 숫자였다.
+    # 읍면동 단위로만 세는 이유: 상주인구는 읍면동까지만 공개된다. 격자에
+    # 나눠 붙이면 한 동의 인구가 여러 번 세어진다.
+    blind_pop = None
+    try:
+        from firebird import population as POP
+        pop = POP.collect(cfg, cur, city_label=cfg.city(args.city).get("label", ""))
+        if pop is not None and not pop.empty and "emd" in blind.columns:
+            emds = sorted(set(blind["emd"].dropna()))
+            hit = pop[pop["emd"].isin(emds)].drop_duplicates(subset=["sgg", "emd"])
+            if not hit.empty and "상주인구" in hit.columns:
+                blind_pop = {"n_emd": int(len(hit)),
+                             "population": int(hit["상주인구"].sum())}
+                print(f"  그 구역들이 걸친 읍면동 {blind_pop['n_emd']}곳 · "
+                      f"상주인구 {blind_pop['population']:,}명")
+    except Exception as e:                               # noqa: BLE001
+        print(f"  (읍면동 인구 결합 안 됨: {e})")
     if not surge.empty:
         surge.to_csv(out / f"fire_surge_{args.city}_{year}.csv",
                      index=False, encoding="utf-8-sig")
@@ -219,6 +237,7 @@ def main() -> int:
         "allocation": alloc_cmp,
         "hydrant_coverage": cov,
         "n_blind_spots": int(len(blind)),
+        "blind_spot_population": blind_pop,
         "n_surge_alerts": int(len(surge)),
         "patrol": patrol_info,
         "plan_source": plans[0]["source"] if plans else None,

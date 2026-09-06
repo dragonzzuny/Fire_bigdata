@@ -38,6 +38,7 @@ def layout(cfg) -> list[tuple[str, list[Path]]]:
             vid / "시연_핵심.mp4",
             vid / "시연_핵심_무자막.mp4",
             vid / "시연_전체.mp4",
+            vid / "불씨예보_시연영상_박용준.mp4",
         ]),
         ("03_대본", [
             docs / "DEMO_SCRIPT.md",
@@ -105,7 +106,9 @@ def readme(cfg, counts: dict, video_secs: dict) -> str:
     ]
     for name, use in (("시연_핵심.mp4", "발표에서 트는 것"),
                       ("시연_핵심_무자막.mp4", "발표자가 직접 말로 끌 때"),
-                      ("시연_전체.mp4", "여섯 화면 전부")):
+                      ("시연_전체.mp4", "여섯 화면 전부"),
+                      ("불씨예보_시연영상_박용준.mp4",
+                       "제출용. 전체본을 16:9 로 맞춘 것")):
         if name in video_secs:
             lines.append(f"| `{name}` | {mmss(video_secs[name])} | {use} |")
     lines += [

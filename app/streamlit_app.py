@@ -96,6 +96,9 @@ st.markdown("""
   .docview p { margin:0 0 .18rem; }
   .docview h2 { font-size:1.02rem; margin:1rem 0 .35rem; }
   .docview img { max-width:100%; border:1px solid var(--line); border-radius:4px; }
+  /* 결재란의 서명 칸. 빈 칸이라 높이가 0 으로 접혀 '기안 검토 결재' 글자만
+     남아 있었다. 공문 결재란은 도장을 찍을 자리가 있어야 결재란이다. */
+  .docview td:empty { height:3rem; }
 
   /* 업무 도우미 답변 */
   .answer { background:#fff; border:1px solid var(--line); border-left:4px solid var(--brand);
@@ -316,6 +319,21 @@ def pydeck(deck_obj, height: int | None = None):
     return st.pydeck_chart(deck_obj)
 
 
+def bar_chart(data, *, color=None, height=None, horizontal=False):
+    """st.bar_chart 를 부른다. horizontal 은 최신 판에만 있다.
+
+    pydeck 과 같은 이유다 — 발표장 노트북에 옛 판이 깔려 있으면 TypeError 로
+    화면이 죽는다. 가로 막대가 안 되면 세로로라도 그린다.
+    """
+    kw = {k: v for k, v in (("color", color), ("height", height)) if v is not None}
+    if horizontal:
+        try:
+            return st.bar_chart(data, horizontal=True, **kw)
+        except TypeError:
+            pass
+    return st.bar_chart(data, **kw)
+
+
 def route_layers(routes, *, width=45, radius=180, min_px=3):
     """관서별 동선을 지도 층으로 만든다. 현재 계획과 직전 계획에 같이 쓴다."""
     layers, depots = [], []
@@ -357,6 +375,29 @@ def plan_facts(plan, targets) -> dict:
     }
 
 
+def _img_src(src: str) -> str:
+    """계획서 안의 그림을 화면에서도 보이게 한다.
+
+    계획서 본문은 동선도를 `![순찰 동선도](/경로/map.png)` 로 참조한다.
+    그 경로를 그대로 <img src> 에 넣으면 브라우저는 서버의 파일 시스템을
+    읽을 수 없어 깨진 이미지 아이콘이 뜬다. 인쇄본은 base64 로 박아 넣고
+    있었는데 화면 미리보기만 빠져 있었다 — 시연에서 계획서를 열 때마다
+    깨진 그림이 하나 보이던 이유다.
+    """
+    if src.startswith(("http://", "https://", "data:")):
+        return src
+    try:
+        import base64
+        from pathlib import Path as _P
+        f = _P(src)
+        if f.is_file() and f.stat().st_size < 8_000_000:
+            b64 = base64.b64encode(f.read_bytes()).decode()
+            return f"data:image/png;base64,{b64}"
+    except Exception:                                     # noqa: BLE001
+        pass
+    return src
+
+
 def _md_to_html(md: str) -> str:
     """계획서 미리보기용 최소 마크다운 변환.
 
@@ -371,7 +412,12 @@ def _md_to_html(md: str) -> str:
         line = raw.rstrip()
         if line.startswith("|") and line.endswith("|"):
             cells = [c.strip() for c in line.strip("|").split("|")]
-            if all(_re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+            # 구분선(|---|---|)만 건너뛴다. 빈 행(| | | |)은 문서의
+            # 일부다 — 결재란의 서명 칸이 그것이다. 예전에는 all([]) 이
+            # True 라서 빈 행까지 구분선으로 보고 통째로 지웠고, 그래서
+            # 결재란에 '기안 검토 결재' 글자만 남아 있었다.
+            dashes = [c for c in cells if c]
+            if dashes and all(_re.fullmatch(r":?-{2,}:?", c) for c in dashes):
                 continue                       # 구분선
             if not in_table:
                 out.append("<table>")
@@ -389,7 +435,7 @@ def _md_to_html(md: str) -> str:
             continue
         m = _re.match(r"!\[[^\]]*\]\((.+?)\)", line.strip())
         if m:
-            out.append(f'<img src="{_html.escape(m.group(1))}">')
+            out.append(f'<img src="{_html.escape(_img_src(m.group(1)))}">')
             continue
         if line.startswith("### "):
             out.append(f"<h3>{_fmt_inline(line[4:])}</h3>")
@@ -443,6 +489,7 @@ table {{ width:100%; border-collapse:collapse; margin:6pt 0 12pt; }}
 th,td {{ border:1px solid #c8ccd2; padding:4pt 6pt; font-size:9.5pt; }}
 th {{ background:#f2f4f6; }}
 img {{ max-width:100%; margin:8pt 0; }}
+td:empty {{ height:34pt; }}
 blockquote {{ margin:4pt 0 8pt 12pt; color:#555; font-size:9.5pt; }}
 hr {{ border:0; border-top:1px solid #c8ccd2; margin:14pt 0; }}
 </style></head><body>{body}</body></html>"""
@@ -691,11 +738,19 @@ with tabs[1]:
                     st.warning(f"요인 계산 실패: {exc}")
                 if drivers:
                     dd = pd.DataFrame(drivers)
-                    st.bar_chart(dd.set_index("label")["contribution"],
-                                 color="#c0492f", height=210)
-                    st.dataframe(
-                        dd[["label", "value", "contribution"]].rename(columns={
-                            "label": "요인", "value": "현재값", "contribution": "기여도"}),
+                    # 세로 막대는 요인 이름을 세워 놓아 읽히지 않는다.
+                    # 그리고 SHAP 원값(2.3349)은 담당자에게 아무 뜻이 없다 —
+                    # 서로 견준 비중으로 바꾼다. 순서와 크기 비교는 그대로 남는다.
+                    total = float(dd["contribution"].clip(lower=0).sum()) or 1.0
+                    dd["비중"] = dd["contribution"].clip(lower=0) / total
+                    bar_chart(dd.set_index("label")["비중"],
+                              color="#c0492f", height=210, horizontal=True)
+                    col = "value_text" if "value_text" in dd.columns else "value"
+                    shown = dd[["label", col, "비중"]].rename(
+                        columns={"label": "요인", col: "현재값"})
+                    st.dataframe(shown.assign(
+                        **{"비중": shown["비중"].map("{:.0%}".format)}).rename(
+                        columns={"비중": "위험도 기여"}),
                         hide_index=True, width='stretch')
                 else:
                     st.caption("표시할 요인이 없습니다.")

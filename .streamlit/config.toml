@@ -1,0 +1,12 @@
+# 관서에 놓고 쓰는 화면이다. 개발자용 메뉴(Deploy·Rerun·설정)는 담당자에게
+# 쓸모가 없고, 발표 화면에서는 서비스가 아니라 개발 도구처럼 보이게 만든다.
+[client]
+toolbarMode = "minimal"
+showErrorDetails = "none"
+
+[server]
+# 파일을 고칠 때마다 다시 실행하겠느냐고 묻지 않는다.
+runOnSave = false
+
+[browser]
+gatherUsageStats = false

@@ -50,3 +50,9 @@ __pycache__/
 # 법정 서식 원본(hwp) — 국가법령정보센터에서 재다운로드 가능
 data/processed/forms/
 outputs/_bundle/
+
+# 플랫폼(bigdata-119.kr) 제공 원자료는 재배포하지 않는다.
+# 내려받는 곳은 docs/DATA_SOURCES.md 에 적혀 있다.
+# 발표 묶음(outputs/*_발표묶음.zip)도 넣지 않는다 — scripts/20_bundle.py 가
+# 언제든 다시 만든다. 저장소에 37MB 를 얹을 이유가 없다.
+*.zip

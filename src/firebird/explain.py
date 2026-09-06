@@ -30,6 +30,28 @@ FEATURE_LABELS = {
 }
 
 
+#: 피처 이름 -> 단위. 값만 보여 주면 3014.9765 가 무엇인지 알 수 없다.
+FEATURE_UNITS = {
+    "fires_lag1": "건", "fires_lag2": "건", "fires_cum": "건",
+    "fires_mean_prev": "건", "neigh_fires_lag1": "건", "neigh_fires_cum": "건",
+    "target_total": "개소", "usage_total": "개소", "fac_total": "개소",
+    "biz_total": "개소", "n_hydrant": "개", "dist_hydrant_m": "m",
+}
+
+
+def format_value(feature: str, value: float) -> str:
+    """요인의 현재값을 사람이 읽는 꼴로. 원값 그대로 두면 화면에서
+    3014.9765 처럼 보인다 — 담당자에게 아무 뜻이 없는 숫자다."""
+    if value != value:                                   # NaN
+        return "—"
+    unit = FEATURE_UNITS.get(feature, "")
+    if unit == "m":
+        return f"{value:,.0f}m"
+    if abs(value) >= 100 or float(value).is_integer():
+        return f"{value:,.0f}{unit}"
+    return f"{value:,.1f}{unit}"
+
+
 def label_of(feature: str) -> str:
     if feature in FEATURE_LABELS:
         return FEATURE_LABELS[feature]
@@ -57,8 +79,9 @@ def top_drivers(shap_row: np.ndarray, feature_cols: list[str], values: pd.Series
         if positive_only and contrib <= 0:
             break
         f = feature_cols[i]
-        out.append({"feature": f, "label": label_of(f),
-                    "value": float(values.get(f, np.nan)), "contribution": contrib})
+        raw = float(values.get(f, np.nan))
+        out.append({"feature": f, "label": label_of(f), "value": raw,
+                    "value_text": format_value(f, raw), "contribution": contrib})
         if len(out) >= top_n:
             break
     return out

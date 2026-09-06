@@ -83,6 +83,10 @@
     "median_hydrants": 1.0
   },
   "n_blind_spots": 90,
+  "blind_spot_population": {
+    "n_emd": 11,
+    "population": 201054
+  },
   "n_surge_alerts": 71,
   "patrol": {
     "peak_windows": [

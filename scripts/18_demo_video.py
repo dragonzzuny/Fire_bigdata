@@ -399,6 +399,25 @@ def cut(src: Path, start: float, stop: float, fast: float, dst: Path) -> bool:
                  "-pix_fmt", "yuv420p", str(dst)])
 
 
+def to_169(src: Path, dst: Path) -> bool:
+    """16:10 화면을 16:9 로 맞춘다. 위아래에 같은 색 띠를 넣어 가운데 둔다.
+
+    발표장은 발표자가 화면비를 맞출 수 있지만, 제출본은 심사위원 PC 에서
+    그냥 재생된다. 그때 좌우에 검은 띠가 생기면 화면이 작아진다.
+    """
+    if not src.exists() or not shutil.which("ffmpeg"):
+        return False
+    r = subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(src), "-vf",
+         # 원본이 16:10 이라 폭을 1920 에 맞추면 세로가 1200 이 되어
+         # 1080 프레임보다 커진다. 세로를 먼저 맞추고 좌우를 채운다.
+         "scale=-2:1080,pad=1920:1080:(ow-iw)/2:0:color=#12161C",
+         "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+         "-pix_fmt", "yuv420p", str(dst)],
+        capture_output=True, text=True)
+    return r.returncode == 0 and dst.exists()
+
+
 def concat(files: list, dst: Path, work: Path) -> bool:
     # concat 목록의 상대 경로는 목록 파일이 있는 폴더 기준으로 풀린다.
     # 절대 경로로 적지 않으면 _work/_work/... 를 찾다 실패한다.
@@ -419,7 +438,7 @@ def burn(src: Path, srt: Path, dst: Path) -> bool:
 
 def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
            only_key: bool = False, card_sec: float = 2.0,
-           subs: bool = True, base: float = 1.0) -> float:
+           subs: bool = True, base: float = 1.0, lead: bool = None) -> float:
     """자르고, 빨리 감고, 이어 붙이고, 자막을 태운다. 최종 길이(초)를 돌려준다."""
     if work.exists():
         shutil.rmtree(work, ignore_errors=True)
@@ -429,7 +448,7 @@ def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
         return 0.0
 
     files, total = [], 0.0
-    if only_key:
+    if only_key if lead is None else lead:
         lead = work / "lead.mp4"
         if card_clip(title_card(CARD_LEAD[0], CARD_LEAD[1], work / "lead.png"),
                      lead, 2.5):
@@ -502,15 +521,28 @@ def main() -> int:
         return 0
 
     # 자막본은 그대로 틀 때, 무자막본은 발표자가 얹어 말할 때 쓴다.
-    for name, only_key, subs in (("시연_전체.mp4", False, True),
-                                 ("시연_핵심.mp4", True, True),
-                                 ("시연_핵심_무자막.mp4", True, False)):
+    made = {}
+    for name, only_key, subs, lead in (
+            ("시연_전체.mp4", False, True, True),
+            ("시연_핵심.mp4", True, True, True),
+            ("시연_핵심_무자막.mp4", True, False, True)):
         dst = out / name
         secs = render(src, marks, end, dst, out / "_work",
-                      only_key=only_key, subs=subs, base=args.speed)
+                      only_key=only_key, subs=subs, base=args.speed,
+                      lead=lead)
         if secs:
+            made[name] = secs
             print(f"저장: {dst}  ({int(secs // 60)}분 {int(secs % 60)}초 · "
                   f"{dst.stat().st_size / 1e6:.1f} MB)")
+
+    # 제출본. 발표장에서 트는 것과 성격이 다르다 — 심사위원이 혼자, 설명
+    # 없이, 자기 PC 로 본다. 그래서 16:9 로 맞춰 좌우 띠를 없애고, 파일
+    # 이름을 제출물 이름으로 둔다.
+    if "시연_전체.mp4" in made:
+        sub_dst = out / "불씨예보_시연영상_박용준.mp4"
+        if to_169(out / "시연_전체.mp4", sub_dst):
+            print(f"저장: {sub_dst}  (제출용 · 16:9)")
+
     shutil.rmtree(out / "_work", ignore_errors=True)
     return 0
 

@@ -633,3 +633,49 @@ class TestDeckTitleStyle(unittest.TestCase):
                 if text.endswith(self.ENDINGS):
                     bad.append((i, text[:50]))
         self.assertEqual(bad, [], f"문장형 제목: {bad}")
+
+
+class TestPlanPreviewHtml(unittest.TestCase):
+    """계획서 미리보기가 문서를 있는 그대로 그리는가.
+
+    결재란의 서명 칸이 화면에서 사라져 있었다. 빈 행(| | | |)의 셀이 전부
+    비어 있어 all([]) 이 True 가 되고, 구분선으로 오인돼 통째로 지워졌다.
+    관서로 나가는 문서라 빈칸도 문서의 일부다.
+    """
+
+    @staticmethod
+    def _fns():
+        import ast
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py"
+        tree = ast.parse(src.read_text(encoding="utf-8"))
+        want = {"_fmt_inline", "_md_to_html", "_img_src"}
+        mod = ast.Module(body=[n for n in tree.body
+                               if isinstance(n, ast.FunctionDef) and n.name in want],
+                         type_ignores=[])
+        ns: dict = {}
+        exec(compile(mod, "<app>", "exec"), ns)  # noqa: S102
+        return ns
+
+    def test_empty_rows_survive(self):
+        html = self._fns()["_md_to_html"](
+            "| 기안 | 검토 | 결재 |\n|---|---|---|\n| | | |\n| | | |")
+        self.assertEqual(html.count("<tr>"), 3, f"빈 행이 사라졌다:\n{html}")
+
+    def test_separator_row_still_dropped(self):
+        html = self._fns()["_md_to_html"]("| 가 | 나 |\n|---|:--:|\n| 1 | 2 |")
+        self.assertNotIn("---", html)
+        self.assertEqual(html.count("<tr>"), 2)
+
+    def test_local_image_is_inlined(self):
+        import tempfile, os
+        fns = self._fns()
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n" + b"\0" * 64)
+            path = fh.name
+        try:
+            html = fns["_md_to_html"](f"![동선도]({path})")
+            self.assertIn("data:image/png;base64,", html,
+                          "화면 미리보기가 파일 경로를 그대로 넣고 있다")
+        finally:
+            os.unlink(path)

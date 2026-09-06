@@ -34,6 +34,54 @@ SHOTS = [
 ]
 
 
+def paint_through(page, selector: str, *, step: int = 700) -> None:
+    """요소를 끝까지 훑어 내려 브라우저가 실제로 그리게 한다.
+
+    요소 캡처의 높이는 문서 전체와 맞는데 아래쪽이 백지로 나온 적이 있다
+    (7,356px 중 2,799px 뒤가 전부 비었다). 화면 밖은 아직 칠해지지 않은
+    상태였고, 캡처는 칠해진 것만 가져간다. 한 번 훑어 주면 채워진다.
+    """
+    # window.scrollTo 는 Streamlit 에서 듣지 않는다 — 본문은 내부 컨테이너가
+    # 스크롤한다. 휠은 커서 아래의 스크롤 주체에 그대로 간다.
+    h = page.evaluate(
+        "sel => { const d = document.querySelector(sel);"
+        " return d ? d.scrollHeight : 0; }", selector) or 0
+    page.mouse.move(page.viewport_size["width"] // 2,
+                    page.viewport_size["height"] // 2)
+    for _ in range(int(h / step) + 4):
+        page.mouse.wheel(0, step)
+        page.wait_for_timeout(140)
+    page.wait_for_timeout(600)
+    try:
+        page.locator(selector).first.scroll_into_view_if_needed(timeout=10_000)
+    except Exception:                                     # noqa: BLE001
+        pass
+    page.wait_for_timeout(900)
+
+
+def trim_blank(path: Path, *, pad: int = 24) -> None:
+    """요소 캡처 아래에 붙은 백지를 잘라낸다.
+
+    .docview 를 요소로 찍으면 컨테이너 높이만큼 찍혀 문서가 끝난 뒤로
+    빈 공간이 길게 붙는다. 실제로 7,356px 중 2,799px 뒤가 전부 백지였고,
+    장표에서는 이걸 keep 비율로 눈대중해 잘라 쓰고 있었다. 여기서 자른다.
+    """
+    try:
+        from PIL import Image
+        import numpy as np
+    except Exception:                                     # noqa: BLE001
+        return
+    im = Image.open(path)
+    a = np.asarray(im.convert("L"))
+    ink = np.nonzero((a < 200).sum(axis=1))[0]
+    if not len(ink):
+        return
+    bottom = min(a.shape[0], int(ink[-1]) + pad)
+    top = max(0, int(ink[0]) - pad)
+    if bottom - top < a.shape[0] * 0.98:
+        im.crop((0, top, im.width, bottom)).save(path)
+
+
 def main() -> int:
     cfg = load_config()
     out = cfg.paths.figures
@@ -98,8 +146,61 @@ def main() -> int:
             # 문서 자체를 요소로 찍으면 좌표 계산이 필요 없다.
             doc = page.locator(".docview").first
             doc.wait_for(state="visible", timeout=20_000)
-            doc.screenshot(path=str(out / "shot_plan_result.png"))
+            # 결재란까지 그려졌는지 확인하고 찍는다. 기다리지 않고 찍었더니
+            # 문서 앞 38%만 들어오고 나머지가 백지였다.
+            try:
+                doc.get_by_text("결재").first.wait_for(timeout=20_000)
+            except Exception:                             # noqa: BLE001
+                page.wait_for_timeout(5_000)
+            paint_through(page, ".docview")
+            # Streamlit 은 본문을 내부 컨테이너로 스크롤한다. 그래서 문서가
+            # 화면보다 길면 한 장으로는 못 찍는다 — 요소 캡처는 칠해지지 않은
+            # 쪽이 백지로 남고, full_page 도 화면 높이까지만 잡힌다.
+            # 여기서는 훑어 내린 끝(붙임·끝.·발신명의·결재란이 있는 뒷부분)을
+            # 온전히 찍는다. 문서 머리는 shot_plan_head.png 가 따로 맡는다.
+            bb = doc.bounding_box()
+            page.screenshot(path=str(out / "_full_page.png"), full_page=True)
+            if bb:
+                from PIL import Image as _Im
+                sc = page.evaluate("() => window.devicePixelRatio") or 1
+                fp = _Im.open(out / "_full_page.png")
+                sy = page.evaluate("() => window.scrollY") or 0
+                box = (int(bb["x"] * sc), int((bb["y"] + sy) * sc),
+                       int((bb["x"] + bb["width"]) * sc),
+                       int((bb["y"] + sy + bb["height"]) * sc))
+                box = (max(0, box[0]), max(0, box[1]),
+                       min(fp.width, box[2]), min(fp.height, box[3]))
+                fp.crop(box).save(out / "shot_plan_result.png")
+                fp.close()
+            else:
+                doc.screenshot(path=str(out / "shot_plan_result.png"))
+            (out / "_full_page.png").unlink(missing_ok=True)
+            trim_blank(out / "shot_plan_result.png")
             print("  shot_plan_result.png  (생성된 계획서 본문)")
+            # 결재란은 문서 맨 끝이라 본문 캡처에 들어오지 않는다. 그런데
+            # '이대로 결재가 됩니다' 의 증거는 바로 그 칸이다. 따로 찍는다.
+            try:
+                appr = doc.locator("table").last
+                appr.scroll_into_view_if_needed(timeout=15_000)
+                page.wait_for_timeout(1_200)
+                appr.screenshot(path=str(out / "shot_plan_approval.png"))
+                print("  shot_plan_approval.png  (결재란)")
+            except Exception as exc:                      # noqa: BLE001
+                print(f"  결재란 캡처 건너뜀: {type(exc).__name__}")
+            # 제목·수신·시행일이 있는 머리도 따로. 장표에서 확대해 쓴다.
+            try:
+                head = doc.locator("p").first
+                head.scroll_into_view_if_needed(timeout=10_000)
+                page.wait_for_timeout(800)
+                bb = doc.bounding_box()
+                if bb:
+                    page.screenshot(path=str(out / "shot_plan_head.png"),
+                                    clip={"x": bb["x"], "y": max(bb["y"], 0),
+                                          "width": bb["width"],
+                                          "height": min(560, bb["height"])})
+                    print("  shot_plan_head.png  (기관·수신·제목·시행일)")
+            except Exception as exc:                      # noqa: BLE001
+                print(f"  머리 캡처 건너뜀: {type(exc).__name__}")
         except Exception as exc:                          # noqa: BLE001
             print(f"  계획서 캡처 건너뜀: {type(exc).__name__}")
 

@@ -174,7 +174,8 @@ def build_prompt(grid_id: str, risk: dict, drivers: list[dict], checklist: dict)
         "[모델이 짚은 위험 상승 요인]",
     ]
     for d in drivers or []:
-        lines.append(f"  - {d['label']}: 현재값 {d['value']:.4g} (기여도 {d['contribution']:+.3f})")
+        val = d.get("value_text") or f"{d['value']:.4g}"
+        lines.append(f"  - {d['label']}: 현재값 {val} (기여도 {d['contribution']:+.3f})")
     if not drivers:
         lines.append("  - (제공된 요인 없음)")
     lines += ["", "[점검 항목]"]
@@ -205,7 +206,8 @@ def rule_based_draft(grid_id: str, risk: dict, drivers: list[dict], checklist: d
         "2) 중점 확인 사항 (모델이 짚은 위험 상승 요인)",
     ]
     for d in drivers or []:
-        out.append(f"   - {d['label']} (현재값 {d['value']:.4g})")
+        val = d.get("value_text") or f"{d['value']:.4g}"
+        out.append(f"   - {d['label']} (현재값 {val})")
     if not drivers:
         out.append("   - (해당 없음)")
     out += ["", "3) 점검 항목"]

@@ -244,6 +244,20 @@ def crop_top(shot: Path, keep: float = 0.66) -> Path:
         return shot
 
 
+def crop_to(src: Path, dst: Path, top: float, bottom: float) -> Path | None:
+    """세로 비율로 잘라 새 파일로 낸다. 장표에서 확대해 보여 줄 조각을 만든다."""
+    if not src.exists():
+        return None
+    from PIL import Image
+    im = Image.open(src)
+    box = (0, int(im.height * top), im.width, int(im.height * bottom))
+    if box[3] - box[1] < 8:
+        return None
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    im.crop(box).save(dst)
+    return dst
+
+
 def screen_slide(prs, kicker: str, title: str, lead: str, shot: Path,
                  bullets: list[tuple[str, str]], *, note: str = "",
                  keep: float = 0.66):
@@ -380,11 +394,15 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                  "늘어나는 점검 대상, 정체된 인력",
                  "법정 주기와 담당자 경험에 의존하는 현행 우선순위 결정")
     band(s2, Inches(0.8), Inches(2.4), Inches(5.6), Inches(3.5))
-    textbox(s2, Inches(1.1), Inches(2.68), Inches(5.0), Inches(3.1),
-            "· 소방공무원 증원 정체 (2024년 전년 대비 +5명 수준)\n"
-            "· 특정소방대상물·다중이용업소, 30층 이상 고층건축물(+8%) 지속 증가\n"
-            "· 같은 법정 대상 안에서도 용도·업종·화재이력에 따라 실제 위험은 크게 다름\n"
-            "· 그 차이를 데이터로 구분해 우선순위를 정하는 체계가 없음", size=16.5)
+    textbox(s2, Inches(1.1), Inches(2.68), Inches(5.0), Inches(0.45),
+            "국내는 이 자리가 비어 있습니다", size=16.5, bold=True)
+    # 줄바꿈된 항목의 둘째 줄이 불릿 아래로 들어가면 문장이 끊겨 보인다.
+    # 짧게 끊어 한 줄에 담는다.
+    textbox(s2, Inches(1.1), Inches(3.2), Inches(5.0), Inches(2.6),
+            "· 소방공무원 정원 4년째 제자리 (2022년 이후 첫 증원이 2026년)\n"
+            "· 점검 대상은 계속 증가 — 30층 이상 고층 +484개소(8%)\n"
+            "· 같은 법정 대상 안에서도 실제 위험은 크게 다름\n"
+            "· 그 차이로 우선순위를 정하는 체계가 없음", size=15.5)
     band(s2, Inches(6.9), Inches(2.4), Inches(5.7), Inches(3.5),
          RGBColor(0xFD, 0xF0, 0xEC))
     textbox(s2, Inches(7.2), Inches(2.68), Inches(5.1), Inches(0.45),
@@ -401,23 +419,40 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             size=15, bold=True)
 
     # ---- 7 화면③ 계획서 ----
-    screen_slide(
-        prs, "2. 결과물", "일별·월별·연간 순찰 계획서",
-        "순찰 동선 · 중점 확인사항 · 법령 근거 포함",
-        (figs / "shot_plan_result.png"
-         if (figs / "shot_plan_result.png").exists() else figs / "shot_plan_doc.png"),
-        [("일별 · 월별 · 연간",
-          "· 월별: 그 달 화재위험으로 순찰 횟수 산정\n"
-          "· 연간: 계절별 순찰 유형·법정 이행사항 배치"),
-         ("공문 서식 그대로",
-          "· 기관·수신·시행일·관련 근거·붙임·결재란 포함\n"
-          "· 담당자가 옮겨 적을 항목 없음"),
-         ("법정 서식 안내",
-          "· 조치에 필요한 별지 서식을 함께 안내\n"
-          "· 예) 화재예방강화지구 관리대장")],
-        note="",
-        # 계획서 원본은 세로로 매우 길다. 장표 비율에 맞게 머리 부분만 쓴다.
-        keep=0.26)
+    # 이 장표의 주장은 '옮겨 적을 것이 없습니다' 다. 그런데 계획서를 통째로
+    # 줄여 넣으면 본문 글자를 읽을 수 없어 주장만 남고 증거가 안 보인다.
+    # 문서 전체는 왼쪽에 두고, 결재가 되는 이유 셋을 확대해 옆에 붙인다.
+    s_doc = section(prs, "2. 결과물", "일별·월별·연간 순찰 계획서",
+                    "순찰 동선 · 중점 확인사항 · 법령 근거 포함")
+    doc_img = (figs / "shot_plan_result.png"
+               if (figs / "shot_plan_result.png").exists()
+               else figs / "shot_plan_doc.png")
+    # 문서가 화면보다 길어 한 장으로 못 찍는다(scripts/08 주석 참고).
+    # 왼쪽에는 뒷부분 — 세부 근거 · 유의사항 · 붙임 · 끝. · 발신명의 · 결재란
+    # 이 이어지는 대목을 둔다. 공문으로 보이는지가 여기서 판가름 난다.
+    picture(s_doc, doc_img, Inches(0.8), Inches(2.15), Inches(4.4),
+            max_h=Inches(4.45))
+
+    head = figs / "shot_plan_head.png"
+    callouts = [
+        (crop_to(head, figs / "fig_plan_c1.png", 0.19, 0.47),
+         "기관 · 수신 · 제목 · 시행일"),
+        (crop_to(head, figs / "fig_plan_c2.png", 0.47, 0.73),
+         "「관련」 근거 조문"),
+        (figs / "shot_plan_approval.png" if (figs / "shot_plan_approval.png").exists()
+         else None, "결재란"),
+    ]
+    y = 2.15
+    for img, label in callouts:
+        if img is None or not Path(img).exists():
+            continue
+        textbox(s_doc, Inches(6.5), Inches(y), Inches(6.1), Inches(0.3),
+                label, size=12.5, bold=True, color=RED)
+        picture(s_doc, Path(img), Inches(6.5), Inches(y + 0.34), Inches(6.05),
+                max_h=Inches(1.15))
+        y += 1.62
+    textbox(s_doc, Inches(0.8), Inches(6.85), Inches(11.8), Inches(0.4),
+            "담당자가 옮겨 적을 항목이 없습니다.", size=15, bold=True)
 
     # ---- 3 무엇을 (구성) ----
     s3 = section(prs, "3. 제안 내용",
@@ -466,18 +501,19 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
     s_map = section(prs, "5. 서비스 화면 ①",
                     "구역별 화재위험 지도",
-                    f"{grid_m}m 구역마다 예측한 위험도. 관서별 동선을 함께 얹습니다")
-    map_img = figs / "map_route.png"
+                    f"{grid_m}m 구역마다 예측한 위험도")
+    # 위험도 지도 한 장만 크게 둔다. 동선 지도를 나란히 줄이면 선이 사라져
+    # 두 장 다 못 읽는 그림이 된다. 동선은 순찰 화면 장표와 영상이 맡는다.
+    map_img = figs / "map_risk.png"
     if map_img.exists():
-        # 지도는 세로로 길다. 폭만 맞추면 장표 아래로 넘친다.
         from PIL import Image
         try:
             w_px, h_px = Image.open(map_img).size
             ratio = w_px / h_px
         except Exception:                                # noqa: BLE001
             ratio = 0.85
-        max_h = 4.7
-        width = min(6.5, max_h * ratio)
+        max_h = 4.5
+        width = min(6.3, max_h * ratio)
         pic = picture(s_map, map_img, Inches(0.7), Inches(2.15), Inches(width))
         if pic is not None:
             pic.width, pic.height = Inches(width), Inches(width / ratio)
@@ -619,7 +655,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     s9 = section(prs, "6. 검증 결과",
                  f"{tr[0]}~{tr[-1]}년 학습, {year}년 예측",
                  f"{year}년 자료는 학습에 미사용")
-    picture(s9, figs / "fig_capture_curve.png", Inches(0.8), Inches(2.25), Inches(7.3))
+    picture(s9, figs / "fig_decile.png", Inches(0.8), Inches(2.25), Inches(7.3))
     x = Inches(8.5)
     kpi(s9, x, Inches(2.3), Inches(4.0), pct(h["model_capture"]),
         f"위험 상위 {k}% 구역이 담은 실제 화재",
@@ -628,25 +664,43 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          else f"단순 기준 {pct(h['baseline_capture'])}"))
     kpi(s9, x, Inches(4.0), Inches(4.0), f"{h['model_lift']:.2f}배",
         "아무 데나 갔을 때 대비",
-        (f"전년 화재 순으로 갈 때보다 {d['point_pp']:+.1f}%p"
-         if d else ""), color=BLUE)
-    kpi(s9, x, Inches(5.7), Inches(4.0), pct(t["model"]["pei"][key], 0),
-        "도달 가능한 최선 대비",
-        "실제 화재를 다 알고 줄 세운 값을 100으로 볼 때", color=GREEN)
+        f"위험 1등급 대비 10등급이 격자당 화재 "
+        f"{extra.get('decile_hi', 0):.1f}건", color=BLUE)
+    kpi(s9, x, Inches(5.7), Inches(4.0),
+        (f"{d['point_pp']:+.1f}%p" if d else f"{h['delta_pp']:+.1f}%p"),
+        f"전년 화재 순으로 갈 때 대비 (상위 {k}%)",
+        (f"단순 기준 {pct(h['baseline_capture'])} · 95% 신뢰구간 "
+         f"{d['lo_pp']:+.1f} ~ {d['hi_pp']:+.1f}%p"
+         if d and "lo_pp" in d else
+         f"단순 기준 {pct(h['baseline_capture'])}"), color=GREEN)
+    textbox(s9, Inches(0.85), Inches(6.85), Inches(7.2), Inches(0.35),
+            f"실제 화재를 다 알고 줄 세운 값을 100으로 보면 "
+            f"{pct(t['model']['pei'][key], 0)} 수준입니다.",
+            size=12, color=MUTED)
 
     # ---- 10 어디까지 확인했나 ----
     s10 = section(prs, "6. 검증 결과 (계속)",
                   "타 지역·타 관할 적용 검증 4건",
-                  "")
+                  "네 가지 방식으로 따로 확인")
     rows = [["확인한 것", "질문", f"상위 {k}% 포착", "결과"]]
     rows.append(["미래 예측", f"{year}년을 맞히는가", pct(h["model_capture"]),
                  (f"전년 화재 순 대비 {d['point_pp']:+.1f}%p"
                   if d else f"{h['delta_pp']:+.1f}%p")])
+    logo_line = ""
     if "logo" in ev:
         lg = ev["logo"]
+        wins = [(g["group"], (g["capture"] - g["baseline_capture"]) * 100)
+                for g in lg.get("per_group", [])]
+        n_win = sum(1 for _, d in wins if d > 0)
         rows.append(["관할 제외", "특정 구·군만 잘 맞는 것은 아닌가",
                      f"{pct(lg['capture_min'])} ~ {pct(lg['capture_max'])}",
-                     f"평균 {pct(lg['capture_mean'])}"])
+                     (f"{n_win}/{len(wins)} 관할이 단순 기준 상회"
+                      if wins else f"평균 {pct(lg['capture_mean'])}")])
+        if wins:
+            logo_line = ("관할 제외 검증 — 단순 기준 대비 "
+                         + " · ".join(f"{g} {d:+.1f}" for g, d in
+                                      sorted(wins, key=lambda x: -x[1]))
+                         + f" %p (평균 {sum(d for _, d in wins)/len(wins):+.1f}%p)")
     if "transfer" in ev:
         tf = ev["transfer"]
         tci = tf.get("ci", {}).get(key, {}).get("model", {})
@@ -662,6 +716,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                          pct(road.get("모델포착@20%")), "부풀림 없음"])
     table(s10, Inches(0.8), Inches(2.35), Inches(11.8), Inches(2.5), rows,
           col_widths=[2.8, 5.0, 2.4, 3.0], size=13.5)
+    if logo_line:
+        textbox(s10, Inches(0.85), Inches(4.55), Inches(11.7), Inches(0.35),
+                logo_line, size=12.5, color=BLUE)
     picture(s10, figs / "fig_monthly_risk.png", Inches(0.9), Inches(5.0), Inches(6.4))
     band(s10, Inches(7.7), Inches(5.0), Inches(4.9), Inches(1.9))
     textbox(s10, Inches(7.95), Inches(5.2), Inches(4.4), Inches(1.6),
@@ -685,10 +742,16 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                        "그해 이전 자료만으로 계획했을 때의 포착 결과")
         rows = [["순찰 구역", "관내 비중", "우리 계획", "작년 화재 순", "무작위",
                  "그해 화재 중"]]
+        # 네 줄이 같은 무게로 놓이면 어디를 봐야 할지 알 수 없다.
+        # 오늘 말하는 운영점 한 줄만 굵게 세운다.
+        _opn = bt.get("operating_point", 60)
         for r in bt["years"][0]["by_patrol_size"]:
-            rows.append([f"{r['patrol_grids']}개", f"{r['share_of_city']:.1%}",
-                         f"{r['model_fires']:.0f}건", f"{r['baseline_fires']:.0f}건",
-                         f"{r['random_fires']:.1f}건", f"{r['capture_share']:.1%}"])
+            hit = r["patrol_grids"] == _opn
+            def _m(t):
+                return f"**{t}**" if hit else t
+            rows.append([_m(f"{r['patrol_grids']}개"), _m(f"{r['share_of_city']:.1%}"),
+                         _m(f"{r['model_fires']:.0f}건"), _m(f"{r['baseline_fires']:.0f}건"),
+                         _m(f"{r['random_fires']:.1f}건"), _m(f"{r['capture_share']:.1%}")])
         table(s_bt, Inches(0.8), Inches(2.3), Inches(6.9), Inches(2.4), rows,
               col_widths=[1.5, 1.4, 1.4, 1.5, 1.2, 1.4], size=12.5)
 
@@ -717,22 +780,29 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                              f"{y['by_patrol_size'][2]['capture_share']:.1%}"
                              for y in bt["years"])
                 + " 로 반복했습니다.", size=12.5)
-        _g = bh.get("gain_ci", {})
+        # 세 해를 나란히 둔다. 한 해만 적으면 '그해만 운이 좋았나' 로 읽힌다.
+        _op = bt.get("operating_point", 60)
+        per_year = []
+        for y in bt["years"]:
+            r = next((x for x in y["by_patrol_size"]
+                      if x["patrol_grids"] == _op), None)
+            if r:
+                g = r.get("gain_ci", {})
+                per_year.append(f"{y['year']}년 {r['gain_over_baseline']:+.0f}건 "
+                                f"[{g.get('lo', 0):+.0f}, {g.get('hi', 0):+.0f}]")
         band(s_bt, Inches(0.8), Inches(4.85), Inches(11.8), Inches(0.55))
         textbox(s_bt, Inches(1.0), Inches(4.93), Inches(11.4), Inches(0.4),
-                f"작년 화재 순으로 같은 {bh.get('patrol_grids', 0)}곳을 골랐다면 "
-                f"{bh.get('baseline_fires', 0):.0f}건, 차이 "
-                f"{bh.get('gain_over_baseline', 0):+.0f}건, 95% 신뢰구간 "
-                f"{_g.get('lo', 0):+.0f} ~ {_g.get('hi', 0):+.0f}건입니다.",
-                size=12.5)
+                f"작년 화재 순으로 같은 {_op}곳을 골랐을 때와의 차이 · 95% 신뢰구간   "
+                + "   ·   ".join(per_year)
+                + "   — 세 해 모두 0을 넘습니다.", size=12.5)
 
 
 
     # ---- 8-2 차별성 ----
     s_diff = section(prs, "7. 차별성",
                      "예측 다음 단계: 배분 · 동선 · 문서",
-                     "화재위험 예측은 2016년 애틀랜타 사례로 이미 존재. "
-                     "그 다음 단계 세 가지")
+                     "해외 사례도 예측에서 멈췄습니다. "
+                     "‘그래서 이번 달에 어디를 돌아라’까지 가는 세 걸음")
     cards = [
         ("① 위험 순서 배열의 한계",
          "구역마다 점검 소요가 다릅니다.\n"
@@ -763,7 +833,11 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
          "· 계획서: 원문에 없던 수·조문이\n"
          "  하나라도 생기면 그 결과를 버림\n\n"
          "· 업무 도우미: 인용 조문을 원문과 대조,\n"
-         "  자료 밖이면 ‘확인 필요’ 표시",
+         "  자료 밖이면 ‘확인 필요’ 표시\n\n"
+         "폐쇄망: 기관 내부 로컬 모델(Ollama)\n"
+         "또는 규칙기반으로 같은 문서가 나옵니다.\n"
+         "외부 호출 없이 동작하며, 어느 경로로\n"
+         "만들었는지가 산출물에 기록됩니다.",
          ""),
     ]
     x0, w_card = 0.8, 3.87
@@ -787,7 +861,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                    "해외 사례 비교: 애틀랜타 Firebird",
                    "미국 NFPA 모범사례 선정 시스템 (KDD 2016)")
     rows = [["", "Firebird (애틀랜타, 2016)", "불씨예보 (울산, 2026)"],
-            ["분석 단위", "상업용 건물 5,000여 개소",
+            ["분석 단위", "위험점수를 매긴 상업용 건물 5,000여 개소",
              f"{grid_m}m 구역 {t['model']['n_grids']:,}개"],
             ["자료", "8종 결합 (건물대장·화재·인구 등)", "소방안전 빅데이터 8종 + 기상 + 법령"],
             ["예측 성능", "상업용 화재 70% 이상 예측\n(오경보율 20% 기준)",
@@ -797,15 +871,21 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
              "시간분할 + 관할제외 + 타 지역 + 주소 정밀도"],
             ["산출물", "위험점수 · 지도 시각화",
              "위험지도 · 인력 제약 배분 · 관서별 동선 ·\n공문 계획서 · 법령 질의응답"],
-            ["인력 제약", "**미해결**: 논문에 “19,397개는 현 인력이\n감당할 수 있는 수준을 훨씬 넘는다”고 기술",
-             f"**해결**: 가용 인력 안에서 배분,\n동일 인력 대비 {alloc.get('gain_pp', 0):+.1f}%p 개선"]]
+            ["점검 대상", "기존 2,573개소 + 새로 찾은 후보 19,397개소\n(추려서 6,096개소 권고)",
+             f"{tk.get('n_grids_selected', 0):,}개 구역 · 점검 소요 "
+             f"{tk.get('cost_if_all', 0):,.0f}건"],
+            ["인력 제약", "**미해결**: 연 점검을 6,096건(237%) 늘리는 것은\n"
+                          "조직·조례·증원 없이는 불가능하다고 논문이 적음",
+             f"**해결**: 가용 인력 안에서 배분,\n동일 인력 대비 "
+             f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p 개선"]]
     table(s_us, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.9), rows,
           col_widths=[2.2, 4.8, 4.8], size=11.5)
     band(s_us, Inches(0.8), Inches(6.35), Inches(11.8), Inches(0.75),
          RGBColor(0xEC, 0xF8, 0xF2))
     textbox(s_us, Inches(1.05), Inches(6.48), Inches(11.3), Inches(0.5),
-            "Firebird 논문도 “현 인력으로 감당할 수 없다”고 지적했으나 풀지는 "
-            "않았습니다.", size=13, bold=True, color=GREEN)
+            "Firebird 논문에는 순찰 경로도, 계획 문서도 나오지 않습니다. "
+            "인력 제약을 지적한 자리에서 멈췄습니다.",
+            size=13, bold=True, color=GREEN)
 
     # ---- 11 기대효과 ----
     s11 = section(prs, "8. 기대효과 및 활용방안",
@@ -828,11 +908,31 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             f"인력에 맞춘 배분 vs 상위 {k}% 방식 · "
             f"무작위 대비 {h['model_lift']:.2f}배", color=BLUE)
     hc = summary.get("hydrant_coverage", {})
+    bp = summary.get("blind_spot_population") or {}
     kpi(s11, Inches(8.9), Inches(2.4), Inches(3.7),
         f"{summary.get('n_blind_spots', 0)}개",
         "고위험 · 소방용수 사각 구역",
-        f"전체 구역의 {pct(hc.get('share_without_hydrant'))}에 소화전 없음",
+        (f"{bp['n_emd']}개 읍면동 · 상주인구 {bp['population']:,}명"
+         if bp else
+         f"전체 구역의 {pct(hc.get('share_without_hydrant'))}에 소화전 없음"),
         color=GREEN)
+    # 회고 검증을 세 해 모두 적는다. 한 해만 적으면 우연으로 읽힌다.
+    _bt = extra.get("backtest") or {}
+    if _bt.get("years"):
+        _op = _bt.get("operating_point", 60)
+        _yy = []
+        for y in _bt["years"]:
+            r = next((x for x in y["by_patrol_size"]
+                      if x["patrol_grids"] == _op), None)
+            if r:
+                g = r.get("gain_ci", {})
+                _yy.append(f"{y['year']}년 {r['gain_over_baseline']:+.0f}건 "
+                           f"[{g.get('lo', 0):+.0f}, {g.get('hi', 0):+.0f}]")
+        textbox(s11, Inches(0.8), Inches(3.95), Inches(11.8), Inches(0.35),
+                f"{_op}개 구역 회고 검증 · 작년 화재 순 대비   "
+                + "   ·   ".join(_yy)
+                + "   — 세 해 모두 신뢰구간이 0을 넘습니다.",
+                size=12.5, color=MUTED)
     textbox(s11, Inches(0.8), Inches(4.3), Inches(11.8), Inches(2.4),
             "· 예방순찰   119안전센터별 출동 계획, 목적별 순찰 6종, 월별 순찰 강도\n"
             "· 예방점검   화재안전조사 대상 우선순위를 자동으로 정하고, 공문 서식 계획서로 바로 결재\n"
@@ -844,7 +944,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # ---- 12 한계 ----
     s12 = section(prs, "9. 한계와 향후 계획",
                   "확인된 한계와 대응 방안",
-                  "")
+                  "아는 한계와 지금의 대응")
     rows = [["한계", "현재 대응", "향후"]]
     rows += [
         ["공개 데이터에 건물번호·좌표가 없음",
@@ -879,11 +979,31 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         picture(s13, logo, Inches(0.85), Inches(1.05), Inches(3.6), max_h=Inches(1.6))
     textbox(s13, Inches(0.9), Inches(2.75), Inches(11.5), Inches(1.6),
             "한정된 인력을\n가장 위험한 곳에", size=44, bold=True)
-    textbox(s13, Inches(0.9), Inches(4.9), Inches(11.5), Inches(1.4),
+    textbox(s13, Inches(0.9), Inches(4.9), Inches(6.2), Inches(1.4),
             f"울산광역시 {manifest.get('panel', {}).get('grids', 0):,}개 구역 · "
             f"화재 {manifest.get('panel', {}).get('total_fires', 0):,.0f}건으로 검증\n\n"
             "박용준 · 아주대학교 산업공학과 석사과정\n"
             "github.com/dragonzzuny/Fire_bigdata", size=17, color=MUTED)
+
+    # 이 장표는 질의응답 5분 내내 화면에 떠 있다. 오른쪽 절반이 비어 있으면
+    # 그동안 근거가 심사위원 눈앞에 없다.
+    _al = (alloc.get("equity") or alloc)
+    _bh2 = (extra.get("backtest") or {}).get("headline", {})
+    facts = [
+        (f"{_al.get('actual_capture_rate', 0):.1%}",
+         f"같은 인력으로 잡는 화재 (위험 순서대로는 0%)"),
+        (pct(h["model_capture"]), f"위험 상위 {k}% 구역이 담은 실제 화재"),
+        (f"{_bh2.get('capture_share', 0):.1%}",
+         f"관내 {_bh2.get('share_of_city', 0):.1%}만 순찰한 "
+         f"{_bh2.get('year', 0)}년 회고 검증"),
+    ]
+    y = 1.35
+    for value, label in facts:
+        textbox(s13, Inches(7.5), Inches(y), Inches(5.1), Inches(0.75),
+                value, size=40, bold=True, color=RED)
+        textbox(s13, Inches(7.5), Inches(y + 0.82), Inches(5.1), Inches(0.5),
+                label, size=13, color=MUTED)
+        y += 1.62
 
     return prs
 
@@ -895,6 +1015,17 @@ def collect_extra(cfg, city: str) -> dict:
     import pandas as pd
 
     out: dict = {}
+
+    # 위험 등급별 격자당 실제 화재. 장표에 손으로 적지 않기 위해 파일에서 읽는다.
+    try:
+        import json as _json
+        _ev = _json.loads((cfg.paths.outputs / "evaluation.json").read_text(encoding="utf-8"))
+        _dec = _ev["temporal"]["model"]["decile"]
+        _key = next(k for k in _dec[0] if "fire" in k.lower() or "화재" in k)
+        out["decile_hi"] = float(_dec[-1][_key])
+        out["decile_lo"] = float(_dec[0][_key])
+    except Exception:                                    # noqa: BLE001
+        pass
     try:
         from firebird import dataset as D
         panel = D.load_panel(cfg, city)
