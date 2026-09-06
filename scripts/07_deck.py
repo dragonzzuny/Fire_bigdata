@@ -7,7 +7,10 @@
 """
 from __future__ import annotations
 
+import argparse
 import json
+import shutil
+import subprocess
 import sys
 import re
 from pathlib import Path
@@ -344,7 +347,8 @@ def screen_slide(prs, kicker: str, title: str, lead: str, shot: Path,
 
 
 def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
-          ds_rows: list[list[str]], extra: dict) -> Presentation:
+          ds_rows: list[list[str]], extra: dict, *,
+          movie: bool = True) -> Presentation:
     """10분 발표(시연 3분 포함) + 5분 질의응답.
 
     읽는 사람은 소방청·소방본부 관계자다. 알고리즘 이름보다
@@ -543,6 +547,50 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             f"{extra.get('n_law', 0)}종 {extra.get('n_article', 0)}개 조문 · "
             f"별표 {extra.get('n_annex', 0)}건 · 법정 서식 "
             f"{extra.get('n_form', 0)}종", size=12.5)
+
+    # ---- 시연 영상 ----
+    # 발표 중에 다른 프로그램으로 넘어가지 않도록 영상을 장표에 심는다.
+    # 창을 바꾸는 순간이 이 발표에서 유일하게 손이 미끄러질 수 있는 자리다.
+    vid = cfg.paths.outputs / "demo_video" / "시연_핵심.mp4"
+    s_vid = section(prs, "5. 시연", "실제로 도는 화면",
+                    "배분 · 순찰 동선 · 조건 변경 · 계획서 생성")
+    if vid.exists():
+        poster = figs / "fig_video_poster.png"
+        try:
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", "12",
+                            "-i", str(vid), "-frames:v", "1", str(poster)],
+                           check=False)
+        except Exception:                                # noqa: BLE001
+            poster = None
+        from PIL import Image
+        try:
+            vw, vh = Image.open(vid.with_suffix(".png")).size
+        except Exception:                                # noqa: BLE001
+            vw, vh = 1300, 1132
+        if poster and poster.exists():
+            try:
+                vw, vh = Image.open(poster).size
+            except Exception:                            # noqa: BLE001
+                pass
+        max_h, max_w = 4.55, 9.0
+        wd = min(max_w, max_h * vw / vh)
+        ht = wd * vh / vw
+        # PDF 로 뽑을 때는 영상 도형을 넣지 않는다. LibreOffice 가 그 도형을
+        # 그리지 못해 노이즈 덩어리로 나온다. 인쇄본에는 첫 화면을 그림으로.
+        if movie:
+            try:
+                s_vid.shapes.add_movie(
+                    str(vid), Inches((13.333 - wd) / 2), Inches(2.2),
+                    Inches(wd), Inches(ht),
+                    poster_frame_image=(str(poster) if poster and poster.exists()
+                                        else None),
+                    mime_type="video/mp4")
+            except Exception as exc:                     # noqa: BLE001
+                print(f"  영상 삽입 실패: {type(exc).__name__}: {exc}")
+        elif poster and poster.exists():
+            picture(s_vid, poster, Inches((13.333 - wd) / 2), Inches(2.2),
+                    Inches(wd), max_h=Inches(ht))
+
 
     # ---- 5 지도: 어디가 위험하고 어디를 도는가 ----
     s_map = section(prs, "5. 서비스 화면 ①",
@@ -1212,6 +1260,12 @@ def collect_extra(cfg, city: str) -> dict:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--city", default="ulsan")
+    ap.add_argument("--no-pdf", dest="pdf", action="store_false",
+                    help="PDF 변환을 건너뛴다")
+    args = ap.parse_args()
+
     cfg = load_config()
     ev_path = cfg.paths.outputs / "evaluation.json"
     if not ev_path.exists():
@@ -1234,11 +1288,31 @@ def main() -> int:
         print(f"그림이 없다: {missing}. scripts/06_figures.py 를 먼저 돌려라.")
         return 1
 
-    prs = build(cfg, ev, summary, manifest, figs, dataset_rows(cfg),
-                collect_extra(cfg, city))
+    rows, extra = dataset_rows(cfg), collect_extra(cfg, city)
     out = cfg.paths.outputs / f"불씨예보_발표자료_{city}_{year}.pptx"
+    prs = build(cfg, ev, summary, manifest, figs, rows, extra, movie=True)
     prs.save(out)
     print(f"발표자료 저장: {out}  ({len(prs.slides._sldIdLst)}장)")
+
+    # 인쇄·제출용 PDF. 영상 도형이 들어 있으면 LibreOffice 가 그 자리를
+    # 노이즈로 그린다. 같은 장표를 그림으로 바꿔 한 번 더 짓고 그것을 변환한다.
+    if args.pdf:
+        import tempfile
+        pdf = out.with_suffix(".pdf")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td) / out.name
+            build(cfg, ev, summary, manifest, figs, rows, extra,
+                  movie=False).save(tmp)
+            r = subprocess.run(["soffice", "--headless", "--convert-to", "pdf",
+                                "--outdir", td, str(tmp)],
+                               capture_output=True, text=True, timeout=900)
+            made = Path(td) / (tmp.stem + ".pdf")
+            if made.exists():
+                pdf.unlink(missing_ok=True)
+                shutil.copy2(made, pdf)
+                print(f"PDF 저장: {pdf}  (영상 자리는 첫 화면 그림)")
+            else:
+                print(f"PDF 변환 실패: {r.stderr[:200]}")
     return 0
 
 

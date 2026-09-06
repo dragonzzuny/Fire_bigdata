@@ -45,6 +45,27 @@ W, H = 1600, 1000
 #: 두 창의 폭은 같아야 한다 — 다르면 이어 붙일 때 ffmpeg 이 거부한다.
 SIDE_W = 300
 OUT_W = W - SIDE_W
+#: 자막 전용 띠. 화면 위에 자막을 얹으면 컷마다 다른 것을 가린다 — 점검
+#: 순위표, 관서별 표, '빠진 구역 9개 / 새 구역 6개' 가 실제로 가려져 있었다.
+#: 컷마다 위치를 맞추는 대신 아래에 자막만 놓는 띠를 붙인다. 구조적으로
+#: 가릴 수가 없어지고, 컷이 늘어도 다시 손볼 일이 없다.
+BAR_H = 132
+OUT_H = H + BAR_H
+
+#: libass 는 SRT 에 화면 크기가 없으면 PlayResY 를 288 로 잡고 그 비율로
+#: 글자와 여백을 키운다. 그래서 FontSize·MarginV 를 화소로 착각하면
+#: 자막 상자가 띠보다 커진다 — 실제로 80px 띠에 171px 상자가 얹혔다.
+#: 아래 두 값은 그 배율을 되돌려 계산한다.
+_ASS_RES = 288
+_BOX_PER_PT = 2.1                 # 글자 크기 1 당 상자 높이(측정값)
+
+
+def _sub_metrics() -> tuple[float, int]:
+    """(FontSize, MarginV) — 자막 상자가 띠 안에 들어오도록."""
+    scale = OUT_H / _ASS_RES
+    size = round((BAR_H - 16) / (scale * _BOX_PER_PT), 1)
+    margin = max(1, int(8 / scale))
+    return size, margin
 #: 제목 카드용 한글 글꼴. 없는 장비에서도 돌도록 후보를 여러 개 둔다.
 FONT_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
@@ -100,6 +121,32 @@ class Recorder:
             self.marks.append(Mark(self.now(), "", endkey=True))
         self.page.get_by_role("tab", name=name).click(timeout=25_000)
         self.settle(settle, text, **kw)
+
+    def read(self, label: str, default: str = "") -> str:
+        """화면에 떠 있는 지표 값을 그대로 읽어 온다.
+
+        자막에 숫자를 손으로 적으면 화면과 어긋난다. 이 영상은 그때그때
+        다시 돌린 결과를 찍는 것이라 값이 바뀔 수 있다. 화면에서 읽으면
+        자막과 화면이 어긋날 수가 없다.
+        """
+        try:
+            # st.metric 은 라벨과 값이 각각 제 testid 를 갖는다. 부모를 거슬러
+            # 올라가 글자를 긁으면 옆 지표까지 딸려 온다.
+            m = self.page.locator("[data-testid='stMetric']").filter(
+                has_text=label).first
+            return m.locator("[data-testid='stMetricValue']").inner_text(
+                timeout=8_000).strip()
+        except Exception:                                 # noqa: BLE001
+            return default
+
+    def count_in(self, label: str, default: str = "") -> str:
+        """'빠진 구역 9개' 처럼 라벨과 수가 붙어 있는 문구를 통째로 읽는다."""
+        import re as _re
+        try:
+            t = self.page.get_by_text(_re.compile(label + r"\s*\d+개")).first
+            return t.inner_text(timeout=8_000).strip().splitlines()[0]
+        except Exception:                                 # noqa: BLE001
+            return default
 
     def scroll(self, ratio: float, seconds: float = 1.5) -> None:
         """화면을 천천히 내린다. 뚝 끊기면 무엇을 보는지 알 수 없다."""
@@ -167,19 +214,22 @@ def play(page, pace: float) -> list:
     r.beat(5)
     r.mark("같은 인력으로 186개 구역 · 화재 17.8%")
     r.beat(4)
-    # 화면에 있는 것을 이름만 부르는 자막이라 오래 둘 이유가 없다.
-    r.settle(6, "점검 순위표와 지도로 확인합니다", fast=2.0)
+    r.settle(6, "1위 구역 하나가 713건 — 가용 640건을 넘습니다", fast=2.0)
 
     # --- 2. 순찰 동선 (핵심) --------------------------------------------
     r.tab("예방순찰 계획", 13, "순찰 목적과 출동 단위를 고릅니다",
           key=True, card="관서별 순찰 동선")
-    r.beat(6, "1회 순찰 시간과 지역 단위도 지정합니다")
+    r.beat(3)
+    _st = r.read("출동 관서", "8개")
+    _km = r.read("총 이동", "")
+    r.mark(f"관서 {_st} · 총 이동 {_km}".strip(" ·"))
+    r.beat(3)
     if r.to("관서별 순찰 구역", 4):
         # 지도가 실제로 보이는 자리에서 동선 이야기를 한다.
-        r.settle(7, "119안전센터 출발 · 관할 순회 · 복귀")
+        r.settle(7, "관서마다 자기 관할만 돕니다")
         r.beat(7, "색깔이 관서 · 선은 실제 도로 주행거리")
     r.scroll(0.7, 3)
-    r.beat(6, "관서별 구역 수와 이동거리")
+    r.beat(6)
 
     # --- 3. 조건을 바꾸면 계획이 다시 짜인다 (핵심) ----------------------
     try:
@@ -210,9 +260,16 @@ def play(page, pace: float) -> list:
         r.mark("", fast=8.0)          # 계산이 끝날 때까지는 자막 없이 지나간다
         r.beat(6)
         if r.to_block("바꾸기 전", 4):
-            r.mark("바꾸기 전과 바꾼 뒤를 나란히")
-            r.settle(12, "같은 범위 · 같은 배율입니다")
-        r.to("가장 먼 순찰조", 8, "빠진 구역과 새 구역까지 기록")
+            # '같은 범위 · 같은 배율' 은 화면에도 글자로 있고 발표자도
+            # 얹어 말한다. 자막까지 하면 세 번이다. 자막은 결과를 말한다.
+            r.mark("조건을 바꾸면 계획이 통째로 다시 나옵니다")
+            r.settle(6)
+            _gone = r.count_in("빠진 구역", "")
+            _new = r.count_in("새로 들어온 구역", "")
+            if _gone and _new:
+                r.mark(f"{_gone} · {_new}")
+            r.beat(6)
+        r.to("가장 먼 순찰조", 8)
     except Exception as exc:                              # noqa: BLE001
         print(f"  목적 변경 장면 건너뜀: {type(exc).__name__} — {str(exc)[:120]}")
 
@@ -233,7 +290,7 @@ def play(page, pace: float) -> list:
         r.beat(6, "기관·수신·경유·시행일까지 공문 서식 그대로")
         r.beat(5)
         # 많이 내리면 문서를 지나쳐 아래 입력 폼이 나온다. 문서 안에서만 움직인다.
-        r.mark("관서별 순찰 구역 · 중점 확인사항")
+        r.mark("격자 · 순찰 구간 · 조치 기준까지 문서 안에 정의됩니다")
         r.scroll(1.1, 7)
         r.beat(3)
         r.mark("끝에 붙임과 결재란까지 들어갑니다")
@@ -317,9 +374,10 @@ def _run(cmd: list) -> bool:
 
 def _style() -> str:
     """자막 모양. 발표장 뒷자리에서 읽혀야 하므로 크고 두껍게."""
-    return ("FontName=Noto Sans CJK KR,FontSize=21,Bold=1,"
-            "PrimaryColour=&H00FFFFFF,OutlineColour=&H30000000,"
-            "BorderStyle=3,Outline=4,Shadow=0,MarginV=14")
+    size, margin = _sub_metrics()
+    return (f"FontName=Noto Sans CJK KR,FontSize={size},Bold=1,"
+            "PrimaryColour=&H00FFFFFF,OutlineColour=&H00121612,"
+            f"BorderStyle=3,Outline=3,Shadow=0,MarginV={margin}")
 
 
 def plan(marks: list, end: float, only_key: bool, base: float = 1.0) -> list:
@@ -377,16 +435,16 @@ def title_card(text: str, sub: str, png: Path) -> Path:
     font_path = next((f for f in FONT_CANDIDATES if Path(f).exists()), None)
     if font_path is None:                    # 글꼴이 없으면 카드는 포기한다
         raise FileNotFoundError("한글 글꼴을 찾지 못했다: " + str(FONT_CANDIDATES))
-    img = Image.new("RGB", (OUT_W, H), "#12161C")
+    img = Image.new("RGB", (OUT_W, OUT_H), "#12161C")
     d = ImageDraw.Draw(img)
     big = ImageFont.truetype(font_path, 62)
     small = ImageFont.truetype(font_path, 28)
     d.rectangle([0, 0, OUT_W, 10], fill="#E8452C")
     tw = d.textbbox((0, 0), text, font=big)
-    d.text(((OUT_W - tw[2]) / 2, H / 2 - 70), text, font=big, fill="#FFFFFF")
+    d.text(((OUT_W - tw[2]) / 2, OUT_H / 2 - 70), text, font=big, fill="#FFFFFF")
     if sub:
         sw = d.textbbox((0, 0), sub, font=small)
-        d.text(((OUT_W - sw[2]) / 2, H / 2 + 30), sub, font=small, fill="#9AA4B2")
+        d.text(((OUT_W - sw[2]) / 2, OUT_H / 2 + 30), sub, font=small, fill="#9AA4B2")
     img.save(png)
     return png
 
@@ -407,8 +465,9 @@ def cut(src: Path, start: float, stop: float, fast: float, dst: Path,
     """
     # 사이드바를 남길 때는 왼쪽 창, 아닐 때는 오른쪽 창. 폭은 같다.
     crop = f"crop={OUT_W}:{H}:{0 if side else SIDE_W}:0"
-    vf = (f"{crop},setpts=PTS-STARTPTS" if fast == 1.0
-          else f"{crop},setpts=(PTS-STARTPTS)/{fast}")
+    bar = f"pad={OUT_W}:{OUT_H}:0:0:color=#12161C"
+    speed = "setpts=PTS-STARTPTS" if fast == 1.0 else f"setpts=(PTS-STARTPTS)/{fast}"
+    vf = f"{crop},{bar},{speed}"
     return _run(["ffmpeg", "-y", "-loglevel", "error",
                  "-ss", f"{start:.2f}", "-to", f"{stop:.2f}", "-i", str(src),
                  "-vf", vf, "-r", "25",

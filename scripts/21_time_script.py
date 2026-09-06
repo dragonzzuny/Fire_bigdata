@@ -165,12 +165,13 @@ TABLE_ROWS = [
     ("**결과물 먼저 보이기**", "**3**", ["③"]),
     ("제안 내용", "4", ["④"]),
     ("활용 데이터", "5", ["⑤"]),
-    ("**영상 재생 + 법정 서식 · 업무 도우미**", "**6~9 대체 · 10 · 11**", ["⑥"]),
-    ("검증 결과", "12 · 13 · 14", ["⑦"]),
-    ("차별성", "15 · 16", ["⑧"]),
-    ("기대효과", "17", ["⑨"]),
-    ("한계", "18", ["⑩"]),
-    ("마무리", "19", ["⑪"]),
+    ("**영상 재생 + 법정 서식 · 업무 도우미**", "**6 (영상) · 7~10 대체 · 11 · 12**",
+     ["⑥"]),
+    ("검증 결과", "13 · 14 · 15", ["⑦"]),
+    ("차별성", "16 · 17", ["⑧"]),
+    ("기대효과", "18", ["⑨"]),
+    ("한계", "19", ["⑩"]),
+    ("마무리", "20", ["⑪"]),
 ]
 
 
@@ -187,7 +188,16 @@ def write_back(bs: list[dict], total: float) -> None:
     table = "\n".join(rows)
 
     txt = SCRIPT.read_text(encoding="utf-8")
-    head = f"## 1. 시간 배분 (장표 19장 · 총 {mmss(total)})"
+    n_slides = 0
+    try:
+        from pptx import Presentation as _P
+        decks = sorted((ROOT / "outputs").glob("불씨예보_발표자료_*.pptx"))
+        if decks:
+            n_slides = len(_P(str(decks[0])).slides._sldIdLst)
+    except Exception:                                    # noqa: BLE001
+        pass
+    head = (f"## 1. 시간 배분 (장표 {n_slides}장 · 총 {mmss(total)})" if n_slides
+            else f"## 1. 시간 배분 (총 {mmss(total)})")
     a = txt.index("## 1. 시간 배분")
     b = txt.index("| 구간 | 시간 | 장표 |")
     c = txt.index("\n\n", txt.index("| **합계**", b))

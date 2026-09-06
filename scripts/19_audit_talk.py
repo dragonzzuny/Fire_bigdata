@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from firebird.config import load_config  # noqa: E402
 
 #: 영상이 대신하는 장표. 대본이 따로 부르지 않아도 된다.
-COVERED_BY_VIDEO = {6, 7, 8, 9}
+COVERED_BY_VIDEO = {7, 8, 9, 10}   # 영상이 대신하는 서비스 화면
 
 
 def duration(path: Path) -> float:
@@ -30,6 +30,21 @@ def duration(path: Path) -> float:
         return float(r.stdout.strip())
     except ValueError:
         return 0.0
+
+
+def _key(text: str) -> set:
+    """비교용 낱말 뭉치. 표시·조사·굵게 표기를 걷어낸다."""
+    t = re.sub(r"[*/·,.]", " ", text)
+    t = re.sub(r"(입니다|합니다|습니다|하고|이고|에서|으로|까지|만|은|는|이|가|을|를)\b",
+               " ", t)
+    return {w for w in t.split() if len(w) > 1}
+
+
+def _overlap(a: set, b: set) -> float:
+    """두 낱말 뭉치가 얼마나 겹치는가 (작은 쪽 기준)."""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
 
 
 def main() -> int:
@@ -83,10 +98,21 @@ def main() -> int:
 
         scenes = cfg.paths.outputs / "demo_video" / "장면.json"
         if scenes.exists():
-            subs = [s["text"] for s in json.loads(scenes.read_text(encoding="utf-8"))]
-            for need in ("119안전센터 출발", "같은 범위", "숫자와 법령"):
-                if not any(need in t for t in subs):
-                    bad.append(f"영상 자막에 '{need}' 가 없는데 대본이 그 자리를 가리킵니다")
+            subs = [x["text"] for x in json.loads(scenes.read_text(encoding="utf-8"))
+                    if x.get("text")]
+            # 발표자가 얹어 말할 문장이 자막과 같은 말이면 말이 잉여가 된다.
+            # 심사위원은 발표자가 입을 열기 전에 이미 그 문장을 읽고 있다.
+            try:
+                ov = script[script.index("〈재생 ·"):script.index("나머지 구간은")]
+            except ValueError:
+                ov = ""
+            for m in re.finditer(r'"([^"]{6,})"', ov):
+                said = _key(m.group(1))
+                for t in subs:
+                    if said and _overlap(said, _key(t)) >= 0.6:
+                        bad.append(f"얹어 말할 '{m.group(1)[:26]}…' 가 "
+                                   f"영상 자막 '{t[:26]}…' 와 같은 말입니다")
+                        break
         print(f"장표 {n}장 · 영상 {mm}분 {ss}초 · 대본 {len(script.splitlines())}줄\n")
     else:
         print(f"장표 {n}장 · 영상 없음 · 대본 {len(script.splitlines())}줄\n")
