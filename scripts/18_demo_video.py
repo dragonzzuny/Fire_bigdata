@@ -38,6 +38,13 @@ URL = "http://localhost:8601"
 DEFAULT_PACE = 1.0
 
 W, H = 1600, 1000
+#: 사이드바가 화면의 19% 를 상시 차지한다. 값이 한 번 정해진 뒤로는 계속
+#: 같은 상태라, 그 자리를 본문에 주면 표와 지도가 그만큼 커진다.
+#: 다만 '인원을 넣으면 갈 수 있는 구역만 남는다' 의 증거가 그 사이드바라,
+#: 입력 장면(side=True)에서는 남기고 그 뒤부터 잘라 낸다.
+#: 두 창의 폭은 같아야 한다 — 다르면 이어 붙일 때 ffmpeg 이 거부한다.
+SIDE_W = 300
+OUT_W = W - SIDE_W
 #: 제목 카드용 한글 글꼴. 없는 장비에서도 돌도록 후보를 여러 개 둔다.
 FONT_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
@@ -58,6 +65,7 @@ class Mark:
     card: str = ""          # 핵심본에서 이 장면 앞에 세울 제목
     fast: float = 1.0       # 이 장면부터 다음 장면까지의 배속
     endkey: bool = False    # 여기서부터는 핵심본에 넣지 않는다
+    side: bool = False      # 사이드바(입력값)를 화면에 남긴다
 
 
 @dataclass
@@ -72,9 +80,10 @@ class Recorder:
         return time.monotonic() - self.t0
 
     def mark(self, text: str, key: bool = False, card: str = "",
-             fast: float = 1.0, endkey: bool = False) -> None:
+             fast: float = 1.0, endkey: bool = False,
+             side: bool = False) -> None:
         t = self.now()
-        self.marks.append(Mark(t, text.strip(), key, card, fast, endkey))
+        self.marks.append(Mark(t, text.strip(), key, card, fast, endkey, side))
         tag = f"  ({fast:g}배속)" if fast != 1.0 else ""
         print(f"  [{int(t // 60)}:{int(t % 60):02d}] {text}{tag}")
 
@@ -83,7 +92,7 @@ class Recorder:
         if text:
             self.mark(text, **kw)
 
-    def tab(self, name: str, settle: float, text: str, **kw) -> None:
+    def tab(self, name: str, settle: float, text: str, **kw) -> None:  # noqa: D401
         # 표시는 화면이 다 그려진 뒤에 남긴다. 그래서 탭이 바뀐 화면이 앞
         # 장면의 꼬리에 붙는다. 핵심본을 여기서 끊으려면 누르기 '전'에
         # 경계를 찍어야 한다. 실제로 대응취약 화면이 딸려 들어갔었다.
@@ -146,11 +155,11 @@ class Recorder:
 
 def play(page, pace: float) -> list:
     r = Recorder(page, pace)
-    r.beat(6, "실제 울산 자료로 지금 도는 화면입니다")
+    r.beat(6, "실제 울산 자료로 지금 도는 화면입니다", side=True)
 
     # --- 1. 예방점검 배분 -----------------------------------------------
     r.tab("예방점검 배분", 6, "점검 가용 인력을 먼저 넣습니다",
-          key=True, card="인력에 맞춘 예방점검 배분")
+          key=True, card="인력에 맞춘 예방점검 배분", side=True)
     r.to("위험도 상위", 8,
          "위험한 곳일수록 점검할 건물이 많습니다")
     r.to("점검 순위표", 4,
@@ -309,8 +318,8 @@ def _run(cmd: list) -> bool:
 def _style() -> str:
     """자막 모양. 발표장 뒷자리에서 읽혀야 하므로 크고 두껍게."""
     return ("FontName=Noto Sans CJK KR,FontSize=21,Bold=1,"
-            "PrimaryColour=&H00FFFFFF,OutlineColour=&HC0000000,"
-            "BorderStyle=3,Outline=3,Shadow=0,MarginV=16")
+            "PrimaryColour=&H00FFFFFF,OutlineColour=&H30000000,"
+            "BorderStyle=3,Outline=4,Shadow=0,MarginV=14")
 
 
 def plan(marks: list, end: float, only_key: bool, base: float = 1.0) -> list:
@@ -341,7 +350,7 @@ def plan(marks: list, end: float, only_key: bool, base: float = 1.0) -> list:
                 if (stop - mk.t) / fast < need:
                     fast = max(1.0, (stop - mk.t) / need)
             out.append({"start": mk.t, "stop": stop, "fast": fast,
-                        "text": mk.text,
+                        "text": mk.text, "side": mk.side,
                         "card": mk.card if (only_key and mk.key) else ""})
     return out
 
@@ -368,16 +377,16 @@ def title_card(text: str, sub: str, png: Path) -> Path:
     font_path = next((f for f in FONT_CANDIDATES if Path(f).exists()), None)
     if font_path is None:                    # 글꼴이 없으면 카드는 포기한다
         raise FileNotFoundError("한글 글꼴을 찾지 못했다: " + str(FONT_CANDIDATES))
-    img = Image.new("RGB", (W, H), "#12161C")
+    img = Image.new("RGB", (OUT_W, H), "#12161C")
     d = ImageDraw.Draw(img)
     big = ImageFont.truetype(font_path, 62)
     small = ImageFont.truetype(font_path, 28)
-    d.rectangle([0, 0, W, 10], fill="#E8452C")
+    d.rectangle([0, 0, OUT_W, 10], fill="#E8452C")
     tw = d.textbbox((0, 0), text, font=big)
-    d.text(((W - tw[2]) / 2, H / 2 - 70), text, font=big, fill="#FFFFFF")
+    d.text(((OUT_W - tw[2]) / 2, H / 2 - 70), text, font=big, fill="#FFFFFF")
     if sub:
         sw = d.textbbox((0, 0), sub, font=small)
-        d.text(((W - sw[2]) / 2, H / 2 + 30), sub, font=small, fill="#9AA4B2")
+        d.text(((OUT_W - sw[2]) / 2, H / 2 + 30), sub, font=small, fill="#9AA4B2")
     img.save(png)
     return png
 
@@ -389,13 +398,17 @@ def card_clip(png: Path, mp4: Path, seconds: float) -> bool:
                  "-pix_fmt", "yuv420p", str(mp4)])
 
 
-def cut(src: Path, start: float, stop: float, fast: float, dst: Path) -> bool:
+def cut(src: Path, start: float, stop: float, fast: float, dst: Path,
+        *, side: bool = False) -> bool:
     """구간 하나를 잘라 내고, 필요하면 빨리 감는다.
 
     -ss 를 -i 뒤에 두면 setpts 가 먹지 않는다. 20초 구간에 1.4배를 걸어도
     20초가 그대로 나왔다. 입력 앞으로 옮겨야 한다.
     """
-    vf = "setpts=PTS-STARTPTS" if fast == 1.0 else f"setpts=(PTS-STARTPTS)/{fast}"
+    # 사이드바를 남길 때는 왼쪽 창, 아닐 때는 오른쪽 창. 폭은 같다.
+    crop = f"crop={OUT_W}:{H}:{0 if side else SIDE_W}:0"
+    vf = (f"{crop},setpts=PTS-STARTPTS" if fast == 1.0
+          else f"{crop},setpts=(PTS-STARTPTS)/{fast}")
     return _run(["ffmpeg", "-y", "-loglevel", "error",
                  "-ss", f"{start:.2f}", "-to", f"{stop:.2f}", "-i", str(src),
                  "-vf", vf, "-r", "25",
@@ -466,7 +479,8 @@ def render(src: Path, marks: list, end: float, dst: Path, work: Path, *,
                 files.append(cp)
                 total += card_sec
         vp = work / f"seg{i}.mp4"
-        if cut(src, pt["start"], pt["stop"], pt["fast"], vp):
+        if cut(src, pt["start"], pt["stop"], pt["fast"], vp,
+               side=pt.get("side", False)):
             files.append(vp)
             total += (pt["stop"] - pt["start"]) / pt["fast"]
 

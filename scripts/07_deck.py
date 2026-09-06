@@ -153,19 +153,23 @@ def picture(slide, path: Path, x, y, w, *, max_h=None):
     return pic
 
 
-def kpi(slide, x, y, w, value, label, sub="", color=RED):
-    band(slide, x, y, w, Inches(1.5))
-    textbox(slide, x, y + Inches(0.14), w, Inches(0.7), value,
-            size=34, bold=True, color=color, align=PP_ALIGN.CENTER)
-    textbox(slide, x, y + Inches(0.82), w, Inches(0.35), label,
-            size=13, bold=True, align=PP_ALIGN.CENTER)
+def kpi(slide, x, y, w, value, label, sub="", color=RED, *, size=34, h=1.5):
+    """큰 숫자 하나 + 설명. size 를 키우면 그 장표의 무게가 올라간다."""
+    band(slide, x, y, w, Inches(h))
+    k = size / 34.0
+    textbox(slide, x, y + Inches(0.14 * k), w, Inches(0.7 * k), value,
+            size=size, bold=True, color=color, align=PP_ALIGN.CENTER)
+    textbox(slide, x, y + Inches(0.82 * k), w, Inches(0.35), label,
+            size=13 + (size - 34) * 0.18, bold=True, align=PP_ALIGN.CENTER)
     if sub:
-        textbox(slide, x, y + Inches(1.13), w, Inches(0.3), sub,
-                size=10, color=MUTED, align=PP_ALIGN.CENTER)
+        textbox(slide, x, y + Inches(1.13 * k), w, Inches(0.34), sub,
+                size=10 + (size - 34) * 0.12, color=MUTED,
+                align=PP_ALIGN.CENTER)
 
 
 def table(slide, x, y, w, h, rows: list[list[str]], *, col_widths=None,
-          header_color=RGBColor(0x2B, 0x33, 0x40), size=12):
+          header_color=RGBColor(0x2B, 0x33, 0x40), size=12,
+          row_sizes: dict | None = None):
     shape = slide.shapes.add_table(len(rows), len(rows[0]), x, y, w, h)
     tbl = shape.table
     if col_widths:
@@ -185,7 +189,8 @@ def table(slide, x, y, w, h, rows: list[list[str]], *, col_widths=None,
             if emphasise:
                 text = text.replace("**", "")
             run = p.add_run(); run.text = text
-            run.font.size = Pt(size); run.font.name = FONT
+            run.font.size = Pt((row_sizes or {}).get(r, size))
+            run.font.name = FONT
             run.font.bold = (r == 0) or emphasise
             run.font.color.rgb = (RGBColor(0xFF, 0xFF, 0xFF) if r == 0
                                   else (RED if emphasise else INK))
@@ -401,8 +406,13 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     band(s1, Inches(7.8), Inches(4.25), Inches(4.6), Inches(2.0))
     textbox(s1, Inches(8.1), Inches(4.45), Inches(4.0), Inches(0.4),
             "발표자", size=14, bold=True, color=RED)
-    textbox(s1, Inches(8.1), Inches(4.92), Inches(4.0), Inches(1.2),
+    textbox(s1, Inches(8.1), Inches(4.92), Inches(4.0), Inches(0.8),
             "박용준\n아주대학교 산업공학과 석사과정", size=16, bold=True)
+    _p1 = manifest.get("panel", {})
+    textbox(s1, Inches(8.1), Inches(5.72), Inches(4.0), Inches(0.4),
+            f"울산 {_p1.get('grids', 0):,}개 구역 · "
+            f"화재 {_p1.get('total_fires', 0):,.0f}건으로 검증",
+            size=12.5, color=MUTED)
     band(s1, 0, Inches(6.42), W, Inches(1.08), BAND)
     textbox(s1, Inches(0.9), Inches(6.62), Inches(8.0), Inches(0.5),
             "제6회 소방안전 빅데이터 활용 및 아이디어 경진대회 · 서비스 개발 부문",
@@ -711,7 +721,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         keep=0.78)
 
     # ---- 9 어떻게 믿나 (검증) ----
-    s9 = section(prs, "6. 검증 결과",
+    s9 = section(prs, "6. 검증 결과 (1/3)",
                  f"{tr[0]}~{tr[-1]}년 학습, {year}년 예측",
                  f"{year}년 자료는 학습에 미사용")
     picture(s9, figs / "fig_decile.png", Inches(0.8), Inches(2.25), Inches(7.3))
@@ -738,7 +748,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
             size=12, color=MUTED)
 
     # ---- 10 어디까지 확인했나 ----
-    s10 = section(prs, "6. 검증 결과 (계속)",
+    s10 = section(prs, "6. 검증 결과 (2/3)",
                   "타 지역·타 관할 적용 검증 4건",
                   "네 가지 방식으로 따로 확인")
     rows = [["확인한 것", "질문", f"상위 {k}% 포착", "결과"]]
@@ -798,7 +808,7 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     bt = extra.get("backtest", {})
     if bt:
         bh = bt.get("headline", {})
-        s_bt = section(prs, "6. 검증 결과 (계속)",
+        s_bt = section(prs, "6. 검증 결과 (3/3)",
                        f"{bh.get('train_upto', 0)}년 자료 기준 "
                        f"{bh.get('year', 0)}년 회고 검증",
                        "그해 이전 자료만으로 계획했을 때의 포착 결과")
@@ -948,13 +958,13 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
              f"{tk.get('n_grids_selected', 0):,}개 구역 · 대상물 "
              f"{tk.get('targets_if_all', 0):,.0f}개소\n"
              f"점검 소요 {tk.get('cost_if_all', 0):,.0f}건"],
-            ["인력 제약", "**미해결**: 연 점검을 6,096건 늘리려면\n"
-                          "지금(2,573건)의 2.37배 — 조직·조례·증원\n"
-                          "없이는 불가능하다고 논문이 적음",
+            ["인력 제약", "**미해결**: 연 점검 6,096건 증가 = 지금(2,573건)의\n"
+                          "2.37배. 조직·조례·증원 없이는 불가능하다고 논문이 적음",
              f"**해결**: 가용 인력 안에서 배분,\n동일 인력 대비 "
              f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p 개선"]]
     table(s_us, Inches(0.8), Inches(2.3), Inches(11.8), Inches(3.9), rows,
-          col_widths=[2.2, 4.8, 4.8], size=11.5)
+          col_widths=[2.2, 4.8, 4.8], size=10,
+          row_sizes={0: 11.5, 6: 12.5, 7: 12.5})
     band(s_us, Inches(0.8), Inches(6.35), Inches(11.8), Inches(0.75),
          RGBColor(0xEC, 0xF8, 0xF2))
     textbox(s_us, Inches(1.05), Inches(6.48), Inches(11.3), Inches(0.5),
@@ -969,31 +979,31 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
     # 이 서비스의 결과물은 순찰 경로다. 머리 지표도 순찰에서 시작한다.
     _bh = (extra.get("backtest") or {}).get("headline", {})
     if _bh:
-        kpi(s11, Inches(0.8), Inches(2.4), Inches(3.8),
+        kpi(s11, Inches(0.8), Inches(2.32), Inches(3.8),
             f"{_bh.get('capture_share', 0):.1%}", "순찰 구역 안에서 난 화재",
             f"관내 {_bh.get('share_of_city', 0):.1%}"
             f"({_bh.get('patrol_grids', 0)}개 구역)만 돌았을 때 · "
-            f"{_bh.get('year', 0)}년 회고")
+            f"{_bh.get('year', 0)}년 회고", size=40, h=1.72)
     elif alloc and "gain_pp" in alloc:
         kpi(s11, Inches(0.8), Inches(2.4), Inches(3.8),
             f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p",
             "같은 인력 기준 포착률 개선",
             f"인력에 맞춘 배분 vs 상위 {k}% 방식")
     if alloc and "gain_pp" in alloc:
-        kpi(s11, Inches(4.85), Inches(2.4), Inches(3.8),
+        kpi(s11, Inches(4.85), Inches(2.32), Inches(3.8),
             f"{(alloc.get('equity') or alloc).get('gain_pp', 0):+.1f}%p",
             "같은 인력 기준 점검 포착률",
             f"{shown_grids:,}개 구역 · 관할별 최소 배분 적용 · "
-            f"무작위 대비 {h['model_lift']:.2f}배", color=BLUE)
+            f"무작위 대비 {h['model_lift']:.2f}배", color=BLUE, size=40, h=1.72)
     hc = summary.get("hydrant_coverage", {})
     bp = summary.get("blind_spot_population") or {}
-    kpi(s11, Inches(8.9), Inches(2.4), Inches(3.7),
+    kpi(s11, Inches(8.9), Inches(2.32), Inches(3.7),
         f"{summary.get('n_blind_spots', 0)}개",
         "고위험 · 소방용수 사각 구역",
         (f"{bp['n_emd']}개 읍면동 · 상주인구 {bp['population']:,}명"
          if bp else
          f"전체 구역의 {pct(hc.get('share_without_hydrant'))}에 소화전 없음"),
-        color=GREEN)
+        color=GREEN, size=40, h=1.72)
     # 회고 검증을 세 해 모두 적는다. 한 해만 적으면 우연으로 읽힌다.
     _bt = extra.get("backtest") or {}
     if _bt.get("years"):
@@ -1006,17 +1016,17 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
                 g = r.get("gain_ci", {})
                 _yy.append(f"{y['year']} {r['gain_over_baseline']:+.0f} "
                            f"[{g.get('lo', 0):+.0f},{g.get('hi', 0):+.0f}]")
-        band(s11, Inches(0.8), Inches(4.0), Inches(11.8), Inches(0.6))
-        textbox(s11, Inches(1.05), Inches(4.16), Inches(11.3), Inches(0.35),
+        band(s11, Inches(0.8), Inches(4.2), Inches(11.8), Inches(0.6))
+        textbox(s11, Inches(1.05), Inches(4.36), Inches(11.3), Inches(0.35),
                 f"회고 검증 {_op}개 구역 · 작년 화재 순 대비   "
                 + " · ".join(_yy)
                 + "건 — 세 해 모두 0 초과", size=12, color=MUTED)
-    textbox(s11, Inches(0.8), Inches(4.9), Inches(11.8), Inches(2.4),
+    textbox(s11, Inches(0.8), Inches(5.05), Inches(11.8), Inches(2.4),
             "· 예방순찰   119안전센터별 출동 계획, 목적별 순찰 6종, 월별 순찰 강도\n"
             "· 예방점검   화재안전조사 대상 우선순위를 자동으로 정하고, 공문 서식 계획서로 바로 결재\n"
             "· 소방용수 정책   고위험인데 소화전이 없는 구역을 신설 우선순위의 객관적 근거로\n"
             "· 행정 지원   신규 대원·신규 부임지에서 위험 판단 근거와 법령 조문을 함께 제공\n"
-            "· 확산   세종 적용으로 확인. 공개데이터만 쓰므로 별도 운영비가 들지 않음",
+            "· 확산   세종 적용으로 확인. 공개데이터만 쓰므로 데이터 구매비가 들지 않음",
             size=15.5, spacing=1.65)
 
     # ---- 12 한계 ----
@@ -1041,9 +1051,9 @@ def build(cfg, ev: dict, summary: dict, manifest: dict, figs: Path,
         ["순찰 횟수를 근무편성과 잇지 못함",
          "월 위험계수로 주차별 횟수까지는 산출",
          "관서 교대·인원 편성 자료와 연계"],
-        ["단순 기준 대비 개선폭이 크지 않음",
-         f"누적 화재만으로도 {pct(probe0.get('capture_top20'))}임을 먼저 공개",
-         "가치는 설명·확장·인력배분에 있음"],
+        ["**단순 기준 대비 개선폭이 크지 않음**",
+         f"**지난 화재만으로도 {pct(probe0.get('capture_top20'))} — 먼저 공개합니다**",
+         "**가치는 인력 배분에 있습니다**"],
     ]
     table(s12, Inches(0.8), Inches(2.6), Inches(11.8), Inches(4.0), rows,
           col_widths=[3.6, 4.8, 3.4], size=12.5)
